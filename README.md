@@ -59,28 +59,36 @@ that the model got better at its job.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/probe-regression-dark.png">
-  <img alt="Probe set results, base versus after DAPT. Correct answers fell from 16.9 to 2.9 percent while replies containing no answer rose from 0 to 43.1 percent." src="doc/probe-regression-light.png">
+  <img alt="Probe results for three runs: base, the fine-tuned checkpoint served without its chat template, and the same checkpoint served correctly. Correct answers 16.9, 2.9 and 11.4 percent; replies with no answer 0, 43.1 and 28.3 percent." src="doc/probe-regression-light.png">
 </picture>
 
 **This is the measurement the other three cannot give you.** Asked questions
-whose answers are in the documents it just trained on, the fine-tuned model
-scored *below* its own base — and the probe set is the only track that could
-have shown it, because perplexity had just improved 40% on the same corpus.
+whose answers sit in the documents it just trained on, the fine-tuned checkpoint
+answered fewer of them than the base model it started from — while perplexity on
+the same corpus had just improved 40%. No other track here could have shown
+that.
 
-The first reading of that gap was wrong, which is worth recording. It looked
-like continued pre-training had cost the model the ability to follow an
-instruction: it emitted unterminated reasoning blocks and continued text
-instead of answering. The cause turned out to be the harness. The fine-tuned
-checkpoint had been registered with Ollama under a pass-through template and no
-stop tokens, so it was prompted without the chat markers the base model got and
-was never told where to stop. Registered the same way as its base, the same
-checkpoint answers cleanly and the collapse mostly disappears.
+The first reading of the gap was wrong, and the correction is the more useful
+result. It looked like continued pre-training had destroyed the model's ability
+to follow an instruction: 2.9% correct, and 43% of replies containing no answer
+at all. The checkpoint had been registered with Ollama under a pass-through
+template and no stop tokens, so it was prompted without the chat markers the
+base model got and was never told where to stop. Served the way its base is
+served, the same weights answer 11.4% and fall silent on 28% — most of the
+collapse was the harness.
 
-The lesson is not about DAPT. It is that a benchmark comparing two checkpoints
-has to serve them identically, and that a result which looks like a dramatic
-model failure should be suspected of being a harness failure first. This one
-was caught because the failure mode — every reply running to the generation
-limit — was too uniform to be a property of the model.
+Most, not all. 11.4% against a base of 16.9%, and 28% silence against none, is
+still a real regression: stage 1 did cost this checkpoint some of its ability to
+answer, which is what stage 2 exists to restore. Both readings were wrong in
+the same direction — the first overstated the damage, and the impulse to call
+the whole thing a harness bug would understate it.
+
+Two things worth keeping from that. A benchmark comparing two checkpoints has to
+serve them identically, and nothing in the scoring code checks that. And a
+result that looks like a dramatic model failure deserves to be suspected of
+being a harness failure first — this one was caught because the symptom, every
+reply running to the generation limit, was too uniform to be a property of a
+model.
 
 That is the whole argument for building a benchmark this way. Perplexity said
 the training worked. The probe set said what it had cost. You need both numbers,
@@ -433,15 +441,15 @@ After stage 1 (domain-adaptive pre-training, 836 steps, LoRA on Qwen3-8B):
 | Metric | Base | After DAPT | Change | Items |
 |---|---:|---:|---:|---:|
 | `dapt` perplexity | 7.589 | 4.553 | -40.0% | 5,381 chunks |
-| probe numeric, closed book | 0.169 | 0.029 | -82.6% | 102 of 400 |
-| probe replies with no answer | 0.000 | 0.431 | — | 102 of 400 |
+| probe numeric, closed book | 0.169 | 0.114 | -32.5% | 325 of 400 |
+| probe replies with no answer | 0.000 | 0.283 | — | 325 of 400 |
 
-The probe run was stopped at 102 items: with every reply running to the
-generation limit each item cost 95 seconds, and the cause was already
-established — the model had stopped answering and started continuing text. The
-remaining tracks were not scored on this checkpoint, because a checkpoint that
-cannot follow an instruction has nothing to say about domain knowledge. Stage 2
-is what the two-stage design is for; scores for it will replace this table.
+The probe figures are from 325 of the 400 items; the run was stopped there to
+give the GPU back to stage 2 training, and its journal is kept so it can be
+finished later. An earlier run of the same checkpoint scored 0.029 with 43%
+silence — that one was served without its chat template and stop tokens, and is
+the reason the registration step is written out in "The full sequence" above.
+Stage 2 is what the two-stage design is for; its scores will replace this table.
 
 ## Limits
 
