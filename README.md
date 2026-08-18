@@ -19,6 +19,62 @@ building models — which is where the name comes from: **K**orean
 of prompt strings; see [Adapting it to another
 domain](#adapting-it-to-another-domain).
 
+## What it looks like
+
+A worked example, from the run this was built for: Qwen3-8B given
+domain-adaptive pre-training on 26,767 chunks of Korean construction regulation.
+Four charts, and between them they tell you what the benchmark is for.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="doc/closed-vs-open-dark.png">
+  <img alt="Track 2 numeric accuracy for six untrained models, closed book versus open book. Open book every model scores above 84 percent; closed book none clears 17 percent." src="doc/closed-vs-open-light.png">
+</picture>
+
+**Start here: is this corpus even worth training on?** Six models that never saw
+it. Hand them the clause and they answer correctly 85–95% of the time — they read
+Korean regulation fluently. Take the clause away and none of them clears 17% —
+they have not memorised any of it. That gap is the room fine-tuning has to work
+in, and it is why the closed-book number is the one this benchmark reports.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="doc/track1-perplexity-dark.png">
+  <img alt="Perplexity by document category, base versus after DAPT. Every one of the thirteen categories fell, the overall figure from 7.589 to 4.553." src="doc/track1-perplexity-light.png">
+</picture>
+
+**Did training move anything?** Perplexity on 5,381 held-out chunks fell 40%,
+7.589 → 4.553, in every one of the thirteen categories. The two that stayed
+highest — research reports, uncategorised documents — are the two least like the
+regulation prose the corpus is mostly made of, which is the answer you would
+expect if the model were learning the domain rather than the dataset.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="doc/dapt-loss-dark.png">
+  <img alt="DAPT training loss over 836 optimiser steps, falling from 2.091 to 1.452." src="doc/dapt-loss-light.png">
+</picture>
+
+**The training run itself was uneventful.** Loss fell from 2.091 to 1.452 over
+836 steps and the curve has nothing odd in it. Worth showing precisely because
+of the next chart: a clean loss curve and a 40% perplexity drop are not evidence
+that the model got better at its job.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="doc/probe-regression-dark.png">
+  <img alt="Probe set results, base versus after DAPT. Correct answers fell from 16.9 to 2.9 percent while replies containing no answer rose from 0 to 43.1 percent." src="doc/probe-regression-light.png">
+</picture>
+
+**This is the measurement the other three cannot give you.** Asked questions
+whose answers are in the documents it just trained on, the model got *worse* —
+16.9% → 2.9% — and 43% of its replies contain no answer at all, against none
+before. It had stopped answering questions and started continuing text: asked
+`2 + 2`, it emits a reasoning block containing a different question and then a
+list of choices, where the base model says `4`. Continued pre-training on raw
+regulation cost it the ability to follow an instruction. Supervised fine-tuning
+is the stage that teaches answer shape, and that is the next run.
+
+That is the whole argument for building a benchmark this way. Perplexity said
+the training worked. The probe set said what it had cost. You need both numbers,
+on frozen items, before and after, or you are guessing.
+
 ## Why a held-out set is not enough
 
 A benchmark carved out of the same corpus a model trained on answers only half
@@ -225,11 +281,18 @@ the diagnosis.
 
 After stage 1 (domain-adaptive pre-training, 836 steps, LoRA on Qwen3-8B):
 
-| Metric | Base | After DAPT | Change |
-|---|---:|---:|---:|
-| track 1 perplexity | 7.589 | 4.553 | -40.0% |
+| Metric | Base | After DAPT | Change | Items |
+|---|---:|---:|---:|---:|
+| track 1 perplexity | 7.589 | 4.553 | -40.0% | 5,381 chunks |
+| probe numeric, closed book | 0.169 | 0.029 | -82.6% | 102 of 400 |
+| probe replies with no answer | 0.000 | 0.431 | — | 102 of 400 |
 
-Generation tracks after DAPT are still being scored.
+The probe run was stopped at 102 items: with every reply running to the
+generation limit each item cost 95 seconds, and the cause was already
+established — the model had stopped answering and started continuing text. The
+remaining tracks were not scored on this checkpoint, because a checkpoint that
+cannot follow an instruction has nothing to say about domain knowledge. Stage 2
+is what the two-stage design is for; scores for it will replace this table.
 
 ## Limits
 
