@@ -63,13 +63,24 @@ that the model got better at its job.
 </picture>
 
 **This is the measurement the other three cannot give you.** Asked questions
-whose answers are in the documents it just trained on, the model got *worse* —
-16.9% → 2.9% — and 43% of its replies contain no answer at all, against none
-before. It had stopped answering questions and started continuing text: asked
-`2 + 2`, it emits a reasoning block containing a different question and then a
-list of choices, where the base model says `4`. Continued pre-training on raw
-regulation cost it the ability to follow an instruction. Supervised fine-tuning
-is the stage that teaches answer shape, and that is the next run.
+whose answers are in the documents it just trained on, the fine-tuned model
+scored *below* its own base — and the probe set is the only track that could
+have shown it, because perplexity had just improved 40% on the same corpus.
+
+The first reading of that gap was wrong, which is worth recording. It looked
+like continued pre-training had cost the model the ability to follow an
+instruction: it emitted unterminated reasoning blocks and continued text
+instead of answering. The cause turned out to be the harness. The fine-tuned
+checkpoint had been registered with Ollama under a pass-through template and no
+stop tokens, so it was prompted without the chat markers the base model got and
+was never told where to stop. Registered the same way as its base, the same
+checkpoint answers cleanly and the collapse mostly disappears.
+
+The lesson is not about DAPT. It is that a benchmark comparing two checkpoints
+has to serve them identically, and that a result which looks like a dramatic
+model failure should be suspected of being a harness failure first. This one
+was caught because the failure mode — every reply running to the generation
+limit — was too uniform to be a property of the model.
 
 That is the whole argument for building a benchmark this way. Perplexity said
 the training worked. The probe set said what it had cost. You need both numbers,
@@ -165,8 +176,26 @@ ollama pull qwen3:8b
 
 ## Use
 
-Everything runs through one entry point, `cb.py`. `python cb.py -h` lists the
-commands; each command takes its own flags, shown by `python cb.py eval -h`.
+Everything runs through one entry point, `cb.py`. Each command takes its own
+flags, shown by `python cb.py <command> -h`.
+
+| Command | What it does |
+|---|---|
+| `build` | run every build stage in order |
+| `holdout` | reserve the evaluation documents |
+| `tracks` | mine the dapt, sft and vlm items from the held-out documents |
+| `probe` | mine the training-side probe set |
+| `usecases` | build the use-case tracks from the config registry |
+| `split` | write the training split, holdout excluded |
+| `verify` | trace every item to its source and prove nothing trains on it |
+| `eval` | score a model over the generation tracks |
+| `ppl` | score the dapt track's perplexity locally |
+| `ece` | expected calibration error — is the model's confidence justified |
+| `compare` | compare two runs, with a significance test |
+| `matrix` | score several models and tabulate |
+| `triage` | pick the items a human should review |
+| `review` | apply review verdicts, kept across rebuilds |
+| `export` | package the built benchmark, with an lm-eval-harness config |
 
 Build the benchmark from a corpus. `build` runs the stages in order: split the
 holdout, mine the tracks, mine the probe, build the use-case tracks, write the
