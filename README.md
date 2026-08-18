@@ -185,6 +185,13 @@ python cb.py eval -m my-finetune:v1 --tag ft-v1 --tracks sft --closed-book
 python cb.py ppl  -m ./out/my-dapt  --tag ft-v1-ppl        # the dapt track
 ```
 
+Ask whether its confidence is worth anything — expected calibration error over
+the same items:
+
+```
+python cb.py ece -m my-finetune:v1 --tag ft-v1-ece --tracks sft --closed-book
+```
+
 Compare them. This is the step that produces the answer:
 
 ```
@@ -228,6 +235,7 @@ benchmark/
     evaluate.py          score a model over the generation tracks
     perplexity.py        score the dapt track locally
     compare.py           compare two runs, with a bootstrap significance test
+    calibration.py       expected calibration error: is its confidence justified
     run_matrix.py        score several models and tabulate
     triage_items.py      pick the items a human should look at
     apply_review.py      fold human review decisions back into the set

@@ -59,6 +59,7 @@ cb.py eval         data/runs/<tag>.json           score tracks sft, vlm and the 
 cb.py ppl          data/runs/<tag>.json           track dapt perplexity
 cb.py matrix       data/matrix.{json,md}          score several models at once
 cb.py compare      data/runs/compare_*.json       before/after, with a significance test
+cb.py ece          data/runs/<tag>.json           calibration error
 ```
 
 Review (a person judges; the tooling only selects and applies):
@@ -138,6 +139,56 @@ scores 0.932, so it cannot separate a fine-tune from its base. Use it to check
 that training did not cost the model its reading comprehension, and read the
 closed-book number as the result. `cb.py matrix --book both` reports the gap
 between them, which is the headroom fine-tuning has to work with.
+
+### Calibration
+
+A score says how often the model is right. It does not say whether the model
+knows when it is wrong, and for an agent whose answer feeds a safety decision
+that is the worse failure: not being wrong, but being wrong and sure.
+
+```bash
+python cb.py ece -m qwen3:8b --tag base-ece --tracks sft --closed-book
+python cb.py ece -m qwen3:8b --tag base-ece --method verbalized
+```
+
+Expected Calibration Error bins predictions by confidence and asks, per bin,
+whether the confidence matched the accuracy. A model that says 80% on a hundred
+items and gets eighty of them right is calibrated; one that gets sixty right is
+over-confident by 20 points. ECE is the item-weighted mean of those gaps, in the
+construction of Guo et al. (2017); the vocabulary follows ISO/IEC JTC1 SC42
+TS 25223.
+
+An Ollama model reports no confidence, so it has to be extracted. Two ways:
+
+| `calibration.method` | How | Cost per item | Caveat |
+|---|---|---|---|
+| `self_consistency` | sample the question K times, confidence is the modal answer's share | K generations | needs `temperature` > 0; the lowest reachable confidence is 1/K, so bins below that stay empty |
+| `verbalized` | ask the model to state a confidence | 1 generation | self-reported, and stated confidence is known to cluster on round numbers |
+
+Reported per track:
+
+| Metric | Meaning |
+|---|---|
+| `ece` | item-weighted mean absolute gap between confidence and accuracy |
+| `mce` | the worst single bin. ECE is a mean and hides a bin that is badly off |
+| `brier` | mean squared error of confidence against the 0/1 outcome — accuracy and calibration in one number |
+| `signed_gap`, `direction` | which way it is wrong. ECE is absolute and cannot separate over- from under-confidence, and only one of those is a safety problem |
+| `bins` | the reliability table: n, mean confidence, accuracy, gap, weight, contribution, and the bin's Wilson interval |
+
+Only numeric and label items take part. A set-F1 answer is partially correct,
+and there is no accepted way to bin partial credit against a confidence.
+
+### What a run file records
+
+Enough to check the number later rather than trust it:
+
+| Field | Why |
+|---|---|
+| `meta.decoding` | temperature, `num_ctx`, `num_predict`, repeats, numeric tolerance. A score without these cannot be reproduced |
+| `meta.holdout_seed` | a different seed reserves different documents, and two runs on different items are not comparable |
+| `meta.schema` | the item schema the set was built under |
+| `tracks.<t>.items_digest` | sha256 over the sorted item ids. Two runs carrying the same digest scored the same questions |
+| `<metric>_ci95` | Wilson interval on every proportion, so a 39-item track cannot be read as precisely as a 320-item one |
 
 ### CLI
 
