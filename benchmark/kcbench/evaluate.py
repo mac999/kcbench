@@ -303,7 +303,7 @@ def b64_image(path: Path) -> str:
 def run_track1(cfg, model: str, rows: List[dict], limit: int | None) -> dict:
     rows = rows[:limit] if limit else rows
     if not prompt_logprobs_available(cfg, model):
-        LOG.warning("track 1 skipped: this backend cannot score held-out text. "
+        LOG.warning("dapt skipped: this backend cannot score held-out text. "
                     "Measure perplexity with a runner that returns prompt logprobs "
                     "(vLLM, llama-perplexity) against the same track1_dapt.jsonl.")
         return {"items": len(rows), "scored": 0, "perplexity": None,
@@ -318,9 +318,9 @@ def run_track1(cfg, model: str, rows: List[dict], limit: int | None) -> dict:
         if pp and math.isfinite(pp):
             vals.append(pp)
         if i % 50 == 0:
-            LOG.info("track 1: %d/%d", i, len(rows))
+            LOG.info("dapt: %d/%d", i, len(rows))
     if not vals:
-        LOG.warning("track 1 produced no perplexities - the server may not return prompt logprobs")
+        LOG.warning("dapt produced no perplexities - the server may not return prompt logprobs")
         return {"items": len(rows), "scored": 0, "perplexity": None}
     return {"items": len(rows), "scored": len(vals),
             "perplexity": round(statistics.fmean(vals), 4),

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Track 1 — perplexity over held-out text, computed locally.
+The dapt track — perplexity over held-out text, computed locally.
 
     python perplexity.py --model Qwen/Qwen3-8B --tag base
     python perplexity.py --model ./out/qwen3-8b-dapt --tag dapt-v1
@@ -84,12 +84,12 @@ def main() -> int:
 
     path = cfg["out_dir"] / "track1_dapt.jsonl"
     if not path.exists():
-        LOG.error("track 1 not built - run build_tracks.py first (%s)", path)
+        LOG.error("dapt track not built - run 'cb.py tracks' first (%s)", path)
         return 1
     rows: List[dict] = read_jsonl(path)
     if args.limit:
         rows = rows[:args.limit]
-    LOG.info("track 1: %d chunk(s)", len(rows))
+    LOG.info("dapt: %d chunk(s)", len(rows))
 
     tok, model = load_model(args.model, dtype, device)
 

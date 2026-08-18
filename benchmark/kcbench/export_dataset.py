@@ -169,9 +169,9 @@ The delta on identical items is.
 
 | Track | Items | Types |
 |---|---:|---|
-{row('track1', 'track 1 — DAPT, perplexity')}
-{row('track2', 'track 2 — SFT, regulation facts')}
-{row('track3', 'track 3 — VLM, IFC elements')}
+{row('track1', 'dapt — perplexity over held-out text')}
+{row('track2', 'sft — facts from held-out regulation')}
+{row('track3', 'vlm — IFC elements from renders')}
 
 Held out: {totals.get('pdf_documents', 0)} of {totals.get('dataset_documents', 0)} documents
 ({totals.get('pdf_chunks', 0)} chunks), {totals.get('ifc_models', 0)} IFC models.
@@ -237,11 +237,11 @@ sets as sets; use `evaluate.py` for the reported number.
 - Items are rule-mined, not expert-reviewed. Sufficient for a before/after
   delta, not for a public leaderboard without a review pass — the step both
   AECBench and KMMLU spent most of their effort on.
-- Track 3 is bounded by the corpus: after parser regression fixtures are
+- `vlm` is bounded by the corpus: after parser regression fixtures are
   excluded, {totals.get('ifc_models', 0)} models remain held out, which is a directional signal
   rather than a ranking. Recording per-group membership in `ifc_processor.py`
   would lift it from whole-model renders to every render.
-- Track 1 needs prompt-token logprobs. Ollama does not return them, so
+- `dapt` needs prompt-token logprobs. Ollama does not return them, so
   `evaluate.py` reports null there and the measurement needs vLLM or
   `llama-perplexity` against the same file.
 - Numeric items inherit whatever ambiguity the source clause has. Overlapping

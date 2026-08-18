@@ -294,7 +294,7 @@ def build_track1(cfg, holdout) -> Path:
                 "provenance": _provenance(cfg, d, chunk),
             })
     out = write_jsonl(cfg["out_dir"] / "track1_dapt.jsonl", rows)
-    LOG.info("track 1: %d chunk(s), %.2f M characters", len(rows),
+    LOG.info("dapt: %d chunk(s), %.2f M characters", len(rows),
              sum(r["chars"] for r in rows) / 1e6)
     return out
 
@@ -423,7 +423,7 @@ def build_track2(cfg, holdout, rej: Rejects) -> Path:
                     break
 
     numeric_n = len(rows)
-    LOG.info("track 2: %d numeric item(s)", numeric_n)
+    LOG.info("sft: %d numeric item(s)", numeric_n)
 
     # Enumerations become nameset items, which is the answer type a scalar-only
     # benchmark misses and where models are known to degrade.
@@ -475,7 +475,7 @@ def build_track2(cfg, holdout, rej: Rejects) -> Path:
 
     out = write_jsonl(cfg["out_dir"] / "track2_sft.jsonl", rows)
     kinds = collections.Counter(r["eval_type"] for r in rows)
-    LOG.info("track 2: %d item(s) %s over %d document(s)",
+    LOG.info("sft: %d item(s) %s over %d document(s)",
              len(rows), dict(kinds), len({r["doc"] for r in rows}))
     return out
 
@@ -666,7 +666,7 @@ def build_track3(cfg, holdout, rej: Rejects) -> Path:
             })
     out = write_jsonl(cfg["out_dir"] / "track3_vlm.jsonl", rows)
     kinds = collections.Counter(r["eval_type"] for r in rows)
-    LOG.info("track 3: %d item(s) %s over %d model(s)",
+    LOG.info("vlm: %d item(s) %s over %d model(s)",
              len(rows), dict(kinds), len({r["model"] for r in rows}))
     return out
 
