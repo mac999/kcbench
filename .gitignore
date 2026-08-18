@@ -1,0 +1,37 @@
+# This working directory holds the corpus, the model checkpoints and the run
+# logs alongside the code. Only the code and the evaluation sets are tracked,
+# so the rule is deny-by-default and everything published is listed by hand.
+/*
+!/.gitignore
+!/LICENSE
+!/README.md
+!/benchmark/
+!/training/
+
+# benchmark: code, config and docs
+benchmark/__pycache__/
+benchmark/*.pyc
+
+# benchmark data: evaluation sets only. The training split and the track 1
+# chunk file are derived from copyrighted source documents and are rebuilt
+# locally with build_all.py.
+benchmark/data/*
+!benchmark/data/holdout.json
+!benchmark/data/track2_sft.jsonl
+!benchmark/data/track3_vlm.jsonl
+!benchmark/data/probe_trained.jsonl
+!benchmark/data/uc1_safety_qa.jsonl
+!benchmark/data/uc2_spec_threshold.jsonl
+!benchmark/data/uc3_cross_image.jsonl
+!benchmark/data/uc4_faithfulness.jsonl
+!benchmark/data/uc5_incident.jsonl
+# runs/ holds scoring output, not the benchmark. Baseline numbers live in
+# README.md and benchmark/CHANGELOG.md.
+
+# training: scripts only. Checkpoints, adapters and logs stay local.
+training/out/
+training/*.log
+training/RESTART.md
+
+# one-off re-baseline script, superseded by run_uc_baseline.sh
+benchmark/run_uc_rebase.sh

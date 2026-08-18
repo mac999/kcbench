@@ -1,0 +1,152 @@
+{
+  "_comment": "Benchmark settings. Any value here is overridden by the matching command-line flag. Paths may be absolute or relative to the benchmark folder. Copy this file per dataset variant and pass it with --config.",
+  "corpus_dir": "../data",
+  "generated_dir": "../ai_ready_full",
+  "metadata_dir": "../metadata",
+  "pipeline_dir": "../gen_aec_syn_data",
+  "out_dir": "data",
+  "holdout": {
+    "_comment": "Document-level split. Changing the seed reserves different documents and invalidates comparison against earlier runs. chunk_fraction trades benchmark size against training data: 0.20 yields ~395 items and withholds 16.3% of chunks.",
+    "chunk_fraction": 0.2,
+    "ifc_fraction": 0.5,
+    "max_chunks_per_doc": 50,
+    "seed": 20260814,
+    "ifc_exclude_categories": [
+      "06_reference_and_test"
+    ],
+    "ifc_min_element_types": 2
+  },
+  "track2_sft": {
+    "_comment": "Held-out regulation Q&A. numeric_uniqueness=strict drops thresholds whose subjects overlap; nameset_require_lead_in demands the sentence that introduces a list. Raising max_items_per_doc buys items without withholding more training data, up to roughly 12 before documents run dry.",
+    "target_items": 800,
+    "max_items_per_doc": 12,
+    "numeric_uniqueness": "strict",
+    "min_subject_len": 4,
+    "max_subject_len": 30,
+    "nameset_min_items": 3,
+    "nameset_max_item_len": 60,
+    "nameset_require_lead_in": true
+  },
+  "track3_vlm": {
+    "_comment": "whole_model_groups_only keeps only renders whose element catalogue is exact. Set false once ifc_processor.py records per-group membership. mapping_max_total_elements drops count questions on models too large to count from a photograph.",
+    "whole_model_groups_only": true,
+    "min_types_for_mapping": 3,
+    "mapping_max_total_elements": 60
+  },
+  "probe": {
+    "_comment": "Items mined from the training side, measuring whether the model absorbed what it was trained on. Contamination is deliberate; never report these as a benchmark result. Track 2 answers a different question, generalisation to regulation the model never saw.",
+    "target_items": 400,
+    "max_items_per_doc": 6,
+    "nameset_share": 0.2,
+    "seed": 20260814
+  },
+  "usecases": {
+    "_comment": "Use-case tracks, built by build_usecases.py. Each entry names a builder and its parameters, so a future use case is a config entry plus at most one builder function. Items from training-side documents carry contamination flags and only measure the open-book (RAG) question; the 80% output-accuracy target for the RAG agent is judged on open-book scores.",
+    "uc1_safety": {
+      "enabled": true,
+      "builder": "doc_filtered_qa",
+      "track_file": "uc1_safety_qa.jsonl",
+      "categories": [
+        "03_safety_and_disaster"
+      ],
+      "doc_patterns": [],
+      "target_items": 170,
+      "max_items_per_doc": 12,
+      "nameset_share": 0.5,
+      "include_train_side": true,
+      "nameset_max_per_doc": 3
+    },
+    "uc2_rebar_spec": {
+      "enabled": true,
+      "builder": "doc_filtered_qa",
+      "track_file": "uc2_spec_threshold.jsonl",
+      "categories": [
+        "01_design_standards_kds",
+        "02_specifications_kcs"
+      ],
+      "doc_patterns": [],
+      "target_items": 150,
+      "max_items_per_doc": 12,
+      "nameset_share": 0.0,
+      "include_train_side": true
+    },
+    "uc3_bim_site": {
+      "enabled": true,
+      "builder": "vlm_labels",
+      "track_file": "uc3_cross_image.jsonl",
+      "task_types": [
+        "bim_site_comparison",
+        "progress_assessment"
+      ],
+      "exclude_labels": [
+        "unknown"
+      ]
+    },
+    "uc4_faithfulness": {
+      "enabled": true,
+      "builder": "context_swap",
+      "track_file": "uc4_faithfulness.jsonl",
+      "source_track": "track2_sft.jsonl",
+      "swap_share": 0.5,
+      "max_items": 160,
+      "seed": 20260814
+    },
+    "uc5_incident": {
+      "enabled": true,
+      "builder": "missing_measures",
+      "track_file": "uc5_incident.jsonl",
+      "categories": [
+        "03_safety_and_disaster"
+      ],
+      "doc_patterns": [],
+      "min_items_per_list": 3,
+      "removed_share": 0.34,
+      "max_items": 120,
+      "include_train_side": true,
+      "seed": 20260814
+    }
+  },
+  "eval": {
+    "_comment": "Scoring through an inference server. num_ctx must be set: without it the server sizes the KV cache from the model's maximum context, which is 40 GB on qwen3. num_predict must cover a reasoning model's thinking or the answer never arrives. models and book are the defaults run_matrix.py uses when given none. repeats is 1 because temperature is 0: greedy decoding returned the same reply every time across all 560 scores of the base probe run, so extra samples cost time and tell you nothing. Raise both together to measure sampling variance.",
+    "repeats": 1,
+    "numeric_tolerance": 0.02,
+    "ollama_base_url": "http://localhost:11434",
+    "request_timeout": 600,
+    "max_consecutive_failures": 20,
+    "num_ctx": 8192,
+    "num_predict": 4096,
+    "temperature": 0.0,
+    "models": [],
+    "book": "both",
+    "lang_mix": {
+      "ko": 0.8,
+      "en": 0.2
+    },
+    "max_consecutive_empty": 25
+  },
+  "perplexity": {
+    "_comment": "Track 1 runs the weights through transformers, so these decide whether it fits in memory and how long it takes. Lower max_length or switch dtype to float16 on a smaller card.",
+    "max_length": 2048,
+    "dtype": "bfloat16",
+    "device": "cuda",
+    "log_every": 200
+  },
+  "compare": {
+    "_comment": "Paired significance testing. alpha is the threshold for McNemar and the width of the bootstrap interval.",
+    "alpha": 0.05,
+    "bootstrap_rounds": 10000,
+    "bootstrap_seed": 20260814
+  },
+  "triage": {
+    "_comment": "Selecting items for human review. min_models is how many runs an item needs before disagreement means anything; sample draws unflagged items so the review can state an error rate for the whole set.",
+    "min_models": 2,
+    "sample": 30,
+    "sample_seed": 20260814,
+    "no_answer_threshold": 0.5
+  },
+  "export": {
+    "_comment": "Packaging for external harnesses.",
+    "lm_eval_harness": true,
+    "dataset_card": true
+  }
+}
