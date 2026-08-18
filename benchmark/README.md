@@ -1,69 +1,88 @@
-# kcbench — 건설 도메인 LLM/VLM 파인튜닝 평가
+# kcbench — the reference benchmark
 
-A held-out benchmark for measuring whether fine-tuning on this corpus actually
-improved a model. 이 코퍼스로 파인튜닝한 모델의 성능 변화를 측정하는 벤치마크입니다.
+`kcbench` is what corpusbench builds when you point it at Korean construction
+standards, safety regulation and IFC building models. This file documents the
+build stages, the tracks, and every setting that changes what gets built. The
+top-level [README](../README.md) covers what the tool is for.
 
-**What this is for.** The question it answers is *"did training help, and where?"* —
+A held-out benchmark for measuring whether fine-tuning on a corpus actually
+improved a model. The question it answers is *"did training help, and where?"* —
 base checkpoint versus fine-tuned checkpoint, on identical frozen items. It is
 not a ranking against other people's models. The items are mined from held-out
-Korean regulation by rule and verified against the source, not written and
-reviewed by engineers, so an absolute score means nothing next to a published
-leaderboard. The delta does.
+regulation by rule and verified against the source, not written and reviewed by
+engineers, so an absolute score means nothing next to a published leaderboard.
+The delta does.
 
-**언어.** 평가 프롬프트는 한국어가 기본입니다. 대상이 한국 건설 법령이고, 조문
-용어를 번역하면 질문 자체가 달라지기 때문입니다. 모든 문항은 영문 프롬프트
-(`question_en`)를 함께 담고 있어 `--lang en` 으로 동일한 정답지를 영어로도 채점할
-수 있습니다. 숫자 문항은 단위를 영문 표기로 바꾼 `answer_en` 도 함께 가집니다.
+**Language.** Evaluation prompts default to Korean. The subject is Korean
+construction law, and translating clause terminology changes the question
+itself. Every item also carries an English prompt (`question_en`), so
+`--lang en` scores the same answer key in English. Numeric items additionally
+carry `answer_en` with units in English notation.
 
 ---
 
 ## Pipeline
 
-빌드 (`build_all.py` 가 순서대로 실행):
+One entry point, `cb.py`. Every command below is also a module under
+`corpusbench/`, runnable directly as `python -m corpusbench.evaluate` if you
+prefer.
+
+Build (`cb.py build` runs these in order):
 
 ```
-build_holdout.py      data/holdout.json              평가 전용 문서 분리
-build_tracks.py       data/track{1,2,3}*.jsonl       문항 생성 + 출처 기록
-build_probe.py        data/probe_trained.jsonl       학습 측 probe 세트
-build_usecases.py     data/uc*.jsonl                 유스케이스 트랙 (config 레지스트리)
-make_train_split.py   data/train/                    홀드아웃 제외 학습셋
-verify_provenance.py  data/provenance.jsonl          출처·오염 검증
-export_dataset.py     data/export/                   매니페스트·카드·harness
+cb.py holdout      data/holdout.json              reserve the evaluation documents
+cb.py tracks       data/track{1,2,3}*.jsonl       mine items, record provenance
+cb.py probe        data/probe_trained.jsonl       mine the training-side probe set
+cb.py usecases     data/uc*.jsonl                 use-case tracks from the config registry
+cb.py split        data/train/                    training split, holdout excluded
+cb.py verify       data/provenance.jsonl          provenance and contamination checks
+cb.py export       data/export/                   manifest, dataset card, harness tasks
 ```
 
-채점과 비교:
+Score and compare:
 
 ```
-evaluate.py           data/runs/<tag>.json           track 2,3 채점
-perplexity.py         data/runs/<tag>.json           track 1 퍼플렉시티
-run_matrix.py         data/matrix.{json,md}          여러 모델 일괄 채점
-compare.py            data/runs/compare_*.json       학습 전후 유의성 비교
+cb.py eval         data/runs/<tag>.json           score tracks 2, 3 and the use cases
+cb.py ppl          data/runs/<tag>.json           track 1 perplexity
+cb.py matrix       data/matrix.{json,md}          score several models at once
+cb.py compare      data/runs/compare_*.json       before/after, with a significance test
 ```
 
-검수 (사람이 판정, 도구는 대상 선별과 반영만):
+Review (a person judges; the tooling only selects and applies):
 
 ```
-triage_items.py       data/review_queue.jsonl        검수 대상 선별
-apply_review.py       data/reviews.json              판정 반영, 이후 빌드에 유지
+cb.py triage       data/review_queue.jsonl        pick what a reviewer should read
+cb.py review       data/reviews.json              apply verdicts, kept across rebuilds
 ```
 
 ### Quick start
 
 ```bash
 # 1. Build everything, and fail the build if any item turns out contaminated
-python build_all.py -i ../ai_ready_full --strict
+python cb.py build -i ../ai_ready_full --strict
 
 # 2. Baseline the checkpoint you are about to fine-tune
-python perplexity.py -m Qwen/Qwen3-8B --tag base-ppl
-python evaluate.py   -m qwen3:8b --tag base --closed-book --tracks 2
+python cb.py ppl  -m Qwen/Qwen3-8B --tag base-ppl
+python cb.py eval -m qwen3:8b --tag base --closed-book --tracks 2
 
 # 3. Fine-tune on data/train/, never on the source dataset, then score again
-python perplexity.py -m ./out/qwen3-8b-dapt --tag ft-ppl
-python evaluate.py   -m qwen3-ft:v1 --tag ft --closed-book --tracks 2
+python cb.py ppl  -m ./out/qwen3-8b-dapt --tag ft-ppl
+python cb.py eval -m qwen3-ft:v1 --tag ft --closed-book --tracks 2
 
 # 4. The number you actually wanted, with a paired significance test
-python compare.py --base base --after ft --markdown report.md
+python cb.py compare --base base --after ft --markdown report.md
 ```
+
+A scoring pass over a full track takes hours. `run_resumable.sh` wraps it in a
+supervisor that retries and resumes:
+
+```bash
+./run_resumable.sh qwen3-ft:v1 ft-probe:probe ft-t2:2
+```
+
+Every scored item is journalled to `data/runs/.ckpt/` as it completes, so a run
+that dies picks up where it stopped rather than starting over. The journal is
+deleted once the track writes its score.
 
 ### Generalisation and acquisition
 
@@ -75,10 +94,10 @@ measures whether training put the corpus into the weights at all.
 
 | | track 2 | probe |
 |---|---|---|
-| 출처 | 홀드아웃 문서 | 학습 문서 |
-| 학습에 답 존재 | 25% | 83% |
-| 재는 것 | 일반화 | 습득 |
-| 결과 보고 | 벤치마크 점수 | 진단용, 점수로 인용 금지 |
+| Drawn from | held-out documents | trained-on documents |
+| Answer present in training data | 25% | 83% |
+| Measures | generalisation | acquisition |
+| Reporting | benchmark score | diagnostic only, never quote as a score |
 
 Read them together. Probe up and track 2 flat means the model memorised the
 corpus without generalising; both flat means the training did not take at all.
@@ -86,38 +105,38 @@ Probe rows carry `split: "train"` and `contamination: "intentional"` so the two
 cannot be mixed up.
 
 ```bash
-python evaluate.py -m qwen3:8b --tag base-probe --tracks probe --closed-book
+python cb.py eval -m qwen3:8b --tag base-probe --tracks probe --closed-book
 ```
 
 ### Open book, closed book
 
-`evaluate.py --closed-book` withholds the passage and names the document and
-article instead. The distinction decides what the score means:
+`--closed-book` withholds the passage and names the document and article
+instead. The distinction decides what the score means:
 
 | | open book | closed book |
 |---|---|---|
-| 프롬프트 | 조문 포함 | 「문서명」 제N조만 |
-| 측정 대상 | 독해력 | 도메인 지식 |
-| qwen3:8b 기준선 | numeric 0.953 | numeric 0.166 |
-| 용도 | 학습 후 회귀 테스트 | **파인튜닝 효과 측정** |
+| Prompt | includes the clause | document title and article number only |
+| Measures | reading comprehension | domain knowledge |
+| qwen3:8b baseline | numeric 0.953 | numeric 0.166 |
+| Use it for | regression check after training | **measuring the fine-tune** |
 
 Open book is near its ceiling on any competent model — 3B scores 0.849 and 30B
 scores 0.932, so it cannot separate a fine-tune from its base. Use it to check
 that training did not cost the model its reading comprehension, and read the
-closed-book number as the result. `run_matrix.py --book both` reports the gap
+closed-book number as the result. `cb.py matrix --book both` reports the gap
 between them, which is the headroom fine-tuning has to work with.
 
 ### CLI
 
-Every stage takes the same path flags, and each one overrides `config.json`:
+Every command takes the same path flags, and each one overrides `config.json`:
 
 | Flag | Meaning |
 |---|---|
 | `-c, --config FILE` | settings file (default `./config.json`) |
-| `-i, --generated-dir DIR` | AI-ready training data to evaluate, e.g. `../ai_ready_full` |
+| `-i, --generated-dir DIR` | chunked training data to evaluate, e.g. `../ai_ready_full` |
 | `--corpus-dir DIR` | source PDFs and IFC models |
 | `--metadata-dir DIR` | collector catalogues |
-| `--pipeline-dir DIR` | `gen_aec_syn_data` checkout, used for its chunker |
+| `--pipeline-dir DIR` | checkout supplying the chunker, so chunking matches |
 | `-o, --out-dir DIR` | where artefacts are written |
 | `--seed N` | holdout seed |
 | `-v, --verbose` | debug logging |
@@ -126,9 +145,9 @@ Resolution order is **defaults → config.json → command line**, so keeping on
 config per dataset variant and redirecting a single run with `-i` both work:
 
 ```bash
-python build_all.py --config configs/v3.json -i /data/ai_ready_v3 -o /data/bench_v3
-python build_all.py --skip-holdout --tracks 2,3      # re-mine without re-splitting
-python evaluate.py  --config configs/v3.json -m qwen3:8b --tracks 2,3 --limit 20
+python cb.py build --config configs/v3.json -i /data/ai_ready_v3 -o /data/bench_v3
+python cb.py build --skip-holdout --tracks 2,3      # re-mine without re-splitting
+python cb.py eval  --config configs/v3.json -m qwen3:8b --tracks 2,3 --limit 20
 ```
 
 Stages can be skipped individually (`--skip-split`, `--skip-verify`,
@@ -158,9 +177,10 @@ What to change when the model or the machine changes:
 | `eval.num_ctx` | context per request. Unset, the server sizes the KV cache from the model maximum |
 | `eval.num_predict` | generation budget. A reasoning model needs 4096; a non-reasoning one is fine at 512 |
 | `eval.temperature` | sampling temperature, 0 for scoring |
-| `eval.repeats` | samples per item, guards against sampling noise |
+| `eval.repeats` | samples per item. 1 is correct at temperature 0, where decoding is deterministic |
+| `eval.max_consecutive_failures`, `eval.max_consecutive_empty` | when to abort rather than score a dead server |
 | `eval.ollama_base_url`, `eval.request_timeout` | where the server is and how long to wait |
-| `eval.models`, `eval.book` | defaults for `run_matrix.py` |
+| `eval.models`, `eval.book` | defaults for `cb.py matrix` |
 | `perplexity.max_length` | tokens per chunk. Lower it if track 1 runs out of memory |
 | `perplexity.dtype`, `perplexity.device` | `float16` and a different `device_map` for a smaller card |
 
@@ -198,22 +218,23 @@ Held-out regulation text, no labels. Perplexity is the earliest signal that
 domain-adaptive pre-training did anything: it moves long before answer accuracy
 does, and if it does not move, nothing downstream will.
 
-Lower is better. `compare.py` inverts it before calling a change an improvement.
+Lower is better. `cb.py compare` inverts it before calling a change an
+improvement.
 
 Perplexity is the exponential of the mean negative log-likelihood the model
 assigns to the text it is reading — how many equally likely options it was
 effectively choosing between at each token. It needs a log-probability for every
 token of the *input*, which an inference server will not give you: Ollama returns
 logprobs only for tokens it generated, which is the likelihood of the model's own
-continuation and a different quantity. `evaluate.py` probes once and reports
+continuation and a different quantity. `cb.py eval` probes once and reports
 `null` rather than answering a question nobody asked.
 
-`perplexity.py` measures it properly, running the weights through transformers:
+`cb.py ppl` measures it properly, running the weights through transformers:
 
 ```bash
 pip install transformers accelerate       # torch is already required
-python perplexity.py -m Qwen/Qwen3-8B --tag base-ppl
-python perplexity.py -m ./out/qwen3-8b-dapt --tag ft-ppl
+python cb.py ppl -m Qwen/Qwen3-8B --tag base-ppl
+python cb.py ppl -m ./out/qwen3-8b-dapt --tag ft-ppl
 ```
 
 It takes an HF checkpoint rather than an Ollama tag, which is the form a
@@ -277,35 +298,36 @@ incident analysis from a method statement and checklist (UC5). The target is
 book the operative measurement** — retrieval hands the model the clause, and
 the track asks whether it can use it.
 
-`build_usecases.py` builds one file per use case from the `usecases` registry
-in config.json. Each entry names a builder and its parameters, so a future use
-case is a config entry plus at most one builder function:
+`cb.py usecases` builds one file per use case from the `usecases` registry in
+config.json. Each entry names a builder and its parameters, so a future use case
+is a config entry plus at most one builder function:
 
-| UC | 파일 | builder | 문항 | 정답 근거 |
+| UC | File | Builder | Items | Answer key |
 |---|---|---|---:|---|
-| uc1_safety | `uc1_safety_qa.jsonl` | `doc_filtered_qa` | 112 | 안전 분야 문서의 수치·목록, track 2 채굴기 재사용 |
-| uc2_rebar_spec | `uc2_spec_threshold.jsonl` | `doc_filtered_qa` | 150 | 설계기준·시방서의 수치 기준 |
-| uc3_bim_site | `uc3_cross_image.jsonl` | `vlm_labels` | 39 | 생성 시 부여된 판정 라벨, `unknown` 제외 |
-| uc4_faithfulness | `uc4_faithfulness.jsonl` | `context_swap` | 160 | track 2 문항의 조문을 무관한 것으로 교체 |
-| uc5_incident | `uc5_incident.jsonl` | `missing_measures` | 46 | 작업지침 각 호에서 제외한 조치가 곧 정답 |
+| uc1_safety | `uc1_safety_qa.jsonl` | `doc_filtered_qa` | 157 | figures and lists from safety documents, reusing the track 2 miner |
+| uc2_rebar_spec | `uc2_spec_threshold.jsonl` | `doc_filtered_qa` | 150 | numeric limits from design standards and specifications |
+| uc3_bim_site | `uc3_cross_image.jsonl` | `vlm_labels` | 39 | the judgement label attached at generation, `unknown` excluded |
+| uc4_faithfulness | `uc4_faithfulness.jsonl` | `context_swap` | 160 | track 2 items whose clause was swapped for an unrelated one |
+| uc5_incident | `uc5_incident.jsonl` | `missing_measures` | 118 | the measures withheld from a clause's own enumeration |
 
 Three of these need explanation.
 
-**uc4 — 근거 충실성.** Retrieval fails in every deployed RAG system, and the
-closed-book runs showed what happens next: 0% 무응답, 지어낸 숫자. Half the
-items carry a context swapped for an unrelated passage (verified not to contain
-the keyed answer); the item is correct only when the model answers `자료 없음`.
-The other half are unmodified controls, so a model that abstains on everything
-scores 50%, not 100%. This is the track to watch for agent safety.
+**uc4 — faithfulness to the passage.** Retrieval fails in every deployed RAG
+system, and the closed-book runs showed what happens next: zero abstentions and
+invented numbers. Half the items carry a context swapped for an unrelated
+passage (verified not to contain the keyed answer); the item is correct only
+when the model answers `자료 없음` (no information). The other half are
+unmodified controls, so a model that abstains on everything scores 50%, not
+100%. This is the track to watch for agent safety.
 
-**uc5 — 사고 분석.** The corpus holds no real incident reports, so the scenario
-is synthetic: the item lists the measures an investigation confirmed on site
-and asks which of the clause's required measures are missing. The ground truth
-is the withheld subset of the clause's own enumeration. Grading is
+**uc5 — incident analysis.** The corpus holds no real incident reports, so the
+scenario is synthetic: the item lists the measures an investigation confirmed on
+site and asks which of the clause's required measures are missing. The ground
+truth is the withheld subset of the clause's own enumeration. Grading is
 token-coverage matching (`match_mode: fuzzy`) rather than exact lines, because
 the answers are prose and a correct abbreviation should score.
 
-**uc3 — 라벨 주의.** The ground truth is the label the generation pipeline
+**uc3 — label caveat.** The ground truth is the label the generation pipeline
 attached, an annotation rather than a measurement like the IFC catalogue, and
 the comparison labels skew heavily to `mismatch`. Items whose label is
 `unknown` are excluded (`exclude_labels`): they grade honest judgement as
@@ -313,15 +335,16 @@ wrong, and removing them moved the same model's score 0.375 → 0.590. Read
 scores with the `by_task` split, and treat the track as weaker evidence than
 tracks 2 and 3 until the labels have been human-reviewed.
 
-**오염 표시.** Safety work standards and most specification documents sit on
-the training side of the split, so UC1/UC2/UC5 items from them carry
-`split: "train"`, `contamination: "intentional"`, same as the probe set. The
-aggregate reports a `by_split` breakdown; only holdout-side items may be read
-as closed-book evidence of generalisation. Open book — the RAG measurement —
-is fair on both.
+**Contamination marking.** Safety work standards and most specification
+documents sit on the training side of the split, so UC1/UC2/UC5 items drawn from
+them carry `split: "train"` and `contamination: "intentional"`, same as the
+probe set. The aggregate reports a `by_split` breakdown; only holdout-side items
+may be read as closed-book evidence of generalisation. Open book — the RAG
+measurement — is fair on both.
 
-채점은 `evaluate.py --tracks uc` (전체) 또는 `--tracks uc4_faithfulness` 처럼
-개별 지정. 새 UC를 추가하면 evaluate.py 는 자동으로 인식합니다.
+Score them with `cb.py eval --tracks uc` for all of them, or name one:
+`--tracks uc4_faithfulness`. A newly registered use case is picked up without a
+code change.
 
 ---
 
@@ -340,8 +363,8 @@ Every item records where it came from, and the claim is checkable:
 }
 ```
 
-`verify_provenance.py` re-checks four things per item and writes
-`provenance.jsonl` plus `contamination_report.json`:
+`cb.py verify` re-checks four things per item and writes `provenance.jsonl`
+plus `contamination_report.json`:
 
 | Check | What it proves |
 |---|---|
@@ -355,13 +378,13 @@ document name — and that is not a formality. This corpus collects the same
 regulation more than once: under names differing by a suffix (`…_20240724` and
 `…_20240724__1`), as amendment-and-original pairs, and as sibling standards
 sharing whole clauses. Excluding held-out documents by name left **759 of their
-chunks in the training data** under a sibling's name. `make_train_split.py` now
-drops those rows too and reports them separately.
+chunks in the training data** under a sibling's name. `cb.py split` drops those
+rows too and reports them separately.
 
-Run `python make_train_split.py --check` before any training run. Train from
-`data/train/`, never from the source dataset directly. `run_corpus.py` also reads
-`../BENCHMARK_HOLDOUT.json` (mirrored by `build_holdout.py`) and skips those
-files on any future regeneration.
+Run `python cb.py split --check` before any training run. Train from
+`data/train/`, never from the source dataset directly. `cb.py holdout` also
+mirrors the reserved list to `BENCHMARK_HOLDOUT.json` at the project root, so a
+corpus regeneration can skip those files.
 
 **Do not change the seed** once you have scored a base model. A different seed
 reserves different documents, and two runs on different items are not comparable.
@@ -375,13 +398,13 @@ several models fail in agreement is twenty minutes and catches most of what a
 full pass would.
 
 ```bash
-python run_matrix.py --models qwen3:8b,glm4:9b,qwen3:14b --book open
-python triage_items.py --runs-glob '*--open' --sample 30
+python cb.py matrix --models qwen3:8b,glm4:9b,qwen3:14b --book open
+python cb.py triage --runs-glob '*--open' --sample 30
 # fill verdict (ok / broken / ambiguous) and fixed_answer in review_queue.jsonl
-python apply_review.py --queue data/review_queue.jsonl --apply
+python cb.py review --queue data/review_queue.jsonl --apply
 ```
 
-`triage_items.py` queues three kinds of suspect, plus a random sample:
+`cb.py triage` queues three kinds of suspect, plus a random sample:
 
 | Signal | What it usually means |
 |---|---|
@@ -392,10 +415,10 @@ python apply_review.py --queue data/review_queue.jsonl --apply
 
 The sample rows are what the error rate is computed from. Triaged rows were
 selected *because* they looked wrong, so a rate measured on them reports a defect
-level several times the real one — `apply_review.py` keeps the two apart and
-reports a Wilson interval.
+level several times the real one — `cb.py review` keeps the two apart and reports
+a Wilson interval.
 
-Verdicts land in `reviews.json` and `build_tracks.py` reads it on every later
+Verdicts land in `reviews.json` and the track builder reads it on every later
 build, dropping anything marked broken or ambiguous. Item ids hash the question's
 content, so a verdict survives a rebuild for as long as the question is worded
 the same way; a reworded question correctly becomes unreviewed again. Review does
@@ -403,7 +426,7 @@ not have to be redone every time the corpus grows.
 
 ## Packaging
 
-`export_dataset.py` writes `data/export/`:
+`cb.py export` writes `data/export/`:
 
 - `manifest.json` — sha256 and line count per artefact, item counts per track and
   per category, the config the build used, and the contamination summary. Two
@@ -411,7 +434,7 @@ not have to be redone every time the corpus grows.
 - `DATASET_CARD.md` — Hugging Face card layout: what it measures, structure,
   provenance, limitations, licensing.
 - `lm_eval/*.yaml` — lm-evaluation-harness task files. Its `exact_match` is
-  stricter than the grader here, so use `evaluate.py` for the reported number.
+  stricter than the grader here, so use `cb.py eval` for the reported number.
 
 ## Grading
 
@@ -437,20 +460,28 @@ of thought lands in `response` and the answer never arrives.
 
 ## Output
 
-`evaluate.py` writes `data/runs/<tag>.json` with per-item scores, per-type
-aggregates including `no_answer`, and a headline number per track. `compare.py`
-reads two of those and prints the deltas plus a per-category breakdown.
+`cb.py eval` writes `data/runs/<tag>.json` with per-item scores, per-type
+aggregates including `no_answer`, and a headline number per track. `cb.py
+compare` reads two of those and prints the deltas plus a per-category breakdown.
+
+Long runs journal to `data/runs/.ckpt/<tag>-<track>.jsonl` while they are in
+flight. Two guards stop a dead inference server from being scored as a bad
+model: a run of failed calls aborts the track, and so does a run of blank
+replies, which is what a server that answers but no longer generates looks like.
+Neither writes a score file, and neither poisons the journal — blank replies are
+never journalled, so a resumed run retries them.
 
 ## Known limits
 
 - Items are rule-mined, not expert-reviewed. Good enough for a before/after
   delta; not sufficient for a public leaderboard without review (AECBench and
-  KMMLU both spent most of their effort exactly there). `triage_items.py` narrows
-  what a reviewer has to read to roughly a tenth of the set, and
-  `apply_review.py` keeps the verdicts across rebuilds, but the judgement is a
-  person's.
+  KMMLU both spent most of their effort exactly there). `cb.py triage` narrows
+  what a reviewer has to read to roughly a tenth of the set, and `cb.py review`
+  keeps the verdicts across rebuilds, but the judgement is a person's.
 - Track 2 numeric questions inherit whatever ambiguity the source clause has.
 - Track 3 is bounded by how few real building models the corpus holds.
 - Track 1 needs an HF checkpoint and a GPU; it cannot be scored through Ollama.
 
-See `../BENCHMARK_SPEC.md` for the design rationale and prior art.
+`STANDARDS_REVIEW.md` checks the grading types and track sizes against published
+benchmarks, and `CHANGELOG.md` records what changed and the measurement that
+motivated it.

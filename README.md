@@ -92,33 +92,36 @@ ollama pull qwen3:8b
 
 ## Use
 
-Build the benchmark from a corpus. `build_all.py` runs the stages in order:
-split the holdout, mine the tracks, mine the probe, build the use-case tracks,
-write the training split, then verify provenance.
+Everything runs through one entry point, `cb.py`. `python cb.py -h` lists the
+commands; each command takes its own flags, shown by `python cb.py eval -h`.
+
+Build the benchmark from a corpus. `build` runs the stages in order: split the
+holdout, mine the tracks, mine the probe, build the use-case tracks, write the
+training split, verify provenance, then export.
 
 ```
-python build_all.py
-python build_all.py -i /data/my_corpus -o /tmp/bench --config my.json
+python cb.py build
+python cb.py build -i /data/my_corpus -o /tmp/bench --config my.json
 ```
 
 Score a model, once per book setting:
 
 ```
-python evaluate.py -m qwen3:8b        --tag base   --tracks 2 --closed-book
-python evaluate.py -m my-finetune:v1  --tag ft-v1  --tracks 2 --closed-book
-python perplexity.py -m ./out/my-dapt --tag ft-v1-ppl
+python cb.py eval -m qwen3:8b       --tag base  --tracks 2 --closed-book
+python cb.py eval -m my-finetune:v1 --tag ft-v1 --tracks 2 --closed-book
+python cb.py ppl  -m ./out/my-dapt  --tag ft-v1-ppl
 ```
 
 Compare them. This is the step that produces the answer:
 
 ```
-python compare.py --base base --after ft-v1 --markdown report.md
+python cb.py compare --base base --after ft-v1 --markdown report.md
 ```
 
 Score several models side by side:
 
 ```
-python run_matrix.py --models qwen3:8b,qwen3:14b,glm4:9b --book both --report matrix.md
+python cb.py matrix --models qwen3:8b,qwen3:14b,glm4:9b --book both --report matrix.md
 ```
 
 Long runs journal every scored item, so a run that dies resumes rather than
@@ -137,23 +140,26 @@ score file. The journal survives, so restarting picks up where it stopped.
 
 ```
 benchmark/
-  build_all.py           run the build stages in order
-  build_holdout.py       choose the documents to withhold
-  build_tracks.py        mine tracks 1-3 from the held-out documents
-  build_probe.py         mine the probe from the trained-on documents
-  build_usecases.py      build the use-case tracks from the config registry
-  make_train_split.py    write the training split, holdout excluded
-  verify_provenance.py   prove where each item came from and that nothing trains on it
-  evaluate.py            score a model over generation tracks
-  perplexity.py          score track 1 locally
-  compare.py             compare two runs, with a bootstrap significance test
-  run_matrix.py          score several models and tabulate
-  triage_items.py        pick the items a human should look at
-  apply_review.py        fold human review decisions back into the set
-  export_dataset.py      package the built benchmark, with an lm-eval-harness config
-  run_resumable.sh       supervisor: retry, resume, stop when stuck
+  cb.py                  the only entry point: build, eval, ppl, compare, ...
   config.json            every tunable, overridden by command-line flags
+  run_resumable.sh       supervisor: retry, resume, stop when stuck
   data/                  built artefacts; evaluation sets are tracked, the rest is rebuilt
+  corpusbench/
+    build_holdout.py     choose the documents to withhold
+    build_tracks.py      mine tracks 1-3 from the held-out documents
+    build_probe.py       mine the probe from the trained-on documents
+    build_usecases.py    build the use-case tracks from the config registry
+    build_all.py         run the build stages in order
+    make_train_split.py  write the training split, holdout excluded
+    verify_provenance.py prove where each item came from and that nothing trains on it
+    evaluate.py          score a model over the generation tracks
+    perplexity.py        score track 1 locally
+    compare.py           compare two runs, with a bootstrap significance test
+    run_matrix.py        score several models and tabulate
+    triage_items.py      pick the items a human should look at
+    apply_review.py      fold human review decisions back into the set
+    export_dataset.py    package the built benchmark, with an lm-eval-harness config
+    common.py            config resolution, paths, shared helpers
 training/
   dapt.py                stage 1, domain-adaptive pre-training
   sft.py                 stage 2, supervised fine-tuning
@@ -176,13 +182,13 @@ by the matching command-line flag. The parts worth knowing:
   filters that decide whether a mined fact is answerable: numeric uniqueness,
   subject length bounds, minimum set size for nameset items.
 - `usecases` — a registry. Adding a use-case track is a config entry plus a
-  track file; `evaluate.py --tracks uc` picks up whatever is enabled without a
+  track file; `cb.py eval --tracks uc` picks up whatever is enabled without a
   code change.
 - `eval` — endpoint, context and prediction lengths, temperature, repeats,
   numeric tolerance, and the two dead-server guards.
 
 What is domain-specific and would need editing: the prompt strings for the
-vision tracks in `build_tracks.py` and `build_usecases.py`, which name IFC
+vision tracks in `corpusbench/build_tracks.py` and `build_usecases.py`, which name IFC
 classes and construction site photos, and the IFC reader itself. The text
 tracks make no assumption about subject matter beyond the corpus being chunked
 prose with numbers and named lists in it.
@@ -224,13 +230,14 @@ Generation tracks after DAPT are still being scored.
 ## Limits
 
 Items are mined and verified by rule, not authored by domain experts. That
-makes the set cheap to rebuild and easy to audit — `verify_provenance.py`
+makes the set cheap to rebuild and easy to audit — `cb.py verify`
 traces every item to its source span — but it also means the questions test
 recall of stated facts rather than judgement. Track 3 is small (10 items) and
 should be read as a smoke test rather than a measurement. The use-case tracks
 range from 39 to 160 items, which is in line with per-task sizes in published
 benchmarks but still small enough that single-digit differences are noise;
-`compare.py` runs a bootstrap test so that this is visible rather than assumed.
+`cb.py compare` runs a bootstrap test so that this is visible rather than
+assumed.
 
 The corpus itself is not distributed. Source documents are Korean government
 standards and regulations, and the training split and track 1 chunks are
