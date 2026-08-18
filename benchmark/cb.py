@@ -31,6 +31,7 @@ COMMANDS = {
     "eval":     ("kcbench.evaluate", "score a model over the generation tracks"),
     "ppl":      ("kcbench.perplexity", "score track 1 perplexity locally"),
     "compare":  ("kcbench.compare", "compare two runs, with a significance test"),
+    "ece":      ("kcbench.calibration", "calibration error: is its confidence worth anything"),
     "matrix":   ("kcbench.run_matrix", "score several models and tabulate"),
     # review and packaging
     "triage":   ("kcbench.triage_items", "pick the items a human should look at"),

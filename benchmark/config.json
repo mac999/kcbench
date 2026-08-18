@@ -148,5 +148,12 @@
     "_comment": "Packaging for external harnesses.",
     "lm_eval_harness": true,
     "dataset_card": true
+  },
+  "calibration": {
+    "_comment": "Expected Calibration Error, following Guo et al. (2017). method is where the confidence comes from: self_consistency samples the same question and lets the answers vote, which needs temperature above 0 and costs `samples` generations per item; verbalized asks the model to state a confidence and costs one. bins is the confidence histogram; 10 is the usual choice, 5 is what a small track can support.",
+    "method": "self_consistency",
+    "samples": 8,
+    "temperature": 0.7,
+    "bins": 10
   }
 }

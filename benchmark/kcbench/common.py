@@ -168,6 +168,14 @@ DEFAULTS: Dict[str, Any] = {
         "device": "cuda",
         "log_every": 200,
     },
+    "calibration": {
+        # Expected Calibration Error. self_consistency needs temperature > 0:
+        # at 0 every sample is the same string and every confidence is 1.0.
+        "method": "self_consistency",
+        "samples": 8,
+        "temperature": 0.7,
+        "bins": 10,
+    },
     "compare": {
         "alpha": 0.05,
         "bootstrap_rounds": 10000,
