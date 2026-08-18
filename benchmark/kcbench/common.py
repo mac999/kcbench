@@ -176,6 +176,13 @@ DEFAULTS: Dict[str, Any] = {
         "temperature": 0.7,
         "bins": 10,
     },
+    "selfcheck": {
+        # SelfCheckGPT-style consistency. Needs temperature > 0: at 0 every
+        # sample is the same string and everything looks perfectly consistent.
+        "samples": 5,
+        "temperature": 0.7,
+        "threshold": 0.5,
+    },
     "compare": {
         "alpha": 0.05,
         "bootstrap_rounds": 10000,

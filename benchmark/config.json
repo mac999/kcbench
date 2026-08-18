@@ -155,5 +155,11 @@
     "samples": 8,
     "temperature": 0.7,
     "bins": 10
+  },
+  "selfcheck": {
+    "_comment": "Reference-free hallucination signal, after SelfCheckGPT (Manakul et al., EMNLP 2023). One answer is decoded the way the benchmark decodes it, then `samples` more are drawn at `temperature` and compared against it; a fact the weights hold comes back the same way. threshold is the inconsistency at or above which an answer is flagged for review, not a score.",
+    "samples": 5,
+    "temperature": 0.7,
+    "threshold": 0.5
   }
 }
