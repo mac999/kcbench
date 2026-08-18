@@ -13,7 +13,7 @@ import collections
 import json
 from pathlib import Path
 
-from common import (add_common_args, describe, log, resolve_config, sha256_text,
+from corpusbench.common import (add_common_args, describe, log, resolve_config, sha256_text,
                     write_json, write_jsonl)
 
 LOG = log("split")

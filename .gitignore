@@ -9,8 +9,8 @@
 !/training/
 
 # benchmark: code, config and docs
-benchmark/__pycache__/
-benchmark/*.pyc
+__pycache__/
+*.pyc
 
 # benchmark data: evaluation sets only. The training split and the track 1
 # chunk file are derived from copyrighted source documents and are rebuilt

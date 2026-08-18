@@ -15,7 +15,7 @@ import statistics
 from pathlib import Path
 from typing import Any, Dict, List
 
-from common import add_common_args, log, resolve_config
+from corpusbench.common import add_common_args, log, resolve_config
 
 LOG = log("compare")
 

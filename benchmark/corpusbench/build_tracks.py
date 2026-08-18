@@ -15,7 +15,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List
 
-from common import (BENCHMARK_NAME, BENCHMARK_VERSION, QUALIFIER_EN,
+from corpusbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, QUALIFIER_EN,
                     SCHEMA_VERSION, UNIT_EN, add_common_args, describe,
                     generated_documents, item_id, log, normalise,
                     resolve_config, sha256_text, utc_now, write_json,

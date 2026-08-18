@@ -17,7 +17,7 @@ import statistics
 from pathlib import Path
 from typing import Any, Dict, List
 
-from common import (BENCHMARK_NAME, BENCHMARK_VERSION, add_common_args, describe,
+from corpusbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, add_common_args, describe,
                     log, read_jsonl, resolve_config, utc_now, write_json,
                     write_jsonl)
 

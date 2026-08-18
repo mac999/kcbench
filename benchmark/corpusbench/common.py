@@ -23,7 +23,10 @@ import unicodedata
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Sequence
 
-HERE = Path(__file__).resolve().parent
+# Anchor for config.json and every relative path in it. The modules live in
+# a package one level down, so this is the package's parent, not its own
+# directory.
+HERE = Path(__file__).resolve().parent.parent
 PROJECT = HERE.parent
 
 # Dataset identity, carried in every artefact and every item. A score is only

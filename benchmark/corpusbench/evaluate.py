@@ -21,7 +21,7 @@ from typing import Any, Dict, List
 
 import requests
 
-from common import (add_common_args, describe, log, normalise, read_jsonl,
+from corpusbench.common import (add_common_args, describe, log, normalise, read_jsonl,
                     resolve_config, write_json)
 
 LOG = log("eval")

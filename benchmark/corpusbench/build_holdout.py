@@ -15,7 +15,7 @@ import json
 import random
 from pathlib import Path
 
-from common import (BENCHMARK_NAME, BENCHMARK_VERSION, PROJECT, add_common_args,
+from corpusbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, PROJECT, add_common_args,
                     corpus_path_for, describe, generated_documents, log, rel,
                     resolve_config, sha256_file, source_metadata, utc_now,
                     write_json)

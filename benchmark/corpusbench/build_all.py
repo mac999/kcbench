@@ -12,9 +12,9 @@ import argparse
 import runpy
 import sys
 
-import build_holdout
-import build_tracks
-from common import add_common_args, log
+from corpusbench import build_holdout
+from corpusbench import build_tracks
+from corpusbench.common import add_common_args, log
 
 LOG = log("build")
 
@@ -27,7 +27,7 @@ def _run(module: str, argv: list[str]) -> int:
     five-stage build fails at stage four and someone has to read why.
     """
     saved = sys.argv
-    sys.argv = [module + ".py", *argv]
+    sys.argv = [module.rsplit(".", 1)[-1] + ".py", *argv]
     try:
         runpy.run_module(module, run_name="__main__")
         return 0
@@ -101,7 +101,7 @@ def main() -> int:
         LOG.info("stage 3/7: probe set - skipped")
     else:
         LOG.info("stage 3/7: probe set")
-        if _run("build_probe", shared) != 0:
+        if _run("corpusbench.build_probe", shared) != 0:
             return 1
 
     # After the probe: uc4 rewrites track 2 items, so track 2 must exist, and
@@ -110,21 +110,21 @@ def main() -> int:
         LOG.info("stage 4/7: use-case tracks - skipped")
     else:
         LOG.info("stage 4/7: use-case tracks")
-        if _run("build_usecases", shared) != 0:
+        if _run("corpusbench.build_usecases", shared) != 0:
             return 1
 
     if args.skip_split:
         LOG.info("stage 5/7: training split - skipped")
     else:
         LOG.info("stage 5/7: training split")
-        if _run("make_train_split", shared) != 0:
+        if _run("corpusbench.make_train_split", shared) != 0:
             return 1
 
     if args.skip_verify:
         LOG.info("stage 6/7: provenance - skipped")
     else:
         LOG.info("stage 6/7: provenance and contamination")
-        rc = _run("verify_provenance", shared + ["--tracks", args.tracks]
+        rc = _run("corpusbench.verify_provenance", shared + ["--tracks", args.tracks]
                   + (["--strict"] if args.strict else []))
         if rc != 0:
             return rc
@@ -133,7 +133,7 @@ def main() -> int:
         LOG.info("stage 7/7: export - skipped")
     else:
         LOG.info("stage 7/7: export")
-        if _run("export_dataset", shared) != 0:
+        if _run("corpusbench.export_dataset", shared) != 0:
             return 1
 
     LOG.info("build complete")

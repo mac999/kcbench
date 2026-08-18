@@ -58,8 +58,8 @@ for spec in "$@"; do
         wait_for_ollama || exit 1
         before=$(journalled "$CKPT")
         say "$TAG track $TRACK: attempt $attempt/$MAX_ATTEMPTS (journalled: $before)"
-        python "$HERE/evaluate.py" -m "$MODEL" --tag "$TAG" --tracks "$TRACK" \
-            --closed-book >>"$LOG" 2>&1
+        ( cd "$HERE" && python cb.py eval -m "$MODEL" --tag "$TAG" \
+            --tracks "$TRACK" --closed-book ) >>"$LOG" 2>&1
         rc=$?
         if [ "$rc" = 0 ] && [ -f "$OUT" ]; then
             say "$TAG done -> $OUT"
