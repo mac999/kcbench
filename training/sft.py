@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import time
 from pathlib import Path
 
@@ -117,6 +118,12 @@ def main() -> int:
     ap.add_argument("--save-every", type=int, default=500)
     ap.add_argument("--limit", type=int)
     ap.add_argument("--smoke", action="store_true")
+    ap.add_argument("--resume-from", type=Path, metavar="DIR",
+                    help="adapter checkpoint (out/.../step-N) to continue from. "
+                         "Optimiser moments are not saved and the reshuffled epoch "
+                         "does not replay bit-exactly, so a resume is approximate: "
+                         "the schedule continues where it was and a few pairs are "
+                         "seen twice or skipped.")
     args = ap.parse_args()
 
     if args.smoke:
@@ -138,7 +145,16 @@ def main() -> int:
     model.gradient_checkpointing_enable()
     model.enable_input_require_grads()
 
-    if args.base:
+    resumed = 0
+    if args.resume_from:
+        m = re.search(r"step-(\d+)", str(args.resume_from))
+        if not m:
+            raise SystemExit(f"cannot read a step number from {args.resume_from}")
+        resumed = int(m.group(1))
+        # the checkpoint already carries the DAPT adapter it was trained on top of
+        model = PeftModel.from_pretrained(model, args.resume_from, is_trainable=True)
+        print(f"resume from {args.resume_from} at optimiser step {resumed}")
+    elif args.base:
         model = PeftModel.from_pretrained(model, args.base, is_trainable=True)
         print("continuing the DAPT adapter")
     else:
@@ -164,13 +180,19 @@ def main() -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     log_path = args.out / "train_log.jsonl"
     model.train()
-    step, seen, running, started = 0, 0, 0.0, time.time()
+    step, seen, running, started = resumed, 0, 0.0, time.time()
     stop = False
+    # Skip the share of the epoch the interrupted run already consumed. The
+    # shuffle does not replay bit-exactly, so this resumes the position, not
+    # the precise batch sequence.
+    to_skip = resumed * args.accum
 
     for epoch in range(math.ceil(args.epochs)):
         if stop:
             break
         for i, batch in enumerate(loader):
+            if i < to_skip:
+                continue
             batch = {k: v.to(model.device) for k, v in batch.items()}
             out = model(**batch)
             (out.loss / args.accum).backward()
@@ -201,10 +223,12 @@ def main() -> int:
 
             if args.save_every and step % args.save_every == 0:
                 model.save_pretrained(args.out / f"step-{step}")
+                print(f"saved {args.out / f'step-{step}'}", flush=True)
 
             if step >= total_steps:
                 stop = True
                 break
+        to_skip = 0  # only the first epoch was partially consumed
 
     model.save_pretrained(args.out)
     tok.save_pretrained(args.out)
