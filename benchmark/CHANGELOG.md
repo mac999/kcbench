@@ -5,6 +5,44 @@
 
 ## v3.2 — 2026-08-18
 
+### 진입점 정리
+
+최상위에 파이썬 파일 15개가 평평하게 놓여 있어서, 저장소를 처음 여는 사람이 무엇부터
+실행해야 하는지 알 수 없었습니다. 모듈을 `corpusbench/` 패키지로 내리고 최상위에는
+`cb.py` 하나만 남겼습니다.
+
+```
+cb.py build | holdout | tracks | probe | usecases | split | verify
+cb.py eval | ppl | compare | matrix
+cb.py triage | review | export
+```
+
+바뀐 것은 배치와 호출 방식뿐이고 로직은 그대로입니다. 세 곳을 손봤습니다:
+
+- `common.py` 의 `HERE` 는 모듈 위치가 아니라 **config.json 과 data/ 가 있는
+  디렉터리**를 가리켜야 합니다. 패키지로 내리면서 한 단계 위로 올렸습니다. 이걸
+  놓치면 `out_dir` 이 `benchmark/corpusbench/data` 로 잡힙니다.
+- 모듈 간 import 를 `from corpusbench.X import` 절대 경로로 바꿨습니다.
+- `build_all.py` 의 runpy 스테이지 이름에 패키지를 붙였습니다.
+
+`run_uc_baseline.sh` 는 지웠습니다 — 명령 세 줄짜리라 README 예시로 충분합니다.
+
+검증: 15개 모듈 전부 import 성공, 14개 서브커맨드 `-h` 전부 동작, 경로 해석이
+이전과 동일(`out_dir=benchmark/data`), 실제 채점과 compare 실행 확인. 진행 중이던
+dapt-probe 를 중단했다가 새 구조로 재시작해 `resuming, 70 of 400` 으로 이어받는
+것까지 확인했습니다.
+
+### README 영문화
+
+`benchmark/README.md` 의 제목과 표·본문이 한국어라 공개 저장소의 첫인상이 맞지
+않았습니다. 전체를 영문으로 다시 썼습니다. 조문 예시(`연면적은 몇 ㎡ 이상…`),
+자격 조사(이상/이하/미만), 기권 응답(`자료 없음`) 처럼 데이터 자체인 한국어는
+그대로 뒀습니다 — 번역하면 무엇을 채점하는지가 흐려집니다.
+
+같이 고친 것: 명령 예시를 전부 `cb.py` 형태로 바꾸고, 저장소에 없는 파일
+(`../BENCHMARK_SPEC.md`, `run_corpus.py`) 참조를 걷어냈으며, 증설 후 갱신되지 않았던
+문항 수를 실제 값으로 맞췄습니다(uc1 112 → 157, uc5 46 → 118).
+
 ### 코드 공개
 
 `github.com/mac999/corpusbench` 로 공개했습니다. 도구 이름과 데이터셋 이름을
