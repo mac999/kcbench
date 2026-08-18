@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List
 
-from corpusbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, add_common_args, describe,
+from kcbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, add_common_args, describe,
                     log, resolve_config, utc_now, write_json)
 
 LOG = log("matrix")

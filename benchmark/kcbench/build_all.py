@@ -12,9 +12,9 @@ import argparse
 import runpy
 import sys
 
-from corpusbench import build_holdout
-from corpusbench import build_tracks
-from corpusbench.common import add_common_args, log
+from kcbench import build_holdout
+from kcbench import build_tracks
+from kcbench.common import add_common_args, log
 
 LOG = log("build")
 
@@ -101,7 +101,7 @@ def main() -> int:
         LOG.info("stage 3/7: probe set - skipped")
     else:
         LOG.info("stage 3/7: probe set")
-        if _run("corpusbench.build_probe", shared) != 0:
+        if _run("kcbench.build_probe", shared) != 0:
             return 1
 
     # After the probe: uc4 rewrites track 2 items, so track 2 must exist, and
@@ -110,21 +110,21 @@ def main() -> int:
         LOG.info("stage 4/7: use-case tracks - skipped")
     else:
         LOG.info("stage 4/7: use-case tracks")
-        if _run("corpusbench.build_usecases", shared) != 0:
+        if _run("kcbench.build_usecases", shared) != 0:
             return 1
 
     if args.skip_split:
         LOG.info("stage 5/7: training split - skipped")
     else:
         LOG.info("stage 5/7: training split")
-        if _run("corpusbench.make_train_split", shared) != 0:
+        if _run("kcbench.make_train_split", shared) != 0:
             return 1
 
     if args.skip_verify:
         LOG.info("stage 6/7: provenance - skipped")
     else:
         LOG.info("stage 6/7: provenance and contamination")
-        rc = _run("corpusbench.verify_provenance", shared + ["--tracks", args.tracks]
+        rc = _run("kcbench.verify_provenance", shared + ["--tracks", args.tracks]
                   + (["--strict"] if args.strict else []))
         if rc != 0:
             return rc
@@ -133,7 +133,7 @@ def main() -> int:
         LOG.info("stage 7/7: export - skipped")
     else:
         LOG.info("stage 7/7: export")
-        if _run("corpusbench.export_dataset", shared) != 0:
+        if _run("kcbench.export_dataset", shared) != 0:
             return 1
 
     LOG.info("build complete")

@@ -1,17 +1,23 @@
-# kcbench — the reference benchmark
-
-`kcbench` is what corpusbench builds when you point it at Korean construction
-standards, safety regulation and IFC building models. This file documents the
-build stages, the tracks, and every setting that changes what gets built. The
-top-level [README](../README.md) covers what the tool is for.
+# kcbench
 
 A held-out benchmark for measuring whether fine-tuning on a corpus actually
 improved a model. The question it answers is *"did training help, and where?"* —
 base checkpoint versus fine-tuned checkpoint, on identical frozen items. It is
 not a ranking against other people's models. The items are mined from held-out
-regulation by rule and verified against the source, not written and reviewed by
+documents by rule and verified against the source, not written and reviewed by
 engineers, so an absolute score means nothing next to a published leaderboard.
 The delta does.
+
+The machinery is domain-agnostic — it takes a directory of chunked documents and
+mines factual questions out of them — but it was built for, and ships configured
+for, Korean construction standards (KDS/KCS), safety regulation and IFC building
+models. That is where the name comes from: **K**orean **c**onstruction. See
+[Adapting it to another domain](../README.md#adapting-it-to-another-domain) for
+what to change if your corpus is something else.
+
+This file documents the build stages, the tracks, and every setting that changes
+what gets built. The top-level [README](../README.md) covers what the tool is
+for and how to install it.
 
 **Language.** Evaluation prompts default to Korean. The subject is Korean
 construction law, and translating clause terminology changes the question
@@ -24,7 +30,7 @@ carry `answer_en` with units in English notation.
 ## Pipeline
 
 One entry point, `cb.py`. Every command below is also a module under
-`corpusbench/`, runnable directly as `python -m corpusbench.evaluate` if you
+`kcbench/`, runnable directly as `python -m kcbench.evaluate` if you
 prefer.
 
 Build (`cb.py build` runs these in order):
@@ -454,6 +460,58 @@ Two harness settings are not optional:
   answer, which grades as wrong and reads as a knowledge failure. Runs record
   `no_answer` per type so this is visible rather than inferred.
 
+### Precedent for each grading type
+
+Every grading type here has a precedent in a published benchmark. The point is
+not novelty; it is that a reviewer can recognise what is being computed.
+
+| Type | Grading | Precedent |
+|---|---|---|
+| numeric | first figure, 2% relative tolerance | DROP, FinQA and other numeric-extraction QA |
+| nameset | set precision / recall / F1, partial credit | SQuAD and DROP token-F1 over multiple spans |
+| nameset (fuzzy) | 60% content-word coverage, greedy 1:1 | same intent as DROP's partial matching. uc5 only: demanding exact strings of a prose answer measures transcription, not knowledge |
+| label | match within a closed vocabulary | MMLU and KMMLU multiple-choice accuracy. uc3, after `unknown` is excluded |
+| faithfulness | abstention plus paired controls | SQuAD 2.0 (unanswerable and answerable at roughly 1:1), RGB's negative rejection |
+| cognitive_level tag | not scored, carried per item | AECBench's five levels (recall, understand, reason, calculate, apply) |
+
+SQuAD 2.0 is the reason uc4 is built the way it is. An always-abstain baseline
+scores 48.9 F1 there, so without controls an abstention rate masquerades as a
+score. uc4 mixes 50% unmodified controls for the same reason, which caps a
+blanket abstainer at 0.5.
+
+RGB (AAAI'24) separates four RAG abilities: noise robustness, negative
+rejection, information integration, counterfactual robustness. uc4 targets the
+first two — an unrelated clause is 100% noise. The other two are not measured
+yet.
+
+### Track size, and what it can decide
+
+Per-task item counts are in the same range as published benchmarks. Multiple
+choice scales cheaply, which is why KMMLU runs to hundreds per subject;
+extraction-and-verification sets like FinanceBench (150 items) sit in the tens
+to low hundreds.
+
+| Benchmark | Total | Tasks | Per task |
+|---|---:|---:|---:|
+| AECBench (Chinese AEC) | ~4,800 | 23 | ~200 |
+| KMMLU | 35,030 | 45 subjects | ~780 (multiple choice) |
+| **kcbench** | ~1,300 | track 2 + probe + 6 use-case tracks | 39-400 |
+
+Size decides what a track can settle. Taking the half-width of a 95% binomial
+interval near p = 0.8, which is the accuracy target these tracks were built to
+test:
+
+| Track | Type | Items | CI half-width | Can it decide 80%? |
+|---|---|---:|---:|---|
+| uc1_safety | numeric | 85 | ±5-8pp | yes |
+| uc1_safety | nameset | 72 | ±9pp | marginal |
+| uc2_rebar_spec | numeric | 150 | ±4-5pp | yes |
+| uc3_bim_site | label | 39 | ±15pp | directional only, and the labels are annotations |
+| uc4_faithfulness | abstain/control | 160 | ±5pp | yes |
+| uc5_incident | nameset | 118 | ±7pp | yes |
+
+## Grading, continued
+
 Do not set `think: false` on a thinking model to avoid this: it does not stop the
 model reasoning, only stops the server separating the reasoning out, so the chain
 of thought lands in `response` and the answer never arrives.
@@ -482,6 +540,6 @@ never journalled, so a resumed run retries them.
 - Track 3 is bounded by how few real building models the corpus holds.
 - Track 1 needs an HF checkpoint and a GPU; it cannot be scored through Ollama.
 
-`STANDARDS_REVIEW.md` checks the grading types and track sizes against published
-benchmarks, and `CHANGELOG.md` records what changed and the measurement that
-motivated it.
+Design decisions are recorded with the measurement that motivated them; see
+"Precedent for each grading type" above for how the grading was checked against
+published work.

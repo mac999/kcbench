@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from corpusbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, SCHEMA_VERSION,
+from kcbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, SCHEMA_VERSION,
                     add_common_args, describe, log, manifest_entry, read_jsonl,
                     resolve_config, utc_now, write_json)
 

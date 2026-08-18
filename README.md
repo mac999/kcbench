@@ -1,4 +1,4 @@
-# corpusbench
+# kcbench
 
 Build a benchmark out of your own document corpus, then measure whether
 fine-tuning on that corpus actually taught a model anything.
@@ -12,9 +12,12 @@ two checkpoints is the number that carries information.
 
 The machinery is domain-agnostic: it takes a directory of chunked documents,
 mines factual questions from them, holds out the source material, and scores a
-model on what it withheld. The reference instantiation shipped here is
-`kcbench`, built from Korean construction standards (KDS/KCS), safety
-regulation, and IFC building models.
+model on what it withheld. It ships configured for the corpus it was built
+against — Korean construction standards (KDS/KCS), safety regulation and IFC
+building models — which is where the name comes from: **K**orean
+**c**onstruction. Everything domain-specific is in `config.json` and a handful
+of prompt strings; see [Adapting it to another
+domain](#adapting-it-to-another-domain).
 
 ## Why a held-out set is not enough
 
@@ -23,7 +26,7 @@ the question. If a fine-tuned model scores well on held-out documents, it
 generalized. If it scores badly, you cannot tell whether training failed or
 whether the answers were never in the training data to begin with.
 
-So corpusbench builds two sets from one corpus:
+So kcbench builds two sets from one corpus:
 
 | Set | Drawn from | Answer present in training data | Question it answers |
 |---|---|---:|---|
@@ -64,7 +67,8 @@ Open book supplies it, so the item tests reading comprehension. Both are run
 against the same answer key.
 
 Grading is by answer type, and every type has precedent in a published
-benchmark — the reasoning is written up in `benchmark/STANDARDS_REVIEW.md`.
+benchmark — the mapping is in
+[benchmark/README.md](benchmark/README.md#precedent-for-each-grading-type).
 Numeric answers are matched on the first number within a relative tolerance.
 Nameset answers are scored as set precision, recall and F1, with partial credit.
 Faithfulness pairs items whose passage was swapped with control items whose
@@ -144,7 +148,7 @@ benchmark/
   config.json            every tunable, overridden by command-line flags
   run_resumable.sh       supervisor: retry, resume, stop when stuck
   data/                  built artefacts; evaluation sets are tracked, the rest is rebuilt
-  corpusbench/
+  kcbench/
     build_holdout.py     choose the documents to withhold
     build_tracks.py      mine tracks 1-3 from the held-out documents
     build_probe.py       mine the probe from the trained-on documents
@@ -188,7 +192,7 @@ by the matching command-line flag. The parts worth knowing:
   numeric tolerance, and the two dead-server guards.
 
 What is domain-specific and would need editing: the prompt strings for the
-vision tracks in `corpusbench/build_tracks.py` and `build_usecases.py`, which name IFC
+vision tracks in `kcbench/build_tracks.py` and `build_usecases.py`, which name IFC
 classes and construction site photos, and the IFC reader itself. The text
 tracks make no assumption about subject matter beyond the corpus being chunked
 prose with numbers and named lists in it.

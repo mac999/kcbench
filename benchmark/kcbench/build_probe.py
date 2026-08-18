@@ -27,10 +27,10 @@ import random
 from pathlib import Path
 from typing import Dict, List
 
-from corpusbench.build_tracks import (Rejects, _base, _instr, _nameset_candidate,
+from kcbench.build_tracks import (Rejects, _base, _instr, _nameset_candidate,
                           _numeric_candidates, _provenance, CLAUSE_RE, josa,
                           load_reviews, reviewed_out)
-from corpusbench.common import (QUALIFIER_EN, UNIT_EN, add_common_args, describe,
+from kcbench.common import (QUALIFIER_EN, UNIT_EN, add_common_args, describe,
                     generated_documents, item_id, log, resolve_config, utc_now,
                     write_json, write_jsonl)
 
