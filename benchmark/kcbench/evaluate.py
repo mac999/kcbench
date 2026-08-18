@@ -21,23 +21,29 @@ from typing import Any, Dict, List
 
 import requests
 
-from kcbench.common import (TRACKS_HELP, add_common_args, describe, log, normalise,
-                            read_jsonl, resolve_tracks, track_label,
+from kcbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, SCHEMA_VERSION,
+                            TRACKS_HELP, add_common_args, describe, items_digest,
+                            log, normalise, read_jsonl, resolve_tracks,
+                            track_label, wilson,
                     resolve_config, write_json)
 
 LOG = log("eval")
 
 NUM_RE = re.compile(r"-?[0-9][0-9,]*(?:\.[0-9]+)?")
+TRACK_FILES = {"1": "track1_dapt.jsonl", "2": "track2_sft.jsonl",
+               "3": "track3_vlm.jsonl", "probe": "probe_trained.jsonl"}
 IFC_RE = re.compile(r"\bIfc[A-Za-z]+\b")
 
 
 # model access
 
-def generate(cfg, model: str, prompt: str, images: List[str] | None = None) -> str:
+def generate(cfg, model: str, prompt: str, images: List[str] | None = None,
+             temperature: float | None = None) -> str:
     # No "think" flag. Setting it false on a thinking model does not stop the
     payload: Dict[str, Any] = {
         "model": model, "prompt": prompt, "stream": False,
-        "options": {"temperature": cfg["eval"]["temperature"],
+        "options": {"temperature": cfg["eval"]["temperature"] if temperature is None
+                                   else temperature,
                     "num_predict": cfg["eval"]["num_predict"],
                     "num_ctx": cfg["eval"]["num_ctx"]},
     }
@@ -300,6 +306,24 @@ def b64_image(path: Path) -> str:
 
 # run
 
+def run_meta(cfg) -> Dict[str, Any]:
+    """
+    What a score has to carry to be checkable later: the decoding settings that
+    produced it, and the seed the item set was split with. A number without
+    these is not a measurement, it is an anecdote.
+    """
+    ev = cfg["eval"]
+    return {
+        "benchmark": BENCHMARK_NAME, "version": BENCHMARK_VERSION,
+        "schema": SCHEMA_VERSION,
+        "decoding": {k: ev[k] for k in
+                     ("temperature", "num_ctx", "num_predict", "repeats",
+                      "numeric_tolerance") if k in ev},
+        "holdout_seed": (cfg.get("holdout") or {}).get("seed"),
+        "config_path": cfg.get("_config_path"),
+    }
+
+
 def run_track1(cfg, model: str, rows: List[dict], limit: int | None) -> dict:
     rows = rows[:limit] if limit else rows
     if not prompt_logprobs_available(cfg, model):
@@ -504,7 +528,13 @@ def _mean_scores(group: List[dict]) -> dict:
     metrics = sorted({k for p in group for k in p["score"]})
     out: Dict[str, Any] = {"n": len(group)}
     for m in metrics:
-        out[m] = round(statistics.fmean(p["score"].get(m, 0.0) for p in group), 4)
+        vals = [p["score"].get(m, 0.0) for p in group]
+        out[m] = round(statistics.fmean(vals), 4)
+        # A 39-item track and a 320-item track report the same number very
+        # differently. The interval says which one you are looking at.
+        if all(v in (0.0, 1.0) for v in vals):
+            lo, hi = wilson(int(sum(vals)), len(vals))
+            out[f"{m}_ci95"] = [round(lo, 4), round(hi, 4)]
     out["no_answer"] = round(statistics.fmean(p["no_answer"] for p in group), 4)
     return out
 
@@ -577,8 +607,7 @@ def main() -> int:
     runs_dir = Path(args.runs_dir) if args.runs_dir else cfg["out_dir"] / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
 
-    files = {"1": "track1_dapt.jsonl", "2": "track2_sft.jsonl", "3": "track3_vlm.jsonl",
-             "probe": "probe_trained.jsonl"}
+    files = dict(TRACK_FILES)
     # Use-case tracks come from the config registry, so evaluate.py needs no
     # change when a use case is added: --tracks uc1_safety, or "uc" for all.
     usecases = {k: v for k, v in (cfg.get("usecases") or {}).items()
@@ -588,7 +617,8 @@ def main() -> int:
     wanted = resolve_tracks(args.tracks)
     if "uc" in wanted:
         wanted = [t for t in wanted if t != "uc"] + list(usecases)
-    result = {"tag": tag, "model": args.model, "lang": args.lang,
+    result = {"benchmark": BENCHMARK_NAME, "version": BENCHMARK_VERSION,
+              "tag": tag, "model": args.model, "lang": args.lang,
               "repeats": cfg["eval"]["repeats"], "limit": args.limit,
               "book": "closed" if args.closed_book else "open",
               "benchmark_dir": str(cfg["out_dir"]), "tracks": {}}
@@ -623,8 +653,10 @@ def main() -> int:
                 ckpt.close()
             # kept until the track scores, so an abort leaves something to resume from
             ckpt.path.unlink(missing_ok=True)
+            result["tracks"][t]["items_digest"] = items_digest(rows)
 
     result["elapsed_sec"] = round(time.time() - started, 1)
+    result["meta"] = run_meta(cfg)
     result["headline"] = headline(result)
     out = write_json(runs_dir / f"{tag}.json", result)
     LOG.info("wrote %s", out)

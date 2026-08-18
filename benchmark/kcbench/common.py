@@ -17,11 +17,12 @@ import datetime as _dt
 import hashlib
 import json
 import logging
+import math
 import re
 import sys
 import unicodedata
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Sequence
+from typing import Any, Dict, Iterator, List, Sequence, Tuple
 
 # Anchor for config.json and every relative path in it. The modules live in
 # a package one level down, so this is the package's parent, not its own
@@ -49,6 +50,35 @@ TRACK_ALIASES: Dict[str, str] = {
 TRACKS_HELP = ("comma-separated names: dapt, sft, vlm. The numbers 1, 2 and 3 "
                "still work for them")
 
+
+
+def wilson(k: int, n: int, z: float = 1.96) -> Tuple[float, float]:
+    """
+    Wilson interval for a proportion.
+
+    The textbook normal interval puts the lower bound below zero when the count
+    is small, which is the regime most of these tracks sit in.
+    """
+    if not n:
+        return (0.0, 0.0)
+    p = k / n
+    denom = 1 + z * z / n
+    centre = (p + z * z / (2 * n)) / denom
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
+    return (max(0.0, centre - half), min(1.0, centre + half))
+
+
+def items_digest(rows: Sequence[dict]) -> str:
+    """
+    A digest of the item set a run scored, so two runs can be shown to have been
+    scored on the same questions. Ids hash the question's content, so a reworded
+    item changes the digest and a rebuild that changes nothing does not.
+    """
+    h = hashlib.sha256()
+    for i in sorted(str(r.get("id", "")) for r in rows):
+        h.update(i.encode("utf-8"))
+        h.update(b"\n")
+    return h.hexdigest()[:16]
 
 def resolve_tracks(spec: str) -> List[str]:
     """Split a --tracks value and turn every name into its canonical number."""
