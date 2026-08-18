@@ -112,6 +112,26 @@ def grade_numeric(reply: str, item: dict, tol: float) -> bool:
     return abs(got - want) <= abs(want) * tol + 1e-9
 
 
+THINK_RE = re.compile(r"<think>.*?</think>", re.S)
+
+
+def answered(reply: str) -> bool:
+    """
+    Did the model actually answer, as opposed to returning nothing?
+
+    A reasoning model that emits `<think></think>` and stops has answered
+    nothing, but the string is not empty, so a plain emptiness test counts it as
+    an answer and the run reports a knowledge failure where there was a
+    generation failure. Strip the reasoning block before deciding. An unclosed
+    `<think>` means the token budget ran out mid-thought, which is the same
+    thing: no answer arrived.
+    """
+    body = THINK_RE.sub("", reply)
+    if "<think>" in body:
+        body = body.split("<think>", 1)[0]
+    return bool(body.strip())
+
+
 def _lines(reply: str) -> List[str]:
     out = []
     for raw in reply.splitlines():
@@ -458,11 +478,12 @@ def run_qa(cfg, model: str, rows: List[dict], lang: str, repeats: int,
             "category": item.get("category"), "prompt_lang": asked, **extra,
             "score": {k: round(statistics.fmean(s[k] for s in scores), 4) for k in keys},
             # An empty reply grades as wrong but is not a wrong answer — it is
-            "no_answer": round(statistics.fmean(float(not r.strip()) for r in replies), 4),
+            # a missing one, and the two need telling apart when a run goes bad.
+            "no_answer": round(statistics.fmean(float(not answered(r)) for r in replies), 4),
             "sample_reply": replies[0][:400],
         }
         per_item.append(rec)
-        if any(r.strip() for r in replies):
+        if any(answered(r) for r in replies):
             empties = 0
             if ckpt:
                 ckpt.add(rec)
