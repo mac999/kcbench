@@ -17,7 +17,8 @@ import statistics
 from pathlib import Path
 from typing import Any, Dict, List
 
-from kcbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, add_common_args, describe,
+from kcbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, TRACKS_HELP,
+                            add_common_args, describe, resolve_tracks,
                     log, read_jsonl, resolve_config, utc_now, write_json,
                     write_jsonl)
 
@@ -126,7 +127,8 @@ def main() -> int:
     ap.add_argument("--runs", default="", help="comma-separated run tags to read")
     ap.add_argument("--runs-glob", help="glob over the runs directory, e.g. 'p1-*--open'")
     ap.add_argument("--runs-dir", help="where run files live (default <out-dir>/runs)")
-    ap.add_argument("--tracks", default="2,3", help="tracks to triage")
+    ap.add_argument("--tracks", default="2,3",
+                    help=f"tracks to triage. {TRACKS_HELP}")
     ap.add_argument("--min-models", type=int,
                     help="ignore items fewer than this many runs cover (default 2)")
     ap.add_argument("--sample", type=int,
@@ -148,7 +150,7 @@ def main() -> int:
 
     keyed: Dict[str, dict] = {}
     files = {"2": "track2_sft.jsonl", "3": "track3_vlm.jsonl"}
-    for t in [x.strip() for x in args.tracks.split(",") if x.strip()]:
+    for t in resolve_tracks(args.tracks):
         path = cfg["out_dir"] / files[t]
         if path.exists():
             keyed.update({r["id"]: r for r in read_jsonl(path)})

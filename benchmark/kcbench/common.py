@@ -34,6 +34,38 @@ BENCHMARK_NAME = "kcbench"
 BENCHMARK_VERSION = "v2"
 SCHEMA_VERSION = "kcbench-item-v2"
 
+# Track identity. The numbered tracks are numbered by the training stage each one
+# diagnoses -- 1 pre-training, 2 instruction tuning, 3 vision -- which is useful
+# to know and invisible in a bare number, so every track also answers to the name
+# its own items carry in their "track" field. Aliases resolve to the number
+# before anything else sees them: run files key on "1"/"2"/"3", and a run scored
+# as "sft" has to stay comparable with one scored as "2".
+TRACK_NAMES: Dict[str, str] = {"1": "dapt", "2": "sft", "3": "vlm"}
+TRACK_ALIASES: Dict[str, str] = {
+    "dapt": "1", "track1": "1", "1": "1",
+    "sft": "2", "track2": "2", "2": "2",
+    "vlm": "3", "track3": "3", "3": "3",
+}
+TRACKS_HELP = ("comma-separated. Numbered tracks answer to their name too: "
+               "1/dapt, 2/sft, 3/vlm")
+
+
+def resolve_tracks(spec: str) -> List[str]:
+    """Split a --tracks value and turn every name into its canonical number."""
+    out: List[str] = []
+    for raw in spec.split(","):
+        t = raw.strip()
+        if t:
+            out.append(TRACK_ALIASES.get(t.lower(), t))
+    return out
+
+
+def track_label(track: str) -> str:
+    """How a track is named in logs: the number, plus the name when it has one."""
+    name = TRACK_NAMES.get(track)
+    return f"{track} ({name})" if name else track
+
+
 DEFAULTS: Dict[str, Any] = {
     # Where the pipeline reads from. All four accept absolute paths, or paths
     # relative to this directory.

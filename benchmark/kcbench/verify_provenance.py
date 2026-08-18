@@ -14,7 +14,8 @@ import json
 from pathlib import Path
 from typing import Any, Dict
 
-from kcbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, add_common_args, describe,
+from kcbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, TRACKS_HELP,
+                            add_common_args, describe, resolve_tracks,
                     log, read_jsonl, resolve_config, sha256_text, utc_now,
                     write_json, write_jsonl)
 
@@ -82,7 +83,8 @@ def main() -> int:
     ap.add_argument("--holdout", metavar="FILE", help="holdout.json (default <out-dir>/holdout.json)")
     ap.add_argument("--train-dir", metavar="DIR", help="training split to check against "
                                                        "(default <out-dir>/train)")
-    ap.add_argument("--tracks", default="1,2,3", metavar="LIST", help="tracks to verify")
+    ap.add_argument("--tracks", default="1,2,3", metavar="LIST",
+                    help=f"tracks to verify. {TRACKS_HELP}")
     ap.add_argument("--strict", action="store_true",
                     help="exit non-zero if any check fails")
     args = ap.parse_args()
@@ -112,7 +114,7 @@ def main() -> int:
     failures: collections.Counter = collections.Counter()
     by_track: Dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
 
-    for t in [x.strip() for x in args.tracks.split(",") if x.strip()]:
+    for t in resolve_tracks(args.tracks):
         path = cfg["out_dir"] / TRACK_FILES[t]
         if not path.exists():
             LOG.warning("track %s not built - skipping", t)

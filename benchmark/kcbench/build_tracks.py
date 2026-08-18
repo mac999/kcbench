@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from kcbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, QUALIFIER_EN,
+                            TRACKS_HELP, resolve_tracks,
                     SCHEMA_VERSION, UNIT_EN, add_common_args, describe,
                     generated_documents, item_id, log, normalise,
                     resolve_config, sha256_text, utc_now, write_json,
@@ -679,7 +680,7 @@ def main(argv: list[str] | None = None) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     add_common_args(ap)
     ap.add_argument("--tracks", default="1,2,3", metavar="LIST",
-                    help="which tracks to build, e.g. 2,3 (default all)")
+                    help=f"which tracks to build, e.g. 2,3 (default all). {TRACKS_HELP}")
     ap.add_argument("--holdout", metavar="FILE",
                     help="holdout.json to build from (default <out-dir>/holdout.json)")
     ap.add_argument("--report", metavar="FILE",
@@ -695,7 +696,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     holdout = json.loads(hp.read_text(encoding="utf-8"))
 
-    wanted = [t.strip() for t in args.tracks.split(",") if t.strip()]
+    wanted = resolve_tracks(args.tracks)
     unknown = [t for t in wanted if t not in BUILDERS]
     if unknown:
         LOG.error("unknown track(s): %s - choose from 1, 2, 3", ", ".join(unknown))

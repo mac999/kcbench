@@ -33,6 +33,13 @@ One entry point, `cb.py`. Every command below is also a module under
 `kcbench/`, runnable directly as `python -m kcbench.evaluate` if you
 prefer.
 
+A **track** is one self-contained set of items with its own answer type and its
+own score, in the sense TREC uses the word. Tracks 1, 2 and 3 are numbered for
+the training stage each diagnoses, and each answers to that stage's name as
+well: `--tracks dapt`, `--tracks sft`, `--tracks vlm` are the same as `1`, `2`,
+`3`. The probe and use-case tracks were never numbered — they are named for what
+they test.
+
 Build (`cb.py build` runs these in order):
 
 ```
@@ -48,8 +55,8 @@ cb.py export       data/export/                   manifest, dataset card, harnes
 Score and compare:
 
 ```
-cb.py eval         data/runs/<tag>.json           score tracks 2, 3 and the use cases
-cb.py ppl          data/runs/<tag>.json           track 1 perplexity
+cb.py eval         data/runs/<tag>.json           score tracks sft, vlm and the use cases
+cb.py ppl          data/runs/<tag>.json           track dapt perplexity
 cb.py matrix       data/matrix.{json,md}          score several models at once
 cb.py compare      data/runs/compare_*.json       before/after, with a significance test
 ```
@@ -69,11 +76,11 @@ python cb.py build -i ../ai_ready_full --strict
 
 # 2. Baseline the checkpoint you are about to fine-tune
 python cb.py ppl  -m Qwen/Qwen3-8B --tag base-ppl
-python cb.py eval -m qwen3:8b --tag base --closed-book --tracks 2
+python cb.py eval -m qwen3:8b --tag base --closed-book --tracks sft
 
 # 3. Fine-tune on data/train/, never on the source dataset, then score again
 python cb.py ppl  -m ./out/qwen3-8b-dapt --tag ft-ppl
-python cb.py eval -m qwen3-ft:v1 --tag ft --closed-book --tracks 2
+python cb.py eval -m qwen3-ft:v1 --tag ft --closed-book --tracks sft
 
 # 4. The number you actually wanted, with a paired significance test
 python cb.py compare --base base --after ft --markdown report.md
@@ -152,8 +159,8 @@ config per dataset variant and redirecting a single run with `-i` both work:
 
 ```bash
 python cb.py build --config configs/v3.json -i /data/ai_ready_v3 -o /data/bench_v3
-python cb.py build --skip-holdout --tracks 2,3      # re-mine without re-splitting
-python cb.py eval  --config configs/v3.json -m qwen3:8b --tracks 2,3 --limit 20
+python cb.py build --skip-holdout --tracks sft,vlm  # re-mine without re-splitting
+python cb.py eval  --config configs/v3.json -m qwen3:8b --tracks sft,vlm --limit 20
 ```
 
 Stages can be skipped individually (`--skip-split`, `--skip-verify`,
@@ -339,7 +346,7 @@ the comparison labels skew heavily to `mismatch`. Items whose label is
 `unknown` are excluded (`exclude_labels`): they grade honest judgement as
 wrong, and removing them moved the same model's score 0.375 → 0.590. Read
 scores with the `by_task` split, and treat the track as weaker evidence than
-tracks 2 and 3 until the labels have been human-reviewed.
+tracks 2 (sft) and 3 (vlm) until the labels have been human-reviewed.
 
 **Contamination marking.** Safety work standards and most specification
 documents sit on the training side of the split, so UC1/UC2/UC5 items drawn from

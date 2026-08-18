@@ -106,17 +106,31 @@ jointly present.
 
 ## Tracks
 
-| Track | Items | Type | What it measures |
-|---|---:|---|---|
-| 1 | 5,381 chunks | perplexity | fit to held-out text, scored locally with transformers |
-| 2 | 395 | numeric 320, nameset 75 | held-out QA, closed and open book |
-| 3 | 10 | nameset 6, mapping 4 | vision: element types from renders, model-to-photo mapping |
-| probe | 400 | numeric 320, nameset 80 | training-side acquisition, diagnostic only |
-| uc1 safety | 157 | numeric 85, nameset 72 | safety regulation lookup |
-| uc2 spec threshold | 150 | numeric 150 | specification limits and tolerances |
-| uc3 cross image | 39 | label 39 | render and site photo judged together |
-| uc4 faithfulness | 160 | faithfulness 160 | abstention when the passage does not support an answer |
-| uc5 incident | 118 | nameset 118 | causes and controls from incident reports |
+A track is one self-contained set of items with its own answer type and its own
+score — the sense the word carries in TREC. Each one answers a different
+question, so they are read separately, never averaged into a single figure.
+
+The first three are numbered for the training stage they diagnose, and each also
+answers to that stage's name on the command line. `--tracks sft` and
+`--tracks 2` do the same thing; the name is there so you can tell from the
+command what you are measuring.
+
+| Track | Name | Items | Answer type | What it measures |
+|---|---|---:|---|---|
+| 1 | `dapt` | 5,381 chunks | perplexity | fit to held-out text — did pre-training take |
+| 2 | `sft` | 395 | numeric 320, nameset 75 | held-out QA — does it generalise to unseen regulation |
+| 3 | `vlm` | 10 | nameset 6, mapping 4 | vision: element types from renders, model-to-photo mapping |
+| — | `probe` | 400 | numeric 320, nameset 80 | training-side QA — did it acquire what it was taught. Diagnostic only |
+| — | `uc1_safety` | 157 | numeric 85, nameset 72 | safety regulation lookup |
+| — | `uc2_rebar_spec` | 150 | numeric 150 | specification limits and tolerances |
+| — | `uc3_bim_site` | 39 | label 39 | render and site photo judged together |
+| — | `uc4_faithfulness` | 160 | faithfulness 160 | abstention when the passage does not support an answer |
+| — | `uc5_incident` | 118 | nameset 118 | causes and controls from incident reports |
+
+`--tracks uc` runs every use-case track. Use-case tracks are registered in
+`config.json`, so adding one takes a config entry rather than a code change,
+and they were never numbered — the numbering only ever meant "which training
+stage does this diagnose", which is a question the use-case tracks do not ask.
 
 Closed book withholds the passage, so the item tests what the weights hold.
 Open book supplies it, so the item tests reading comprehension. Both are run
@@ -141,8 +155,8 @@ pip install torch transformers              # track 1 perplexity
 pip install torch transformers peft         # fine-tuning under training/
 ```
 
-Scoring goes through an [Ollama](https://ollama.com) server for tracks 2, 3 and
-the use-case tracks. Track 1 loads the checkpoint locally instead, because
+Scoring goes through an [Ollama](https://ollama.com) server for tracks 2 (sft),
+3 (vlm) and the use-case tracks. Track 1 loads the checkpoint locally instead, because
 perplexity needs logprobs over a fixed text rather than generation.
 
 ```
@@ -167,9 +181,9 @@ python cb.py build -i /data/my_corpus -o /tmp/bench --config my.json
 Score a model, once per book setting:
 
 ```
-python cb.py eval -m qwen3:8b       --tag base  --tracks 2 --closed-book
-python cb.py eval -m my-finetune:v1 --tag ft-v1 --tracks 2 --closed-book
-python cb.py ppl  -m ./out/my-dapt  --tag ft-v1-ppl
+python cb.py eval -m qwen3:8b       --tag base  --tracks sft --closed-book
+python cb.py eval -m my-finetune:v1 --tag ft-v1 --tracks sft --closed-book
+python cb.py ppl  -m ./out/my-dapt  --tag ft-v1-ppl        # track 1 (dapt)
 ```
 
 Compare them. This is the step that produces the answer:
@@ -181,7 +195,7 @@ python cb.py compare --base base --after ft-v1 --markdown report.md
 Score several models side by side:
 
 ```
-python cb.py matrix --models qwen3:8b,qwen3:14b,glm4:9b --book both --report matrix.md
+python cb.py matrix --models qwen3:8b,qwen3:14b,glm4:9b --tracks sft --book both
 ```
 
 Long runs journal every scored item, so a run that dies resumes rather than

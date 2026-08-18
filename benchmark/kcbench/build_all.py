@@ -59,7 +59,8 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     add_common_args(ap)
     ap.add_argument("--fraction", type=float, help="holdout share per category")
-    ap.add_argument("--tracks", default="1,2,3", help="tracks to build")
+    ap.add_argument("--tracks", default="1,2,3",
+                    help="tracks to build; names work too (dapt, sft, vlm)")
     ap.add_argument("--mirror", metavar="FILE",
                     help="where to mirror holdout.json for run_corpus.py")
     ap.add_argument("--skip-holdout", action="store_true",

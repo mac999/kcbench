@@ -21,7 +21,8 @@ from typing import Any, Dict, List
 
 import requests
 
-from kcbench.common import (add_common_args, describe, log, normalise, read_jsonl,
+from kcbench.common import (TRACKS_HELP, add_common_args, describe, log, normalise,
+                            read_jsonl, resolve_tracks, track_label,
                     resolve_config, write_json)
 
 LOG = log("eval")
@@ -551,7 +552,8 @@ def main() -> int:
     ap.add_argument("-m", "--model", required=True, help="Ollama model tag to evaluate")
     ap.add_argument("-t", "--tag", help="name for this run (default: the model tag)")
     ap.add_argument("--tracks", default="1,2,3", metavar="LIST",
-                    help="tracks to run; 'probe' scores the training-side probe set")
+                    help=f"tracks to run. {TRACKS_HELP}; 'probe' scores the "
+                         "training-side probe set, 'uc' every use-case track")
     ap.add_argument("--lang", choices=["ko", "en", "mix"], default="ko",
                     help="prompt language; 'mix' draws per item from eval.lang_mix "
                          "(deterministic by item id), the answer key is the same either way")
@@ -583,7 +585,7 @@ def main() -> int:
                 if not k.startswith("_") and isinstance(v, dict) and v.get("enabled", True)}
     for k, v in usecases.items():
         files[k] = v.get("track_file", f"{k}.jsonl")
-    wanted = [t.strip() for t in args.tracks.split(",") if t.strip()]
+    wanted = resolve_tracks(args.tracks)
     if "uc" in wanted:
         wanted = [t for t in wanted if t != "uc"] + list(usecases)
     result = {"tag": tag, "model": args.model, "lang": args.lang,
@@ -595,10 +597,10 @@ def main() -> int:
     for t in wanted:
         path = cfg["out_dir"] / files[t]
         if not path.exists():
-            LOG.warning("track %s not built (%s) - skipping", t, path.name)
+            LOG.warning("track %s not built (%s) - skipping", track_label(t), path.name)
             continue
         rows = read_jsonl(path)
-        LOG.info("track %s: %d item(s)", t, len(rows))
+        LOG.info("track %s: %d item(s)", track_label(t), len(rows))
         if t == "1":
             result["tracks"]["1"] = run_track1(cfg, args.model, rows, args.limit)
         else:
@@ -611,7 +613,7 @@ def main() -> int:
             resumed = ckpt.load()
             if resumed:
                 LOG.info("track %s: resuming, %d of %d item(s) already scored",
-                         t, resumed, len(rows))
+                         track_label(t), resumed, len(rows))
             ckpt.open()
             try:
                 result["tracks"][t] = run_qa(
