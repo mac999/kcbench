@@ -245,6 +245,105 @@ of failed calls aborts the track, and so does a run of blank replies, which is
 what a server that answers but no longer generates looks like. Neither writes a
 score file. The journal survives, so restarting picks up where it stopped.
 
+## The full sequence
+
+What the commands look like end to end, on the question this was built for:
+*we assembled a corpus and fine-tuned on it — did that help?* Times are from a
+GB10 workstation scoring an 8B model through Ollama.
+
+**1. Build the benchmark, once.** This splits the corpus, mines the items, and
+writes the training split with the held-out documents removed. Run it before
+any training: the split is what makes the later numbers mean anything.
+
+```bash
+python cb.py build -i /data/my_corpus --strict
+```
+
+`--strict` fails the build if an item turns out to be contaminated rather than
+warning and continuing. Do not change `holdout.seed` after this point — a
+different seed reserves different documents, and two runs on different items
+are not comparable.
+
+**2. Baseline the checkpoint you are about to fine-tune.** Every number below
+is meaningless without its "before". This is the step people skip and then
+cannot interpret anything.
+
+```bash
+python cb.py ppl  -m Qwen/Qwen3-8B --tag base-ppl              # ~4.5 h, local weights
+python cb.py eval -m qwen3:8b --tag base-closed --tracks sft --closed-book
+python cb.py eval -m qwen3:8b --tag base-open   --tracks sft   # reading, not knowledge
+python cb.py eval -m qwen3:8b --tag base-probe  --tracks probe --closed-book
+```
+
+The closed/open gap here tells you whether the corpus is worth training on at
+all. If the model already answers closed-book, there is nothing to teach it; if
+it cannot answer open-book, the items are broken rather than hard.
+
+**3. Train, on `data/train/` and nothing else.**
+
+```bash
+python ../training/dapt.py                                     # stage 1
+python ../training/sft.py --base ../training/out/qwen3-8b-dapt # stage 2
+python ../training/merge.py -a ../training/out/qwen3-8b-sft -o ../training/out/merged
+```
+
+**4. Register the fine-tuned model the same way as its base.** This step is
+easy to get wrong and it invalidates everything after it. A merged checkpoint
+served without its chat template and stop tokens is prompted differently from
+the base model it is being compared against, and the difference shows up as a
+model failure that is not one.
+
+```bash
+ollama show qwen3:8b --modelfile > Modelfile.ft     # take the base's template
+# edit FROM to point at the new gguf, keep TEMPLATE and every PARAMETER stop
+ollama create my-ft:v1 -f Modelfile.ft
+```
+
+Check it before scoring: `ollama show my-ft:v1 --modelfile` must show a real
+`TEMPLATE` and the `PARAMETER stop` lines, not `TEMPLATE {{ .Prompt }}`.
+
+**5. Score the fine-tuned checkpoint on the same items.** Same tracks, same
+flags, same config as step 2.
+
+```bash
+python cb.py ppl  -m ../training/out/merged --tag ft-ppl
+./run_resumable.sh my-ft:v1 ft-probe:probe ft-closed:sft
+python cb.py eval -m my-ft:v1 --tag ft-open --tracks sft
+```
+
+`run_resumable.sh` journals each item and retries, which is what you want for a
+multi-hour run. A bare `cb.py eval` is fine for anything under an hour.
+
+**6. Compare. This is the answer.**
+
+```bash
+python cb.py compare --base base-ppl    --after ft-ppl    --markdown ppl.md
+python cb.py compare --base base-closed --after ft-closed --markdown sft.md
+python cb.py compare --base base-probe  --after ft-probe  --markdown probe.md
+```
+
+Read the three together, and read the probe against the held-out track:
+
+| probe | sft (held out) | Reading |
+|---|---|---|
+| up | up | it learned the domain and generalised |
+| up | flat | it memorised the corpus and did not generalise |
+| flat | flat | training did not take — check perplexity moved at all |
+| down | down | something broke. Suspect the harness before the model |
+
+**7. Optional, once the above is understood.** Two questions the score cannot
+answer:
+
+```bash
+python cb.py ece       -m my-ft:v1 --tag ft-ece --tracks sft --closed-book
+python cb.py selfcheck -m my-ft:v1 --tag ft-sc  --tracks sft --closed-book
+```
+
+`ece` asks whether its confidence is worth anything — the dangerous failure is
+being wrong and sure. `selfcheck` asks the same question without an answer key,
+by sampling the model and seeing whether it tells the same story twice, so it
+also works on the free-form answers no track can grade.
+
 ## Layout
 
 ```

@@ -60,6 +60,7 @@ cb.py ppl          data/runs/<tag>.json           track dapt perplexity
 cb.py matrix       data/matrix.{json,md}          score several models at once
 cb.py compare      data/runs/compare_*.json       before/after, with a significance test
 cb.py ece          data/runs/<tag>.json           calibration error
+cb.py selfcheck    data/runs/<tag>.json           consistency, without an answer key
 ```
 
 Review (a person judges; the tooling only selects and applies):
@@ -177,6 +178,39 @@ Reported per track:
 
 Only numeric and label items take part. A set-F1 answer is partially correct,
 and there is no accepted way to bin partial credit against a confidence.
+
+### Hallucination signal without an answer key
+
+Every other track compares an answer against a key, which only works where a key
+exists. That rules out free-form output and any question nobody wrote an answer
+for, which is most of what a deployed agent is asked.
+
+```bash
+python cb.py selfcheck -m qwen3:8b --tag base-sc --tracks sft --closed-book
+```
+
+SelfCheckGPT (Manakul et al., EMNLP 2023): sample the same question several
+times and see whether the model tells the same story twice. A fact the weights
+hold comes back the same way; something invented on the spot comes back
+different. One answer is decoded the way the benchmark decodes it, then
+`selfcheck.samples` more are drawn at `selfcheck.temperature` and compared
+against it. Reasoning blocks are stripped first — two samples reason differently
+on the way to the same answer, and comparing the reasoning measures nothing.
+
+Agreement is exact-match on the extracted answer for numeric and label items,
+and token containment for prose: a sample that says the same thing at greater
+length is agreeing, and Jaccard would penalise it for the extra words.
+
+| Field | Meaning |
+|---|---|
+| `mean_inconsistency` | 1 − mean agreement with the sampled answers |
+| `flagged_rate` | share at or above `threshold`, with a Wilson interval |
+| `validation.separation` | how much higher the inconsistency runs on answers that were in fact wrong |
+| `validation.flag_precision` | share of flagged answers that really were wrong |
+
+The last two use the answer key, but only after the fact and only to check the
+detector. `separation` is the number that decides whether the signal is worth
+anything: at or below zero it is not detecting, it is guessing.
 
 ### What a run file records
 
