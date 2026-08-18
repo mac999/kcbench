@@ -176,7 +176,7 @@ def main() -> int:
     ap.add_argument("--book", choices=["open", "closed", "both"],
                     help="open book gives the clause, closed book does not (default both)")
     ap.add_argument("--tracks", default="2",
-                    help="tracks to run (default 2/sft); names work too")
+                    help="tracks to run by name (default sft)")
     ap.add_argument("--lang", choices=["ko", "en"], default="ko")
     ap.add_argument("--repeats", type=int, help="samples per item")
     ap.add_argument("--limit", type=int, help="first N items per track")

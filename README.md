@@ -27,7 +27,7 @@ Four charts, and between them they tell you what the benchmark is for.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/closed-vs-open-dark.png">
-  <img alt="Track 2 numeric accuracy for six untrained models, closed book versus open book. Open book every model scores above 84 percent; closed book none clears 17 percent." src="doc/closed-vs-open-light.png">
+  <img alt="Numeric accuracy on the sft track for six untrained models, closed book versus open book. Open book every model scores above 84 percent; closed book none clears 17 percent." src="doc/closed-vs-open-light.png">
 </picture>
 
 **Start here: is this corpus even worth training on?** Six models that never saw
@@ -37,8 +37,8 @@ they have not memorised any of it. That gap is the room fine-tuning has to work
 in, and it is why the closed-book number is the one this benchmark reports.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="doc/track1-perplexity-dark.png">
-  <img alt="Perplexity by document category, base versus after DAPT. Every one of the thirteen categories fell, the overall figure from 7.589 to 4.553." src="doc/track1-perplexity-light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="doc/dapt-perplexity-dark.png">
+  <img alt="Perplexity by document category, base versus after DAPT. Every one of the thirteen categories fell, the overall figure from 7.589 to 4.553." src="doc/dapt-perplexity-light.png">
 </picture>
 
 **Did training move anything?** Perplexity on 5,381 held-out chunks fell 40%,
@@ -107,30 +107,29 @@ jointly present.
 ## Tracks
 
 A track is one self-contained set of items with its own answer type and its own
-score — the sense the word carries in TREC. Each one answers a different
-question, so they are read separately, never averaged into a single figure.
+score — the sense the word carries in TREC. Each answers a different question, so
+they are read separately, never averaged into a single figure. Tracks are named
+for what they test:
 
-The first three are numbered for the training stage they diagnose, and each also
-answers to that stage's name on the command line. `--tracks sft` and
-`--tracks 2` do the same thing; the name is there so you can tell from the
-command what you are measuring.
-
-| Track | Name | Items | Answer type | What it measures |
-|---|---|---:|---|---|
-| 1 | `dapt` | 5,381 chunks | perplexity | fit to held-out text — did pre-training take |
-| 2 | `sft` | 395 | numeric 320, nameset 75 | held-out QA — does it generalise to unseen regulation |
-| 3 | `vlm` | 10 | nameset 6, mapping 4 | vision: element types from renders, model-to-photo mapping |
-| — | `probe` | 400 | numeric 320, nameset 80 | training-side QA — did it acquire what it was taught. Diagnostic only |
-| — | `uc1_safety` | 157 | numeric 85, nameset 72 | safety regulation lookup |
-| — | `uc2_rebar_spec` | 150 | numeric 150 | specification limits and tolerances |
-| — | `uc3_bim_site` | 39 | label 39 | render and site photo judged together |
-| — | `uc4_faithfulness` | 160 | faithfulness 160 | abstention when the passage does not support an answer |
-| — | `uc5_incident` | 118 | nameset 118 | causes and controls from incident reports |
+| Track | Items | Answer type | What it measures |
+|---|---:|---|---|
+| `dapt` | 5,381 chunks | perplexity | fit to held-out text — did pre-training take |
+| `sft` | 395 | numeric 320, nameset 75 | held-out QA — does it generalise to unseen regulation |
+| `vlm` | 10 | nameset 6, mapping 4 | vision: element types from renders, model-to-photo mapping |
+| `probe` | 400 | numeric 320, nameset 80 | training-side QA — did it acquire what it was taught. Diagnostic only |
+| `uc1_safety` | 157 | numeric 85, nameset 72 | safety regulation lookup |
+| `uc2_rebar_spec` | 150 | numeric 150 | specification limits and tolerances |
+| `uc3_bim_site` | 39 | label 39 | render and site photo judged together |
+| `uc4_faithfulness` | 160 | faithfulness 160 | abstention when the passage does not support an answer |
+| `uc5_incident` | 118 | nameset 118 | causes and controls from incident reports |
 
 `--tracks uc` runs every use-case track. Use-case tracks are registered in
-`config.json`, so adding one takes a config entry rather than a code change,
-and they were never numbered — the numbering only ever meant "which training
-stage does this diagnose", which is a question the use-case tracks do not ask.
+`config.json`, so adding one takes a config entry rather than a code change.
+
+`dapt`, `sft` and `vlm` were originally numbered 1, 2 and 3, for the training
+stage each diagnoses. The numbers are still accepted — `--tracks 2` is `--tracks
+sft` — and run files still key on them, so scores from older runs stay
+comparable. Nothing else needs them.
 
 Closed book withholds the passage, so the item tests what the weights hold.
 Open book supplies it, so the item tests reading comprehension. Both are run
@@ -151,12 +150,12 @@ Python 3.11 or newer.
 
 ```
 pip install requests                        # building and scoring
-pip install torch transformers              # track 1 perplexity
+pip install torch transformers              # dapt perplexity
 pip install torch transformers peft         # fine-tuning under training/
 ```
 
-Scoring goes through an [Ollama](https://ollama.com) server for tracks 2 (sft),
-3 (vlm) and the use-case tracks. Track 1 loads the checkpoint locally instead, because
+Scoring goes through an [Ollama](https://ollama.com) server for `sft`, `vlm`
+and the use-case tracks. `dapt` loads the checkpoint locally instead, because
 perplexity needs logprobs over a fixed text rather than generation.
 
 ```
@@ -183,7 +182,7 @@ Score a model, once per book setting:
 ```
 python cb.py eval -m qwen3:8b       --tag base  --tracks sft --closed-book
 python cb.py eval -m my-finetune:v1 --tag ft-v1 --tracks sft --closed-book
-python cb.py ppl  -m ./out/my-dapt  --tag ft-v1-ppl        # track 1 (dapt)
+python cb.py ppl  -m ./out/my-dapt  --tag ft-v1-ppl        # the dapt track
 ```
 
 Compare them. This is the step that produces the answer:
@@ -227,7 +226,7 @@ benchmark/
     make_train_split.py  write the training split, holdout excluded
     verify_provenance.py prove where each item came from and that nothing trains on it
     evaluate.py          score a model over the generation tracks
-    perplexity.py        score track 1 locally
+    perplexity.py        score the dapt track locally
     compare.py           compare two runs, with a bootstrap significance test
     run_matrix.py        score several models and tabulate
     triage_items.py      pick the items a human should look at
@@ -278,17 +277,17 @@ prompt as well (`question_en`, and `answer_en` for numeric units), so
 
 | Metric | Items | Score |
 |---|---:|---:|
-| track 1 perplexity | 5,381 chunks | 7.589 |
-| track 2 numeric, closed book | 320 | 0.166 |
-| track 2 nameset F1, closed book | 75 | 0.000 |
-| track 2 numeric, open book | 320 | 0.953 |
-| track 2 nameset F1, open book | 75 | 0.582 |
+| `dapt` perplexity | 5,381 chunks | 7.589 |
+| `sft` numeric, closed book | 320 | 0.166 |
+| `sft` nameset F1, closed book | 75 | 0.000 |
+| `sft` numeric, open book | 320 | 0.953 |
+| `sft` nameset F1, open book | 75 | 0.582 |
 | probe numeric, closed book | 320 | 0.169 |
 | probe nameset F1, closed book | 80 | 0.000 |
 
 The closed-open gap is the corpus doing its job: the model reads these
 documents competently and knows almost nothing in them from memory. Probe and
-track 2 sit at the same number before training, which is what should happen —
+`sft` sit at the same number before training, which is what should happen —
 nothing has been learned yet, so trained-on and held-out documents are equally
 unfamiliar. They are expected to separate afterwards, and how they separate is
 the diagnosis.
@@ -297,7 +296,7 @@ After stage 1 (domain-adaptive pre-training, 836 steps, LoRA on Qwen3-8B):
 
 | Metric | Base | After DAPT | Change | Items |
 |---|---:|---:|---:|---:|
-| track 1 perplexity | 7.589 | 4.553 | -40.0% | 5,381 chunks |
+| `dapt` perplexity | 7.589 | 4.553 | -40.0% | 5,381 chunks |
 | probe numeric, closed book | 0.169 | 0.029 | -82.6% | 102 of 400 |
 | probe replies with no answer | 0.000 | 0.431 | — | 102 of 400 |
 
@@ -313,7 +312,7 @@ is what the two-stage design is for; scores for it will replace this table.
 Items are mined and verified by rule, not authored by domain experts. That
 makes the set cheap to rebuild and easy to audit — `cb.py verify`
 traces every item to its source span — but it also means the questions test
-recall of stated facts rather than judgement. Track 3 is small (10 items) and
+recall of stated facts rather than judgement. `vlm` is small (10 items) and
 should be read as a smoke test rather than a measurement. The use-case tracks
 range from 39 to 160 items, which is in line with per-task sizes in published
 benchmarks but still small enough that single-digit differences are noise;
@@ -321,7 +320,7 @@ benchmarks but still small enough that single-digit differences are noise;
 assumed.
 
 The corpus itself is not distributed. Source documents are Korean government
-standards and regulations, and the training split and track 1 chunks are
+standards and regulations, and the training split and `dapt` chunks are
 derived closely enough from them that redistribution is a licensing question
 rather than a technical one. The evaluation sets are included: they hold mined
 question-answer pairs and citations, not the source text.

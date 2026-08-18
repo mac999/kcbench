@@ -44,7 +44,7 @@ Build (`cb.py build` runs these in order):
 
 ```
 cb.py holdout      data/holdout.json              reserve the evaluation documents
-cb.py tracks       data/track{1,2,3}*.jsonl       mine items, record provenance
+cb.py tracks       data/track{1,2,3}*.jsonl       mine the dapt, sft and vlm items
 cb.py probe        data/probe_trained.jsonl       mine the training-side probe set
 cb.py usecases     data/uc*.jsonl                 use-case tracks from the config registry
 cb.py split        data/train/                    training split, holdout excluded
@@ -99,20 +99,20 @@ deleted once the track writes its score.
 
 ### Generalisation and acquisition
 
-Two sets, two questions. Track 2 is mined from held-out documents, so 75 percent
+Two sets, two questions. `sft` is mined from held-out documents, so 75 percent
 of its answers appear nowhere in the training data and cannot be learned — it
 measures generalisation to regulation the model never saw. `probe_trained.jsonl`
 is mined from the training side, where 83 percent of answers are present, and
 measures whether training put the corpus into the weights at all.
 
-| | track 2 | probe |
+| | `sft` | `probe` |
 |---|---|---|
 | Drawn from | held-out documents | trained-on documents |
 | Answer present in training data | 25% | 83% |
 | Measures | generalisation | acquisition |
 | Reporting | benchmark score | diagnostic only, never quote as a score |
 
-Read them together. Probe up and track 2 flat means the model memorised the
+Read them together. Probe up and `sft` flat means the model memorised the
 corpus without generalising; both flat means the training did not take at all.
 Probe rows carry `split: "train"` and `contamination: "intentional"` so the two
 cannot be mixed up.
@@ -194,7 +194,7 @@ What to change when the model or the machine changes:
 | `eval.max_consecutive_failures`, `eval.max_consecutive_empty` | when to abort rather than score a dead server |
 | `eval.ollama_base_url`, `eval.request_timeout` | where the server is and how long to wait |
 | `eval.models`, `eval.book` | defaults for `cb.py matrix` |
-| `perplexity.max_length` | tokens per chunk. Lower it if track 1 runs out of memory |
+| `perplexity.max_length` | tokens per chunk. Lower it if `dapt` runs out of memory |
 | `perplexity.dtype`, `perplexity.device` | `float16` and a different `device_map` for a smaller card |
 
 What to change when the question is statistical:
@@ -225,7 +225,7 @@ Re-baseline after any of them.
 
 ## The three tracks
 
-### Track 1 — DAPT, scored by perplexity
+### `dapt` — scored by perplexity
 
 Held-out regulation text, no labels. Perplexity is the earliest signal that
 domain-adaptive pre-training did anything: it moves long before answer accuracy
@@ -256,7 +256,7 @@ token-weighted figure (the one to compare), the per-chunk median, and a
 per-category breakdown. Qwen3-8B scores 7.589 over 5,381 chunks; a DAPT run that
 leaves that unmoved has not trained, whatever the downstream numbers say.
 
-### Track 2 — SFT, verifiable facts from held-out regulation
+### `sft` — verifiable facts from held-out regulation
 
 Questions whose answer is a string the source document contains. Two shapes:
 
@@ -282,7 +282,7 @@ Where no lead-in sentence exists, the governing clause heading (`제9조(전원 
 identifies the list instead — the passage is given to the model, so the heading
 names exactly one list within it.
 
-### Track 3 — VLM, IFC elements against the file itself
+### `vlm` — IFC elements against the file itself
 
 The model names the structural elements in a synthesised site photo, and
 `bim_elements.json` records exactly which elements went into that render.
@@ -317,10 +317,10 @@ is a config entry plus at most one builder function:
 
 | UC | File | Builder | Items | Answer key |
 |---|---|---|---:|---|
-| uc1_safety | `uc1_safety_qa.jsonl` | `doc_filtered_qa` | 157 | figures and lists from safety documents, reusing the track 2 miner |
+| uc1_safety | `uc1_safety_qa.jsonl` | `doc_filtered_qa` | 157 | figures and lists from safety documents, reusing the `sft` miner |
 | uc2_rebar_spec | `uc2_spec_threshold.jsonl` | `doc_filtered_qa` | 150 | numeric limits from design standards and specifications |
 | uc3_bim_site | `uc3_cross_image.jsonl` | `vlm_labels` | 39 | the judgement label attached at generation, `unknown` excluded |
-| uc4_faithfulness | `uc4_faithfulness.jsonl` | `context_swap` | 160 | track 2 items whose clause was swapped for an unrelated one |
+| uc4_faithfulness | `uc4_faithfulness.jsonl` | `context_swap` | 160 | `sft` items whose clause was swapped for an unrelated one |
 | uc5_incident | `uc5_incident.jsonl` | `missing_measures` | 118 | the measures withheld from a clause's own enumeration |
 
 Three of these need explanation.
@@ -346,7 +346,7 @@ the comparison labels skew heavily to `mismatch`. Items whose label is
 `unknown` are excluded (`exclude_labels`): they grade honest judgement as
 wrong, and removing them moved the same model's score 0.375 → 0.590. Read
 scores with the `by_task` split, and treat the track as weaker evidence than
-tracks 2 (sft) and 3 (vlm) until the labels have been human-reviewed.
+`sft` and `vlm` until the labels have been human-reviewed.
 
 **Contamination marking.** Safety work standards and most specification
 documents sit on the training side of the split, so UC1/UC2/UC5 items drawn from
@@ -502,7 +502,7 @@ to low hundreds.
 |---|---:|---:|---:|
 | AECBench (Chinese AEC) | ~4,800 | 23 | ~200 |
 | KMMLU | 35,030 | 45 subjects | ~780 (multiple choice) |
-| **kcbench** | ~1,300 | track 2 + probe + 6 use-case tracks | 39-400 |
+| **kcbench** | ~1,300 | `sft` + `probe` + 6 use-case tracks | 39-400 |
 
 Size decides what a track can settle. Taking the half-width of a 95% binomial
 interval near p = 0.8, which is the accuracy target these tracks were built to
@@ -543,9 +543,9 @@ never journalled, so a resumed run retries them.
   KMMLU both spent most of their effort exactly there). `cb.py triage` narrows
   what a reviewer has to read to roughly a tenth of the set, and `cb.py review`
   keeps the verdicts across rebuilds, but the judgement is a person's.
-- Track 2 numeric questions inherit whatever ambiguity the source clause has.
-- Track 3 is bounded by how few real building models the corpus holds.
-- Track 1 needs an HF checkpoint and a GPU; it cannot be scored through Ollama.
+- `sft` numeric questions inherit whatever ambiguity the source clause has.
+- `vlm` is bounded by how few real building models the corpus holds.
+- `dapt` needs an HF checkpoint and a GPU; it cannot be scored through Ollama.
 
 Design decisions are recorded with the measurement that motivated them; see
 "Precedent for each grading type" above for how the grading was checked against

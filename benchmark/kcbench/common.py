@@ -34,20 +34,20 @@ BENCHMARK_NAME = "kcbench"
 BENCHMARK_VERSION = "v2"
 SCHEMA_VERSION = "kcbench-item-v2"
 
-# Track identity. The numbered tracks are numbered by the training stage each one
-# diagnoses -- 1 pre-training, 2 instruction tuning, 3 vision -- which is useful
-# to know and invisible in a bare number, so every track also answers to the name
-# its own items carry in their "track" field. Aliases resolve to the number
-# before anything else sees them: run files key on "1"/"2"/"3", and a run scored
-# as "sft" has to stay comparable with one scored as "2".
+# Track identity. Tracks are named for what they test, which is how every public
+# benchmark names its tasks. Three of them were numbered first -- 1 pre-training,
+# 2 instruction tuning, 3 vision -- and the numbers survive as the storage key:
+# run files are written with "1"/"2"/"3", so a run scored as "sft" has to stay
+# comparable with one scored as "2". Aliases resolve to the number on the way in
+# and the name comes back out in the logs.
 TRACK_NAMES: Dict[str, str] = {"1": "dapt", "2": "sft", "3": "vlm"}
 TRACK_ALIASES: Dict[str, str] = {
     "dapt": "1", "track1": "1", "1": "1",
     "sft": "2", "track2": "2", "2": "2",
     "vlm": "3", "track3": "3", "3": "3",
 }
-TRACKS_HELP = ("comma-separated. Numbered tracks answer to their name too: "
-               "1/dapt, 2/sft, 3/vlm")
+TRACKS_HELP = ("comma-separated names: dapt, sft, vlm. The numbers 1, 2 and 3 "
+               "still work for them")
 
 
 def resolve_tracks(spec: str) -> List[str]:
@@ -61,9 +61,8 @@ def resolve_tracks(spec: str) -> List[str]:
 
 
 def track_label(track: str) -> str:
-    """How a track is named in logs: the number, plus the name when it has one."""
-    name = TRACK_NAMES.get(track)
-    return f"{track} ({name})" if name else track
+    """How a track is named in logs and messages: by name, never by number."""
+    return TRACK_NAMES.get(track, track)
 
 
 DEFAULTS: Dict[str, Any] = {
