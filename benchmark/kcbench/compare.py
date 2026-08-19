@@ -124,7 +124,9 @@ def collect(run: dict) -> Dict[str, float]:
     for track, body in run.get("tracks", {}).items():
         for kind, metrics in (body.get("by_type") or {}).items():
             for m, v in metrics.items():
-                if m != "n":
+                # intervals and subgroup tables ride along in by_type; a delta
+                # only makes sense on the scalar scores
+                if m != "n" and isinstance(v, (int, float)):
                     flat[f"t{track}.{kind}.{m}"] = v
     return flat
 
