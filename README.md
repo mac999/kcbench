@@ -21,9 +21,10 @@ domain](#adapting-it-to-another-domain).
 
 ## Worked example
 
-How a run of this benchmark reads, from the project it was built for: Qwen3-8B after stage 1
-(domain-adaptive pre-training) on 26,767 chunks of Korean construction
-regulation. Read top to bottom, the charts are the argument for the benchmark.
+How a run of this benchmark reads, from the project it was built for: Qwen3-8B
+fine-tuned in two stages — domain-adaptive pre-training over 26,767 raw chunks,
+then supervised fine-tuning over 15,666 instruction pairs. Read top to bottom,
+the charts are the argument for the benchmark.
 
 **The training data behind these numbers.** The raw corpus is ~1 GB of Korean
 construction documents — design standards (KDS), specifications (KCS), safety
@@ -117,6 +118,32 @@ result that looks like a dramatic model failure deserves to be suspected of
 being a harness failure first — this one was caught because the symptom, every
 reply running to the generation limit, was too uniform to be a property of a
 model.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="doc/stage2-scored-dark.png">
+  <img alt="Stage 2 scored: base versus fine-tuned on the probe and held-out tracks, closed book. 14.7 versus 15.3 percent and 14.7 versus 15.6 percent; the 95 percent intervals overlap almost entirely." src="doc/stage2-scored-light.png">
+</picture>
+
+**And the verdict, after stage 2.** With the format damage repaired and both
+models decoded identically, the fine-tuned checkpoint scores within noise of
+its base on both tracks — McNemar p = 0.89 on the probe, 0.78 on held-out.
+Of 320 probe items the fine-tune gained 26 and lost 24: churn, not learning.
+The training pipeline restored what stage 1 had broken and added no measurable
+closed-book knowledge, and the loss curves alone — 2.09 → 1.45, then 0.33 →
+0.11, both textbook — would never have said so. That is the benchmark's case in
+one pair of bars: every other signal reported success.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="doc/sft-loss-dark.png">
+  <img alt="Stage 2 supervised fine-tuning loss over 978 steps, falling from 0.329 to about 0.11." src="doc/sft-loss-light.png">
+</picture>
+
+**The stage 2 run itself, for the record.** Two epochs, healthy curve, no
+anomalies. Its absolute values are not comparable to the stage 1 curve — SFT
+masks the prompt and scores only the answer tokens, an easier objective. A
+clean curve and a null result are the same story told twice: nothing about
+training dynamics says whether anything was learned.
+
 
 That is the whole argument for building a benchmark this way. Perplexity said
 the training worked. The probe set said what it had cost. You need both numbers,
@@ -471,6 +498,24 @@ After stage 1 (domain-adaptive pre-training, 836 steps, LoRA on Qwen3-8B):
 | `dapt` perplexity | 7.589 | 4.553 | -40.0% | 5,381 chunks |
 | probe numeric, closed book | 0.169 | 0.114 | -32.5% | 325 of 400 |
 | probe replies with no answer | 0.000 | 0.283 | — | 325 of 400 |
+
+After stage 2 (SFT, 978 steps on 15,666 instruction pairs, continuing the DAPT
+adapter), scored with identical decoding for both models (`--think off`,
+temperature 0):
+
+| Metric | Base | After DAPT+SFT | McNemar p | Items |
+|---|---:|---:|---:|---:|
+| probe numeric, closed book | 0.147 | 0.153 | 0.89 | 320 |
+| `sft` numeric, closed book | 0.147 | 0.156 | 0.78 | 320 |
+| replies with no answer | 0.000 | 0.000 | — | — |
+
+The base numbers differ from the first table because the decoding differs:
+these runs disable the reasoning pass so that the fine-tune — trained with
+`enable_thinking=False` — and its base are served the same format. Neither
+delta is distinguishable from noise: stage 2 repaired the answer format stage 1
+had damaged and added no measurable closed-book knowledge. The two-stage
+pipeline needs rework before its scores are worth reporting further — likely
+suspects are the LoRA rank and single-epoch stage 1.
 
 The probe figures are from 325 of the 400 items; the run was stopped there to
 free the GPU, and its journal is kept so it resumes rather than restarts. An earlier run of the same checkpoint scored 0.029 with 43%
