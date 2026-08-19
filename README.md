@@ -19,11 +19,11 @@ building models — which is where the name comes from: **K**orean
 of prompt strings; see [Adapting it to another
 domain](#adapting-it-to-another-domain).
 
-## What it looks like
+## Results, stage 1
 
-A worked example, from the run this was built for: Qwen3-8B being fine-tuned in
-two stages on 26,767 chunks of Korean construction regulation. Read top to
-bottom, the charts are the argument for the benchmark.
+A worked example, from the run this was built for: Qwen3-8B after stage 1
+(domain-adaptive pre-training) on 26,767 chunks of Korean construction
+regulation. Read top to bottom, the charts are the argument for the benchmark.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/closed-vs-open-dark.png">
@@ -73,18 +73,6 @@ of the next chart: a clean loss curve and a 40% perplexity drop are not evidence
 that the model got better at its job.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="doc/sft-loss-dark.png">
-  <img alt="Stage 2 supervised fine-tuning loss, in progress: 0.329 down to 0.173 by step 460 of 978." src="doc/sft-loss-light.png">
-</picture>
-
-**Stage 2 is running as this is written.** Supervised fine-tuning over 15,666
-instruction pairs mined from the same corpus, continuing the DAPT adapter. The
-absolute numbers are not comparable to the stage 1 curve — SFT masks the prompt
-and scores only the answer tokens, an easier objective — but the shape says the
-run is healthy. The scores that matter, probe and held-out QA on the finished
-checkpoint, are what this page will report next.
-
-<picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/probe-regression-dark.png">
   <img alt="Probe results for three runs: base, the fine-tuned checkpoint served without its chat template, and the same checkpoint served correctly. Correct answers 16.9, 2.9 and 11.4 percent; replies with no answer 0, 43.1 and 28.3 percent." src="doc/probe-regression-light.png">
 </picture>
@@ -121,7 +109,7 @@ That is the whole argument for building a benchmark this way. Perplexity said
 the training worked. The probe set said what it had cost. You need both numbers,
 on frozen items, before and after, or you are guessing.
 
-## Why a held-out set is not enough
+## Design: holdout and probe
 
 A benchmark carved out of the same corpus a model trained on answers only half
 the question. If a fine-tuned model scores well on held-out documents, it
@@ -280,7 +268,7 @@ of failed calls aborts the track, and so does a run of blank replies, which is
 what a server that answers but no longer generates looks like. Neither writes a
 score file. The journal survives, so restarting picks up where it stopped.
 
-## The full sequence
+## Workflow
 
 What the commands look like end to end, on the question this was built for:
 *we assembled a corpus and fine-tuned on it — did that help?* Times are from a
@@ -442,7 +430,7 @@ translating the terms changes the question. Every item carries an English
 prompt as well (`question_en`, and `answer_en` for numeric units), so
 `--lang en` scores the same answer key in English.
 
-## Reference results
+## Baseline and stage 1 scores
 
 `qwen3:8b`, before any fine-tuning, on the `kcbench` instantiation:
 
@@ -472,8 +460,7 @@ After stage 1 (domain-adaptive pre-training, 836 steps, LoRA on Qwen3-8B):
 | probe replies with no answer | 0.000 | 0.283 | — | 325 of 400 |
 
 The probe figures are from 325 of the 400 items; the run was stopped there to
-give the GPU back to stage 2 training, and its journal is kept so it can be
-finished later. An earlier run of the same checkpoint scored 0.029 with 43%
+free the GPU, and its journal is kept so it resumes rather than restarts. An earlier run of the same checkpoint scored 0.029 with 43%
 silence — that one was served without its chat template and stop tokens, and is
 the reason the registration step is written out in "The full sequence" above.
 Stage 2 is what the two-stage design is for; its scores will replace this table.

@@ -123,7 +123,7 @@ cannot be mixed up.
 python cb.py eval -m qwen3:8b --tag base-probe --tracks probe --closed-book
 ```
 
-### Open book, closed book
+### Book settings
 
 `--closed-book` withholds the passage and names the document and article
 instead. The distinction decides what the score means:
@@ -179,7 +179,7 @@ Reported per track:
 Only numeric and label items take part. A set-F1 answer is partially correct,
 and there is no accepted way to bin partial credit against a confidence.
 
-### Hallucination signal without an answer key
+### Self-check
 
 Every other track compares an answer against a key, which only works where a key
 exists. That rules out free-form output and any question nobody wrote an answer
@@ -212,7 +212,7 @@ The last two use the answer key, but only after the fact and only to check the
 detector. `separation` is the number that decides whether the signal is worth
 anything: at or below zero it is not detecting, it is guessing.
 
-### What a run file records
+### Run file metadata
 
 Enough to check the number later rather than trust it:
 
@@ -254,7 +254,7 @@ Stages can be skipped individually (`--skip-split`, `--skip-verify`,
 `--limit` runs the first N items per track — use it to smoke-test the harness
 before committing to a full scoring pass.
 
-### Settings that change what gets built
+### Build settings
 
 All live in `config.json`, and every one is overridden by the matching command
 line flag. Keep one config per dataset variant rather than editing this one.
@@ -542,16 +542,6 @@ parsed and compared with relative tolerance (`numeric_tolerance`, default 2%);
 namesets compare as sets after Unicode and punctuation normalisation; mappings
 key by key. Each item is sampled `repeats` times.
 
-Two harness settings are not optional:
-
-- **`num_ctx`** — without it the server sizes the KV cache from the model's
-  maximum context, which on qwen3 is 131k per sequence and 40 GB of KV cache on a
-  partial offload.
-- **`num_predict`** — a reasoning model spends most of its budget thinking. At
-  1024 the budget ran out mid-thought on a quarter of items and returned an empty
-  answer, which grades as wrong and reads as a knowledge failure. Runs record
-  `no_answer` per type so this is visible rather than inferred.
-
 ### Precedent for each grading type
 
 Every grading type here has a precedent in a published benchmark. The point is
@@ -576,7 +566,7 @@ rejection, information integration, counterfactual robustness. uc4 targets the
 first two — an unrelated clause is 100% noise. The other two are not measured
 yet.
 
-### Track size, and what it can decide
+### Track sizes and statistical power
 
 Per-task item counts are in the same range as published benchmarks. Multiple
 choice scales cheaply, which is why KMMLU runs to hundreds per subject;
@@ -602,11 +592,21 @@ test:
 | uc4_faithfulness | abstain/control | 160 | ±5pp | yes |
 | uc5_incident | nameset | 118 | ±7pp | yes |
 
-## Grading, continued
+## Harness settings
 
-Do not set `think: false` on a thinking model to avoid this: it does not stop the
-model reasoning, only stops the server separating the reasoning out, so the chain
-of thought lands in `response` and the answer never arrives.
+Two settings are not optional:
+
+- **`num_ctx`** — without it the server sizes the KV cache from the model's
+  maximum context, which on qwen3 is 131k per sequence and 40 GB of KV cache on a
+  partial offload.
+- **`num_predict`** — a reasoning model spends most of its budget thinking. At
+  1024 the budget ran out mid-thought on a quarter of items and returned an empty
+  answer, which grades as wrong and reads as a knowledge failure. Runs record
+  `no_answer` per type so this is visible rather than inferred.
+
+Do not set `think: false` on a thinking model to shorten replies: it does not
+stop the model reasoning, only stops the server separating the reasoning out, so
+the chain of thought lands in `response` and the answer never arrives.
 
 ## Output
 
