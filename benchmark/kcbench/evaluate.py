@@ -39,7 +39,11 @@ IFC_RE = re.compile(r"\bIfc[A-Za-z]+\b")
 
 def generate(cfg, model: str, prompt: str, images: List[str] | None = None,
              temperature: float | None = None) -> str:
-    # No "think" flag. Setting it false on a thinking model does not stop the
+    # eval.think=false makes the server pre-fill an empty think block, which is
+    # the exact assistant format enable_thinking=False trained into a fine-tune
+    # -- and without it that fine-tune's whole answer lands in the `thinking`
+    # field and grades as a blank reply. Left unset, nothing is sent and a
+    # thinking model reasons as it normally would.
     payload: Dict[str, Any] = {
         "model": model, "prompt": prompt, "stream": False,
         "options": {"temperature": cfg["eval"]["temperature"] if temperature is None
@@ -49,6 +53,8 @@ def generate(cfg, model: str, prompt: str, images: List[str] | None = None,
     }
     if images:
         payload["images"] = images
+    if cfg["eval"].get("think") is not None:
+        payload["think"] = bool(cfg["eval"]["think"])
     r = requests.post(f"{cfg['eval']['ollama_base_url']}/api/generate",
                       json=payload, timeout=cfg["eval"]["request_timeout"])
     r.raise_for_status()
@@ -140,11 +146,24 @@ def answered(reply: str) -> bool:
 
 
 def _lines(reply: str) -> List[str]:
+    """
+    The entries a reply enumerates. One entry per line is the shape the base
+    models produce; a fine-tune trained on instruction pairs answers the same
+    list comma-separated on a single line, and grading the separator instead of
+    the entries scored those correct answers zero. When newline splitting
+    yields a single line for a reply that carries commas, the commas are the
+    separators. Entries containing their own commas would over-split here, but
+    the mined entries are clause fragments, which do not.
+    """
     out = []
     for raw in reply.splitlines():
         s = re.sub(r"^\s*(?:[-*•]|\d{1,2}[.)]|[가나다라마바사아자차][.)])\s*", "", raw).strip()
         if s:
             out.append(s)
+    if len(out) == 1 and "," in out[0]:
+        parts = [t.strip() for t in out[0].split(",") if t.strip()]
+        if len(parts) > 1:
+            return parts
     return out
 
 
@@ -318,7 +337,7 @@ def run_meta(cfg) -> Dict[str, Any]:
         "schema": SCHEMA_VERSION,
         "decoding": {k: ev[k] for k in
                      ("temperature", "num_ctx", "num_predict", "repeats",
-                      "numeric_tolerance") if k in ev},
+                      "numeric_tolerance", "think") if k in ev},
         "holdout_seed": (cfg.get("holdout") or {}).get("seed"),
         "config_path": cfg.get("_config_path"),
     }
@@ -589,6 +608,10 @@ def main() -> int:
                          "(deterministic by item id), the answer key is the same either way")
     ap.add_argument("--repeats", type=int, help="samples per item (default 3)")
     ap.add_argument("--limit", type=int, help="first N items per track, for a smoke test")
+    ap.add_argument("--think", choices=["on", "off"],
+                    help="force the server-side reasoning toggle. 'off' serves the "
+                         "empty-think format an enable_thinking=False fine-tune was "
+                         "trained on; unset sends nothing")
     ap.add_argument("--closed-book", action="store_true",
                     help="withhold the passage, so the item tests domain knowledge rather "
                          "than reading comprehension")
@@ -601,6 +624,8 @@ def main() -> int:
         cfg["eval"]["ollama_base_url"] = args.ollama_url
     if args.repeats:
         cfg["eval"]["repeats"] = args.repeats
+    if args.think:
+        cfg["eval"]["think"] = args.think == "on"
     describe(cfg)
 
     tag = args.tag or args.model.replace(":", "-").replace("/", "-")
@@ -621,6 +646,7 @@ def main() -> int:
               "tag": tag, "model": args.model, "lang": args.lang,
               "repeats": cfg["eval"]["repeats"], "limit": args.limit,
               "book": "closed" if args.closed_book else "open",
+              "think": cfg["eval"].get("think"),
               "benchmark_dir": str(cfg["out_dir"]), "tracks": {}}
 
     started = time.time()
@@ -639,6 +665,7 @@ def main() -> int:
                               {"model": args.model, "lang": args.lang,
                                "repeats": cfg["eval"]["repeats"], "limit": args.limit,
                                "closed_book": bool(args.closed_book),
+                               "think": cfg["eval"].get("think"),
                                "items": len(rows)})
             resumed = ckpt.load()
             if resumed:
