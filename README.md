@@ -19,9 +19,9 @@ building models — which is where the name comes from: **K**orean
 of prompt strings; see [Adapting it to another
 domain](#adapting-it-to-another-domain).
 
-## Results, stage 1
+## Worked example
 
-A worked example, from the run this was built for: Qwen3-8B after stage 1
+How a run of this benchmark reads, from the project it was built for: Qwen3-8B after stage 1
 (domain-adaptive pre-training) on 26,767 chunks of Korean construction
 regulation. Read top to bottom, the charts are the argument for the benchmark.
 
