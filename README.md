@@ -21,9 +21,9 @@ domain](#adapting-it-to-another-domain).
 
 ## What it looks like
 
-A worked example, from the run this was built for: Qwen3-8B given
-domain-adaptive pre-training on 26,767 chunks of Korean construction regulation.
-Four charts, and between them they tell you what the benchmark is for.
+A worked example, from the run this was built for: Qwen3-8B being fine-tuned in
+two stages on 26,767 chunks of Korean construction regulation. Read top to
+bottom, the charts are the argument for the benchmark.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/closed-vs-open-dark.png">
@@ -35,6 +35,21 @@ it. Hand them the clause and they answer correctly 85–95% of the time — they
 Korean regulation fluently. Take the clause away and none of them clears 17% —
 they have not memorised any of it. That gap is the room fine-tuning has to work
 in, and it is why the closed-book number is the one this benchmark reports.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="doc/uc-baseline-dark.png">
+  <img alt="Use-case tracks on the untrained base model, closed book versus open book. Closed book: 16, 0, 9 and 2 percent. Open book: 95, 53, 95 and 66 percent." src="doc/uc-baseline-light.png">
+</picture>
+
+**The same gap holds on the agent's own tasks.** The use-case tracks mirror the
+five jobs the fine-tuned agent is being built for — safety lookups, rebar
+specification checks, incident analysis. Handed the clause, the base model
+scores 53–95%; without it, 0–16%. The open-book numbers are what matter for the
+deployed system, since retrieval will supply the clause; the closed-book floor
+is what fine-tuning is trying to raise. uc4, the faithfulness track, is the
+exception worth naming: given a swapped, unrelated clause, the base model
+correctly abstains 95% of the time — refusing to invent is one thing it already
+does well.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/dapt-perplexity-dark.png">
@@ -56,6 +71,18 @@ expect if the model were learning the domain rather than the dataset.
 836 steps and the curve has nothing odd in it. Worth showing precisely because
 of the next chart: a clean loss curve and a 40% perplexity drop are not evidence
 that the model got better at its job.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="doc/sft-loss-dark.png">
+  <img alt="Stage 2 supervised fine-tuning loss, in progress: 0.329 down to 0.173 by step 460 of 978." src="doc/sft-loss-light.png">
+</picture>
+
+**Stage 2 is running as this is written.** Supervised fine-tuning over 15,666
+instruction pairs mined from the same corpus, continuing the DAPT adapter. The
+absolute numbers are not comparable to the stage 1 curve — SFT masks the prompt
+and scores only the answer tokens, an easier objective — but the shape says the
+run is healthy. The scores that matter, probe and held-out QA on the finished
+checkpoint, are what this page will report next.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/probe-regression-dark.png">
