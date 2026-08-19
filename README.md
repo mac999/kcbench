@@ -25,6 +25,19 @@ A worked example, from the run this was built for: Qwen3-8B after stage 1
 (domain-adaptive pre-training) on 26,767 chunks of Korean construction
 regulation. Read top to bottom, the charts are the argument for the benchmark.
 
+**The training data behind these numbers.** The raw corpus is ~1 GB of Korean
+construction documents — design standards (KDS), specifications (KCS), safety
+and disaster regulation, quality and inspection, contract and cost, BIM and
+smart construction, IFC building models, research reports — thirteen categories
+in all, collected from public sources. It was turned into AI-ready training
+data (chunked text, instruction pairs, VLM captions) with
+[gen_aec_syn_data](https://github.com/mac999/gen_aec_syn_data), a synthetic-data
+pipeline by the same author; the processed dataset is available on
+[Google Drive](https://drive.google.com/drive/folders/1Cz7S-QhXRwQgsajDDyjBAC8vK30jQQTN?usp=drive_link).
+kcbench then split that dataset — the held-out documents became the evaluation
+tracks, the rest became `data/train/`, and every number below rests on that
+split.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/closed-vs-open-dark.png">
   <img alt="Numeric accuracy on the sft track for six untrained models, closed book versus open book. Open book every model scores above 84 percent; closed book none clears 17 percent." src="doc/closed-vs-open-light.png">
