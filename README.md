@@ -503,10 +503,12 @@ After stage 2 (SFT, 978 steps on 15,666 instruction pairs, continuing the DAPT
 adapter), scored with identical decoding for both models (`--think off`,
 temperature 0):
 
-| Metric | Base | After DAPT+SFT | McNemar p | Items |
-|---|---:|---:|---:|---:|
-| probe numeric, closed book | 0.147 | 0.153 | 0.89 | 320 |
-| `sft` numeric, closed book | 0.147 | 0.156 | 0.78 | 320 |
+| Metric | Base | After DAPT+SFT | Significance | Items |
+|---|---:|---:|---|---:|
+| probe numeric, closed book | 0.147 | 0.153 | p = 0.89, noise | 320 |
+| `sft` numeric, closed book | 0.147 | 0.156 | p = 0.78, noise | 320 |
+| `sft` numeric, open book | 0.944 | 0.959 | p = 0.18, noise | 320 |
+| `sft` nameset F1, open book | 0.587 | 0.379 | **−0.21 [−0.29, −0.12], significant** | 75 |
 | replies with no answer | 0.000 | 0.000 | — | — |
 
 The base numbers differ from the first table because the decoding differs:
