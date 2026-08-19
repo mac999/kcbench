@@ -462,7 +462,7 @@ After stage 1 (domain-adaptive pre-training, 836 steps, LoRA on Qwen3-8B):
 The probe figures are from 325 of the 400 items; the run was stopped there to
 free the GPU, and its journal is kept so it resumes rather than restarts. An earlier run of the same checkpoint scored 0.029 with 43%
 silence — that one was served without its chat template and stop tokens, and is
-the reason the registration step is written out in "The full sequence" above.
+the reason the registration step is written out in the workflow above.
 Stage 2 is what the two-stage design is for; its scores will replace this table.
 
 ## Limits
