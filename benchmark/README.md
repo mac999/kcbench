@@ -212,6 +212,14 @@ The last two use the answer key, but only after the fact and only to check the
 detector. `separation` is the number that decides whether the signal is worth
 anything: at or below zero it is not detecting, it is guessing.
 
+Measured on the reference corpus, it is guessing. qwen3:8b closed book scores a
+separation of 0.026, because 61% of its wrong answers are *consistently* wrong —
+the same invented figure at every sample. Consistency-based detection assumes
+hallucinations vary across samples, and a model that hallucinates stably (the
+same behaviour its calibration error measures) defeats that assumption. Run the
+validation before trusting the flag on your own corpus; it exists because this
+happens.
+
 ### Run file metadata
 
 Enough to check the number later rather than trust it:

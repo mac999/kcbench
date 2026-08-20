@@ -243,6 +243,9 @@ def main() -> int:
                     help="sampling temperature for self_consistency (default from config)")
     ap.add_argument("--bins", type=int, help="confidence bins (default from config)")
     ap.add_argument("--limit", type=int, help="first N items per track, for a smoke test")
+    ap.add_argument("--think", choices=["on", "off"],
+                    help="server-side reasoning toggle; 'off' matches an "
+                         "enable_thinking=False fine-tune")
     ap.add_argument("--closed-book", action="store_true")
     ap.add_argument("--ollama-url", help="override the Ollama endpoint")
     ap.add_argument("--runs-dir", help="where run files go (default <out-dir>/runs)")
@@ -251,6 +254,8 @@ def main() -> int:
     cfg = resolve_config(args)
     if args.ollama_url:
         cfg["eval"]["ollama_base_url"] = args.ollama_url
+    if args.think:
+        cfg["eval"]["think"] = args.think == "on"
     cal = cfg.setdefault("calibration", {})
     for key in ("method", "samples", "temperature", "bins"):
         if getattr(args, key, None) is not None:

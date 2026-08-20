@@ -145,6 +145,22 @@ clean curve and a null result are the same story told twice: nothing about
 training dynamics says whether anything was learned.
 
 
+**The rest of the picture, from the remaining tracks.** Scored the same way,
+the fine-tune is not uniformly a null result. Its calibration improved
+dramatically: expected calibration error halved, 0.641 → 0.320 (Brier 0.554 →
+0.226) — the base model repeats the same wrong number at 78% self-consistency,
+while the fine-tune's samples disagree when it does not know. On the agent's
+use-case tracks, the faithfulness behaviour survived training (abstention on
+swapped clauses 0.95 → 0.93, and accuracy on unmodified controls improved
+0.875 → 0.938), and incident analysis improved significantly (F1 +0.096
+[+0.03, +0.17]) while safety-list enumeration regressed the same way the
+held-out track did (−0.148, significant). And the self-check validation earned
+its keep by failing honestly: sampling consistency separates wrong answers
+from right ones by 0.026 — nothing — because 61% of this model's wrong answers
+are *consistently* wrong, which is the same confident-hallucination behaviour
+the calibration number measures. A hallucination detector that assumes invented
+facts vary across samples does not work on a model that invents them stably.
+
 That is the whole argument for building a benchmark this way. Perplexity said
 the training worked. The probe set said what it had cost. You need both numbers,
 on frozen items, before and after, or you are guessing.
@@ -509,6 +525,10 @@ temperature 0):
 | `sft` numeric, closed book | 0.147 | 0.156 | p = 0.78, noise | 320 |
 | `sft` numeric, open book | 0.944 | 0.959 | p = 0.18, noise | 320 |
 | `sft` nameset F1, open book | 0.587 | 0.379 | **−0.21 [−0.29, −0.12], significant** | 75 |
+| `sft` ECE, closed book | 0.641 | **0.320** | self-consistency, 8 samples | 320 |
+| uc4 faithfulness, open book | 0.912 | 0.931 | p = 0.51, preserved | 160 |
+| uc5 incident F1, open book | 0.468 | 0.564 | **+0.10 [+0.03, +0.17], significant** | 118 |
+| uc1 nameset F1, open book | 0.473 | 0.325 | −0.15 [−0.24, −0.06], significant | 72 |
 | replies with no answer | 0.000 | 0.000 | — | — |
 
 The base numbers differ from the first table because the decoding differs:

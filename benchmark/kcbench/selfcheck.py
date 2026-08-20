@@ -121,9 +121,10 @@ def summarise(points: List[dict], threshold: float) -> Dict[str, Any]:
             # apart the two populations sit. At or below zero it is not a detector
             "separation": (round(statistics.fmean(wrong) - statistics.fmean(right), 4)
                            if wrong and right else None),
-            "flag_precision": (round(sum(1 for p in flagged
-                                         if p.get("correct", 1.0) < 0.5) / len(flagged), 4)
-                               if flagged else None),
+            # over graded items only: an ungraded item is not a right answer,
+            # and counting it as one biased this number downward
+            "flag_precision": (round(sum(1 for p in fs if p["correct"] < 0.5) / len(fs), 4)
+                               if (fs := [p for p in flagged if "correct" in p]) else None),
         }
     return out
 
@@ -143,6 +144,9 @@ def main() -> int:
     ap.add_argument("--threshold", type=float,
                     help="inconsistency at or above which an answer is flagged")
     ap.add_argument("--limit", type=int, help="first N items per track")
+    ap.add_argument("--think", choices=["on", "off"],
+                    help="server-side reasoning toggle; 'off' matches an "
+                         "enable_thinking=False fine-tune")
     ap.add_argument("--closed-book", action="store_true")
     ap.add_argument("--ollama-url", help="override the Ollama endpoint")
     ap.add_argument("--runs-dir", help="where run files go (default <out-dir>/runs)")
@@ -151,6 +155,8 @@ def main() -> int:
     cfg = resolve_config(args)
     if args.ollama_url:
         cfg["eval"]["ollama_base_url"] = args.ollama_url
+    if args.think:
+        cfg["eval"]["think"] = args.think == "on"
     sc = cfg.setdefault("selfcheck", {})
     for key in ("samples", "temperature", "threshold"):
         if getattr(args, key, None) is not None:
