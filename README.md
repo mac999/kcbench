@@ -39,8 +39,10 @@ kcbench then split that dataset — the held-out documents became the evaluation
 tracks, the rest became `data/train/`, and every number below rests on that
 split.
 
-**Known limits of this example dataset.** The charts below are honest about the
-corpus they came from, so its weaknesses belong up front. Nearly all of its
+**Known limits of this example dataset, as of August 2026.** The corpus is
+still being collected and these figures describe the snapshot the example was
+run on, not the dataset's ceiling. The charts below are honest about the corpus
+they came from, so its weaknesses belong up front. Nearly all of its
 instruction pairs (95%) carry the source clause in the prompt and answer in a
 median of 56 characters — it was generated for RAG-style use, so it teaches
 extraction and brevity, and stage 2 below shows exactly that signature.
