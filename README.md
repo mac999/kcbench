@@ -324,6 +324,59 @@ of failed calls aborts the track, and so does a run of blank replies, which is
 what a server that answers but no longer generates looks like. Neither writes a
 score file. The journal survives, so restarting picks up where it stopped.
 
+## The development loop
+
+A benchmark like this is one half of a cycle; the other half is what you do
+about the numbers. The intended loop is the standard data-centric one:
+
+```
+measure -> diagnose which capability is missing -> fix the TRAINING DATA
+        -> retrain -> measure again, same frozen items
+```
+
+The instrument never changes inside the loop. What changes is the training set,
+because that is where the diagnosis almost always points: in the worked example
+above, closed-book recall stayed flat not because the model lacked capacity but
+because 95% of the instruction pairs carried the source clause in the prompt —
+the training taught extraction and the benchmark asked for recall. That is a
+dataset design gap, and no amount of hyperparameter tuning fixes a task that
+was never trained.
+
+Editing training data in response to benchmark findings is legitimate practice
+— FLAN and T0 mix zero-context and reading-comprehension formats deliberately,
+and the knowledge-injection literature prescribes paraphrase diversity for
+facts — but only on one side of a line:
+
+| Legitimate | Goodharting |
+|---|---|
+| add the missing *format* or *capability* to the training data | plant the held-out answers in the training data |
+| iterate against `probe` (intentionally contaminated, diagnostic) | iterate against the held-out tracks until they look good |
+| re-measure on the same frozen items | change the items when the score disappoints |
+
+kcbench enforces the line mechanically: the training split excludes held-out
+text by content digest, `cb.py verify` re-proves it after any data change, and
+the probe/holdout pair exists so that iteration pressure lands on the
+deliberately contaminated set rather than the one that decides the result.
+
+`training/augment_sft.py` is the worked example's own turn of this loop: it
+emits closed-book variants of the open-book pairs and mines full-enumeration
+pairs from the training-side chunks, both aimed at the two capabilities the
+benchmark showed missing. Its ratios and caps are flags, because the right
+mixture is an empirical question the next measurement answers.
+
+### What this benchmark is good at, and not
+
+Good at: before/after deltas on frozen items; telling acquisition from
+generalisation (probe vs holdout); catching harness faults (three were found by
+its own runs: a serving-template mismatch, a reasoning-parse mismatch, and a
+grader format bias); calibration and abstention, which scores alone miss.
+
+Not good at: absolute rankings against public leaderboards (items are
+rule-mined, not expert-written); judging free-form prose (extractive answer
+types only — `selfcheck` is the reference-free aid there, and its own
+validation showed consistency is no hallucination signal on a model that
+hallucinates stably); vision beyond a smoke test (`vlm` is 10 items).
+
 ## Workflow
 
 What the commands look like end to end, on the question this was built for:

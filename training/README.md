@@ -8,10 +8,42 @@ instrument that shares code with the thing it measures stops being one.
 training/
   dapt.py              domain-adaptive pre-training (stage 1)
   sft.py               supervised fine-tuning (stage 2)
+  augment_sft.py       rebalance the pairs toward recall and enumeration
   merge.py             fold the adapter into the base weights
+  resume_dapt.sh       restart stage 1 from its newest checkpoint
+  resume_sft.sh        restart stage 2 from its newest checkpoint
+  monitor.sh           clock / power / temperature / memory, one CSV line a minute
   out/                 checkpoints, adapters, logs
   README.md
 ```
+
+## Augmenting the pairs
+
+The generated pairs are open-book by construction — 95% carry the source clause
+in the prompt — so training on them teaches extraction, and the benchmark
+showed closed-book recall flat and enumeration damaged. `augment_sft.py` emits
+a rebalanced set without touching the originals:
+
+```
+python augment_sft.py                          # defaults below
+python augment_sft.py --closed-ratio 0.5 --enum-max 3000
+```
+
+| Flag | Default | What it controls |
+|---|---|---|
+| `--closed-ratio` | 0.4 | share of open-book pairs also emitted with the clause removed, so the same question is asked from memory. Originals stay in |
+| `--no-enum` | off | skip the enumeration mining |
+| `--enum-max` | 4000 | cap on mined list pairs |
+| `--enum-min-items` | 3 | shortest list worth asking about |
+| `--enum-max-per-doc` | 6 | per-document cap, so one code does not dominate |
+| `--seed` | fixed | shuffle and sampling reproducibility |
+
+The right mixture is an empirical question — these are flags precisely so the
+next benchmark run can answer it. Inputs are the already-split training files,
+which exclude held-out documents by content digest, so the derived pairs are
+clean by construction; `cb.py verify` re-proves it after any rebuild.
+
+Train stage 2 on the result with `sft.py -d .../train_sft_aug.jsonl`.
 
 ## What this trains, and in what order
 
