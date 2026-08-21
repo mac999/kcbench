@@ -39,6 +39,21 @@ kcbench then split that dataset — the held-out documents became the evaluation
 tracks, the rest became `data/train/`, and every number below rests on that
 split.
 
+**Known limits of this example dataset.** The charts below are honest about the
+corpus they came from, so its weaknesses belong up front. Nearly all of its
+instruction pairs (95%) carry the source clause in the prompt and answer in a
+median of 56 characters — it was generated for RAG-style use, so it teaches
+extraction and brevity, and stage 2 below shows exactly that signature.
+The corpus collects the same regulation more than once, under names differing
+by a suffix and as amendment pairs — splitting by document name would have
+leaked 759 held-out chunks into training, which is why the split works by
+content digest instead. And of its 93 IFC building models, 57 are parser
+regression fixtures with one or two elements each; after exclusions only 12
+carry enough geometry to ask about, which is why the `vlm` track is 10 items
+and read as a smoke test, not a measurement. None of these are benchmark
+defects, but every number below should be read knowing them — and the first
+one is what the development loop at the end of this example exists to fix.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/closed-vs-open-dark.png">
   <img alt="Numeric accuracy on the sft track for six untrained models, closed book versus open book. Open book every model scores above 84 percent; closed book none clears 17 percent." src="doc/closed-vs-open-light.png">
