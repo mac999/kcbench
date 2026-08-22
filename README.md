@@ -381,6 +381,30 @@ pairs from the training-side chunks, both aimed at the two capabilities the
 benchmark showed missing. Its ratios and caps are flags, because the right
 mixture is an empirical question the next measurement answers.
 
+That measurement has since been taken — stage 2 was retrained on the augmented
+set (22,249 pairs) and rescored on the same frozen items — and it answered all
+three ways a turn of the loop can:
+
+- **One fix validated.** The 637 enumeration pairs moved open-book nameset F1
+  0.379 → 0.491 (+0.11, interval [+0.05, +0.18]), recovering more than half of
+  the regression. The mechanism was the mechanism.
+- **One fix refuted.** 5,946 closed-book variants moved probe recall not at
+  all — 0.153 → 0.128, still level with the untrained base. Asking from memory
+  once per fact does not put the fact into a rank-64 adapter; the
+  knowledge-injection literature's prescription (many paraphrases per fact,
+  more pre-training passes) is the next candidate, and it is a data-generation
+  and budget question, not a mixing-ratio question.
+- **One tradeoff surfaced.** Training the model to answer without a clause also
+  taught it to answer when the clause does not support one: abstention on
+  swapped clauses fell 0.925 → 0.750 (p = 0.0005), the first significant
+  regression on the safety track across the whole example. A closed-book
+  mixture needs abstention pairs alongside it, or it trades recall it does not
+  gain for honesty it had.
+
+Which is the loop working as intended: two measurements in, the dataset's
+authors know one thing to keep, one thing not to scale, and one interaction
+they would not have predicted.
+
 ### What this benchmark is good at, and not
 
 Good at: before/after deltas on frozen items; telling acquisition from
