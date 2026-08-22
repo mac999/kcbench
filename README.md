@@ -375,11 +375,16 @@ text by content digest, `cb.py verify` re-proves it after any data change, and
 the probe/holdout pair exists so that iteration pressure lands on the
 deliberately contaminated set rather than the one that decides the result.
 
-`training/augment_sft.py` is the worked example's own turn of this loop: it
-emits closed-book variants of the open-book pairs and mines full-enumeration
-pairs from the training-side chunks, both aimed at the two capabilities the
-benchmark showed missing. Its ratios and caps are flags, because the right
-mixture is an empirical question the next measurement answers.
+`training/augment_sft.py` is the worked example's own turn of this loop. It
+started with two transformations aimed at the capabilities the benchmark showed
+missing — closed-book variants of the open-book pairs, and full-enumeration
+pairs mined from the training-side chunks — and the second measured turn added
+two more that its results demanded: LLM-generated paraphrases of each
+closed-book question (a fact stated one way is stored but not extractable) and
+refusal-target pairs with swapped clauses (because closed-book training alone
+taught answering without support). Every ratio and cap is a flag, because the
+right mixture is an empirical question the next measurement answers; the flag
+table is in [training/README.md](training/README.md).
 
 That measurement has since been taken — stage 2 was retrained on the augmented
 set (22,249 pairs) and rescored on the same frozen items — and it answered all
