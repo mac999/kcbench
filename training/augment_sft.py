@@ -8,8 +8,29 @@ Augment the SFT pairs toward closed-book recall and complete enumeration.
 
 Why this exists: the generated pairs are open-book by construction -- 95% carry
 the source clause in the prompt -- so training on them teaches extraction, not
-recall, and the benchmark showed exactly that (closed-book flat, p~0.9). Two
-transformations, both configurable:
+recall, and the benchmark showed exactly that (closed-book flat, p~0.9). The
+second measured turn of the loop refined the recipe: bare closed-book variants
+injected nothing and damaged abstention (0.925 -> 0.750), while enumeration
+pairs recovered half the nameset regression. The transformations below encode
+what the literature prescribes for each finding:
+
+  paraphrases      a fact stated one way is stored but not extractable; restate
+                   it several ways and extraction follows (Allen-Zhu & Li,
+                   "Physics of Language Models" 3.1; Ovadia et al. on
+                   fine-tuning vs RAG). Questions are rephrased by a local
+                   model, answers stay fixed, and rewrites that leak the
+                   answer, collapse to the original, or lose the subject are
+                   filtered (Self-Instruct's dedupe-and-filter discipline).
+  abstention pairs closed-book training teaches answering without support
+                   unless refusal is trained beside it (R-Tuning, NAACL 2024).
+                   A share of pairs get their clause swapped for an unrelated
+                   one, verified not to contain the answer, with a refusal as
+                   the target -- phrasing rotated so the model learns the
+                   behaviour, not a string.
+  template rotation one instruction format overfits to that format (FLAN/T0);
+                   closed-book variants rotate through several.
+
+All transformations, ratios and caps are flags:
 
   closed-book variants   a share of pairs duplicated with the clause removed,
                          so the same question is also asked from memory. The
@@ -35,8 +56,22 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 TRAIN = HERE.parent / "benchmark" / "data" / "train"
 
-ITEM_RE = re.compile(r"^\s*(?:(\d{1,2})\.|([가나다라마바사아자차])\.)\s+(.+)$")
-LEAD_RE = re.compile(r"(다음\s*각\s*호|다음과\s*같다|다음\s*사항|아래와\s*같다|다음\s*기준)")
+CB_TEMPLATES = [
+    "{q}",
+    "{q} 기억나는 대로 답하시오.",
+    "조문을 보지 않고 답하시오. {q}",
+    "{q} 관련 규정에 근거해 답하시오.",
+]
+REFUSALS = [
+    "제시된 조문에서는 확인할 수 없습니다.",
+    "주어진 조문으로는 답할 수 없습니다.",
+    "해당 내용은 제시된 자료 없음.",
+    "제시된 조문에서 관련 근거를 확인할 수 없습니다.",
+]
+WORD_RE = re.compile(r"[0-9A-Za-z가-힣]{2,}")
+
+ITEM_RE = re.compile(r"^\s*(?:(\d{1,2})[.)]|([가나다라마바사아자차])[.)]|[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮])\s+(.+)$")
+LEAD_RE = re.compile(r"(다음\s*각\s*호|다음과\s*같다|다음\s*사항|아래와\s*같다|다음\s*기준|다음\s*조건|다음\s*서류|다음\s*항목|다음\s*내용|다음\s*각\s*목)")
 
 
 def load(path: Path):
@@ -56,10 +91,99 @@ def closed_variants(rows, ratio: float, rng: random.Random):
             continue
         v = json.loads(json.dumps(r, ensure_ascii=False))
         v["id"] = f"{r.get('id', 'sft')}_cb"
+        v["instruction"] = rng.choice(CB_TEMPLATES).format(q=r["instruction"].strip())
         v["input"] = {k: val for k, val in (inp or {}).items() if k != "context"}
         v["input"]["context"] = ""
         v["task_type"] = "regulation_recall"
         out.append(v)
+    return out
+
+
+def content_words(text: str) -> set:
+    return set(WORD_RE.findall(text))
+
+
+def abstain_pairs(rows, ratio: float, rng: random.Random):
+    """
+    Swap a pair's clause for an unrelated one and make refusal the target.
+
+    The swapped clause is checked not to contain the answer, so refusing is the
+    only right response. Refusal phrasing rotates: the point is the behaviour,
+    and a single fixed string would train a password instead.
+    """
+    pool = [r for r in rows
+            if isinstance(r.get("input"), dict)
+            and len((r["input"].get("context") or "")) > 60]
+    out = []
+    for r in pool:
+        if rng.random() > ratio:
+            continue
+        ans = ""
+        o = r.get("output")
+        ans = (o.get("answer", "") if isinstance(o, dict) else str(o)).strip()
+        for _ in range(6):
+            donor = rng.choice(pool)
+            ctx = donor["input"]["context"]
+            if donor is r or (ans and ans in ctx):
+                continue
+            if content_words(r["instruction"]) & content_words(ctx) and donor.get("doc_id") == r.get("doc_id"):
+                continue
+            v = json.loads(json.dumps(r, ensure_ascii=False))
+            v["id"] = f"{r.get('id', 'sft')}_ab"
+            v["input"]["context"] = ctx
+            v["output"] = {"answer": rng.choice(REFUSALS)}
+            v["task_type"] = "regulation_abstain"
+            out.append(v)
+            break
+    return out
+
+
+def paraphrase_pairs(pairs, n: int, model: str, url: str, rng: random.Random,
+                     log_every: int = 200):
+    """
+    Ask a local model for n rephrasings of each closed-book question.
+
+    Filters, in order: the rewrite must not contain the answer, must not
+    collapse to the original, must keep at least half the question's content
+    words (so the subject survives), and must be new across the whole batch.
+    """
+    import requests
+    out, seen = [], set()
+    for i, r in enumerate(pairs, 1):
+        q = r["instruction"].strip()
+        o = r.get("output")
+        ans = (o.get("answer", "") if isinstance(o, dict) else str(o)).strip()
+        prompt = (f"다음 질문을 뜻은 같지만 표현이 다른 질문 {n}개로 바꿔 쓰시오.\n"
+                  f"규칙: 묻는 대상과 조건은 유지할 것. 답을 포함하지 말 것. "
+                  f"각 줄에 하나씩, 번호 없이 쓸 것.\n\n질문: {q}")
+        try:
+            resp = requests.post(f"{url}/api/generate", json={
+                "model": model, "prompt": prompt, "stream": False, "think": False,
+                "options": {"temperature": 0.8, "num_predict": 400, "num_ctx": 4096}},
+                timeout=180).json().get("response", "")
+        except Exception:
+            continue
+        base_words = content_words(q)
+        kept = 0
+        for line in resp.splitlines():
+            cand = line.strip().strip("-•").strip()
+            if not (10 <= len(cand) <= 300):
+                continue
+            if cand == q or (ans and ans in cand) or cand in seen:
+                continue
+            if len(content_words(cand) & base_words) < len(base_words) * 0.4:
+                continue
+            v = json.loads(json.dumps(r, ensure_ascii=False))
+            v["id"] = f"{r.get('id', 'sft')}_pp{kept}"
+            v["instruction"] = cand
+            v["task_type"] = "regulation_recall_paraphrase"
+            out.append(v)
+            seen.add(cand)
+            kept += 1
+            if kept >= n:
+                break
+        if i % log_every == 0:
+            print(f"  paraphrase {i}/{len(pairs)} -> {len(out)}", flush=True)
     return out
 
 
@@ -130,6 +254,14 @@ def main() -> int:
                     help="shortest list worth asking about (default 3)")
     ap.add_argument("--enum-max-per-doc", type=int, default=6,
                     help="per-document cap, so one code does not dominate (default 6)")
+    ap.add_argument("--abstain-ratio", type=float, default=0.0,
+                    help="share of open-book pairs re-issued with an unrelated "
+                         "clause and a refusal target (R-Tuning style). 0 disables")
+    ap.add_argument("--paraphrase-n", type=int, default=0,
+                    help="rephrasings per closed-book question, generated by a "
+                         "local model. 0 disables")
+    ap.add_argument("--paraphrase-model", default="qwen3:8b")
+    ap.add_argument("--ollama-url", default="http://localhost:11434")
     ap.add_argument("--seed", type=int, default=20260821)
     args = ap.parse_args()
 
@@ -140,7 +272,12 @@ def main() -> int:
         load(args.dapt), args.enum_max, args.enum_min_items,
         args.enum_max_per_doc, rng)
 
-    merged = base + closed + enums
+    abstains = abstain_pairs(base, args.abstain_ratio, rng) if args.abstain_ratio > 0 else []
+    paras = (paraphrase_pairs(closed, args.paraphrase_n, args.paraphrase_model,
+                              args.ollama_url, rng)
+             if args.paraphrase_n > 0 and closed else [])
+
+    merged = base + closed + enums + abstains + paras
     rng.shuffle(merged)
     with args.out.open("w", encoding="utf-8") as fh:
         for r in merged:
@@ -149,6 +286,8 @@ def main() -> int:
     print(f"open-book originals {len(base)}")
     print(f"closed-book variants {len(closed)}  (ratio {args.closed_ratio})")
     print(f"enumeration pairs    {len(enums)}")
+    print(f"abstention pairs     {len(abstains)}  (ratio {args.abstain_ratio})")
+    print(f"paraphrase pairs     {len(paras)}  (n {args.paraphrase_n})")
     print(f"total -> {args.out}  {len(merged)} pairs")
     return 0
 
