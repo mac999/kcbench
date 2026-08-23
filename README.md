@@ -24,7 +24,8 @@ domain](#adapting-it-to-another-domain).
 How a run of this benchmark reads, from the project it was built for: Qwen3-8B
 fine-tuned in two stages — domain-adaptive pre-training over 26,767 raw chunks,
 then supervised fine-tuning over 15,666 instruction pairs. Read top to bottom,
-the charts are the argument for the benchmark.
+the charts are the argument for the benchmark. Every metric named below is
+defined under [What each metric means](#what-each-metric-means).
 
 **The training data behind these numbers.** The raw corpus is ~1 GB of Korean
 construction documents — design standards (KDS), specifications (KCS), safety
@@ -62,10 +63,11 @@ one is what the development loop at the end of this example exists to fix.
 </picture>
 
 **Start here: is this corpus even worth training on?** Six models that never saw
-it. Hand them the clause and they answer correctly 85–95% of the time — they read
-Korean regulation fluently. Take the clause away and none of them clears 17% —
-they have not memorised any of it. That gap is the room fine-tuning has to work
-in, and it is why the closed-book number is the one this benchmark reports.
+it, scored on `sft` numeric accuracy. Hand them the clause and they answer
+correctly 85–95% of the time — they read Korean regulation fluently. Take the
+clause away and none of them clears 17% — they have not memorised any of it.
+That gap is the room fine-tuning has to work in, and it is why the closed-book
+number is the one this benchmark reports.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/uc-baseline-dark.png">
@@ -74,13 +76,27 @@ in, and it is why the closed-book number is the one this benchmark reports.
 
 **The same gap holds on the agent's own tasks.** The use-case tracks mirror the
 five jobs the fine-tuned agent is being built for — safety lookups, rebar
-specification checks, incident analysis. Handed the clause, the base model
-scores 53–95%; without it, 0–16%. The open-book numbers are what matter for the
-deployed system, since retrieval will supply the clause; the closed-book floor
-is what fine-tuning is trying to raise. uc4, the faithfulness track, is the
-exception worth naming: given a swapped, unrelated clause, the base model
-correctly abstains 95% of the time — refusing to invent is one thing it already
-does well.
+specification checks, incident analysis. The chart covers three of them, split
+by answer type rather than by track, because a numeric accuracy and a nameset
+F1 are different measurements and one bar averaging them would hide which moved:
+numeric accuracy runs 95% open book against 9–16% closed, nameset F1 53–66%
+against 0–2%. The open-book numbers are what matter for the deployed system,
+since retrieval will supply the clause; the closed-book floor is what
+fine-tuning is trying to raise.
+
+Two things to know before reading the closed-book bars. uc2 and uc5 draw most of
+their items from training-side documents — 143 of 150 and 96 of 118 — so their
+closed-book figures are probe-style diagnostics, not held-out measurements; run
+files break both out under `by_split`. And the two use cases missing from the
+chart are missing for a reason: uc3 is a vision task with no clause to withhold,
+and uc4 is scored on abstention, which belongs on its own axis.
+
+**uc4 is the exception worth naming.** Given a swapped, unrelated clause, the
+base model correctly abstains 95% of the time — refusing to invent is one thing
+it already does well. That number is an abstention rate rather than one of the
+accuracy bars above, and it is an open-book measurement: withholding the passage
+from an item whose whole question is whether the passage supports an answer
+would leave nothing to be faithful to.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/dapt-perplexity-dark.png">
@@ -110,9 +126,9 @@ that the model got better at its job.
 
 **This is the measurement the other three cannot give you.** Asked questions
 whose answers sit in the documents it just trained on, the fine-tuned checkpoint
-answered fewer of them than the base model it started from — while perplexity on
-the same corpus had just improved 40%. No other track here could have shown
-that.
+answered fewer of them than the base model it started from — numeric accuracy,
+closed book, over the probe's 320 numeric items — while perplexity on the same
+corpus had just improved 40%. No other track here could have shown that.
 
 The first reading of the gap was wrong, and the correction is the more useful
 result. It looked like continued pre-training had destroyed the model's ability
@@ -138,17 +154,18 @@ model.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/stage2-scored-dark.png">
-  <img alt="Stage 2 scored: base versus fine-tuned on the probe and held-out tracks, closed book. 14.7 versus 15.3 percent and 14.7 versus 15.6 percent; the 95 percent intervals overlap almost entirely." src="doc/stage2-scored-light.png">
+  <img alt="Stage 2 scored: base versus fine-tuned on the probe and sft (held-out) tracks, closed book. 14.7 versus 15.3 percent and 14.7 versus 15.6 percent; the 95 percent intervals overlap almost entirely." src="doc/stage2-scored-light.png">
 </picture>
 
 **And the verdict, after stage 2.** With the format damage repaired and both
 models decoded identically, the fine-tuned checkpoint scores within noise of
-its base on both tracks — McNemar p = 0.89 on the probe, 0.78 on held-out.
-Of 320 probe items the fine-tune gained 26 and lost 24: churn, not learning.
-The training pipeline restored what stage 1 had broken and added no measurable
-closed-book knowledge, and the loss curves alone — 2.09 → 1.45, then 0.33 →
-0.11, both textbook — would never have said so. That is the benchmark's case in
-one pair of bars: every other signal reported success.
+its base on both tracks — McNemar p = 0.89 on the probe, 0.78 on `sft`. Both
+are numeric accuracy, closed book, over the 320 numeric items each track
+carries. Of those 320 probe items the fine-tune gained 26 and lost 24: churn,
+not learning. The training pipeline restored what stage 1 had broken and added
+no measurable closed-book knowledge, and the loss curves alone — 2.09 → 1.45,
+then 0.33 → 0.11, both textbook — would never have said so. That is the
+benchmark's case in one pair of bars: every other signal reported success.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/sft-loss-dark.png">
@@ -164,16 +181,18 @@ training dynamics says whether anything was learned.
 
 **The rest of the picture, from the remaining tracks.** Scored the same way,
 the fine-tune is not uniformly a null result. Its calibration improved
-dramatically: expected calibration error halved, 0.641 → 0.320 (Brier 0.554 →
-0.226) — the base model repeats the same wrong number at 78% self-consistency,
-while the fine-tune's samples disagree when it does not know. On the agent's
-use-case tracks, the faithfulness behaviour survived training (abstention on
-swapped clauses 0.95 → 0.93, and accuracy on unmodified controls improved
-0.875 → 0.938), and incident analysis improved significantly (F1 +0.096
-[+0.03, +0.17]) while safety-list enumeration regressed the same way the
-held-out track did (−0.148, significant). And the self-check validation earned
-its keep by failing honestly: sampling consistency separates wrong answers
-from right ones by 0.026 — nothing — because 61% of this model's wrong answers
+dramatically: expected calibration error over the same 320 numeric items
+halved, 0.641 → 0.320 (Brier 0.554 → 0.226) — the base model repeats the same
+wrong number at 78% self-consistency, while the fine-tune's samples disagree
+when it does not know. On the agent's use-case tracks, the faithfulness
+behaviour survived training (abstention on swapped clauses 0.95 → 0.93, and
+accuracy on unmodified controls improved 0.875 → 0.938), and incident analysis
+improved significantly (uc5 nameset F1 +0.096 [+0.03, +0.17], fuzzy matching)
+while safety-list enumeration regressed the same way `sft` did (uc1 nameset F1
+−0.148 [−0.24, −0.06], exact matching — the two F1s are not scored by the same
+matcher). And the self-check validation earned its keep by failing honestly:
+sampling consistency separates wrong answers from right ones by 0.026 —
+nothing — because 61% of this model's wrong answers
 are *consistently* wrong, which is the same confident-hallucination behaviour
 the calibration number measures. A hallucination detector that assumes invented
 facts vary across samples does not work on a model that invents them stably.
@@ -238,18 +257,167 @@ stage each diagnoses. The numbers are still accepted — `--tracks 2` is `--trac
 sft` — and run files still key on them, so scores from older runs stay
 comparable. Nothing else needs them.
 
-Closed book withholds the passage, so the item tests what the weights hold.
-Open book supplies it, so the item tests reading comprehension. Both are run
-against the same answer key.
-
 Grading is by answer type, and every type has precedent in a published
 benchmark — the mapping is in
 [benchmark/README.md](benchmark/README.md#precedent-for-each-grading-type).
-Numeric answers are matched on the first number within a relative tolerance.
-Nameset answers are scored as set precision, recall and F1, with partial credit.
-Faithfulness pairs items whose passage was swapped with control items whose
-passage was not, in equal numbers, because a model that abstains on everything
-scores well on abstention alone.
+What each type scores, and what the rest of the numbers in a run file mean, is
+the next section.
+
+## What each metric means
+
+A run produces numbers in four layers: how an answer is graded, whether the
+score can be trusted, what the score cannot see, and the before/after comparison
+that is the actual result. Each layer is reported separately — nothing here is
+averaged into a single figure.
+
+### 1. Six ways to grade an answer
+
+Every item declares an `eval_type`, and that decides how its reply is graded.
+The types are not comparable with each other, so a track carrying two of them
+reports two numbers rather than their mean.
+
+| Type | Score | Range | Read as |
+|---|---|---|---|
+| `numeric` | accuracy | 0–1 | share of stated thresholds recalled |
+| `nameset` | precision / recall / **F1** | 0–1 | how much of a list was recovered |
+| `label` | accuracy | 0–1 | share of classifications correct |
+| `faithfulness` | accuracy + **abstention rate** | 0–1 | does it refuse when unsupported |
+| `mapping` | key F1 + value accuracy | 0–1 | named the right things, counted them right |
+| perplexity | perplexity | 1–∞, **lower is better** | fit to unseen text |
+
+**`numeric` — the first number in the reply, within 2% relative tolerance.**
+*"What is the minimum thickness?"* → `40mm`. An item is right or wrong and the
+track reports the share right. This is the bulk of the benchmark: 320 of the 395
+`sft` items and 320 of the 400 probe items.
+
+**`nameset` — set F1, so a partial answer scores partially.** *"List the items
+in paragraph 3"* has four right answers, and a model naming three of them has
+not failed. Precision is the share of what the model said that was right; recall
+is the share of the answer key it found; F1 is their harmonic mean and is the
+number reported. Both halves are needed — precision alone rewards a model that
+offers only its safest guess, recall alone rewards one that lists everything it
+can think of, and F1 requires both.
+
+Two matching modes, and they are not interchangeable. **Exact** matching
+compares normalised strings, which is what `sft`, `probe`, `vlm` and `uc1` use.
+**Fuzzy** matching counts a predicted line as a hit when it covers 60% of a gold
+item's content words, which `uc5` uses because its answers are clause-length
+prose a model will legitimately abbreviate or renumber. An F1 from one is not an
+F1 from the other; the tracks say which they use.
+
+**`label` — the first vocabulary word in the reply wins.** `uc3` puts a BIM
+render and a site photograph side by side and asks for `match`, `partial_match`
+or `mismatch`. Position rather than membership, because the vocabulary overlaps
+itself — `partial_match` contains `match` — and a reply naming several labels
+has to be read as its first commitment.
+
+**`faithfulness` — abstention where abstention is the right answer.** Half the
+items in `uc4` carry a swapped, unrelated passage; the other half carry the
+genuine one.
+
+| Item | Correct behaviour |
+|---|---|
+| passage swapped | abstain — say the passage does not support an answer |
+| passage genuine | answer, and answer correctly |
+
+The halves are equal in number on purpose: a model that abstained on everything
+would score 100% on the swapped half alone. The abstention rate is reported next
+to accuracy for the same reason, so that behaviour is visible rather than
+inferred from a single figure.
+
+**`mapping` — keys and values scored apart.** *"How many of each element
+type?"* is two questions: did it name the right types (key F1), and did it count
+them (value accuracy). A model that lists the catalogue correctly and guesses
+every count is a different failure from one that misses half the types, and one
+combined number would hide which happened.
+
+**perplexity — the only metric here where lower is better.** No question is
+asked: held-out text is run through the weights and the score is how surprised
+the model was by it. It says the model has grown familiar with the prose. It
+does not say the model can answer a question about it, and the difference is the
+reason the other five types exist — in the worked example above, perplexity fell
+40% while closed-book recall did not move at all.
+
+### 2. Two checks on whether a score is real
+
+**`no_answer` — the share of replies containing no answer at all.** A wrong
+answer and a missing answer both score zero and mean opposite things. An
+inference server that has gone away, an exhausted token budget, or a reasoning
+model that emits an empty think block and stops all produce the second. This
+field is what caught the worked example's serving bug: 2.9% correct looked like
+a destroyed model until `no_answer` showed that 43% of the replies were empty.
+
+**`*_ci95` — a 95% Wilson interval on every proportion.** A 39-item track and a
+320-item track can print the same `0.15` and mean very different things by it.
+The interval puts that difference on the page instead of leaving it to be
+remembered.
+
+### 3. Two questions a score cannot answer
+
+**Expected Calibration Error — `cb.py ece`.** Not *is it right* but *does it
+know when it is right*, because the dangerous failure is being wrong and sure.
+The same question is asked eight times at temperature 0.7 and the modal answer's
+share becomes the model's confidence; ECE is the average gap between stated
+confidence and actual accuracy, bucketed by confidence. Lower is better and 0 is
+perfect. The Brier score reported beside it is the same idea without the
+buckets. Covers `numeric` and `label` items only.
+
+**Inconsistency — `cb.py selfcheck`.** A hallucination signal that needs no
+answer key, so it also works on free-form answers no track can grade. Sample the
+same question several times: a fact the weights hold comes back the same way, an
+invented one drifts. It reports `separation` as its own validation — how much
+higher the inconsistency runs on answers that were in fact wrong. On the worked
+example that came out at 0.026, meaning the detector does not work on this
+model, which is a result worth having and is why the number is printed rather
+than the flag rate alone.
+
+### 4. The comparison, which is the actual result
+
+Everything above describes one checkpoint. `cb.py compare` is what the benchmark
+exists to produce.
+
+**Delta** is the subtraction, and on its own it is not evidence.
+
+**McNemar's exact test**, for binary metrics. The two runs answered the *same*
+questions, so they are paired, and only the items whose verdict changed carry
+information about the change. Reported as gained, lost and a p-value:
+
+> 320 probe items, 26 gained, 24 lost, p = 0.89
+
+A large p means the data cannot distinguish the change from noise. Read as an
+unpaired difference of two aggregates, those same numbers read as a 0.6-point
+improvement — which is the mistake the paired test exists to prevent.
+
+**Paired bootstrap**, for continuous metrics such as F1, reporting a 95%
+interval on the mean per-item change:
+
+| Interval | Reading |
+|---|---|
+| `[+0.03, +0.17]` | real improvement |
+| `[−0.29, −0.12]` | real regression |
+| `[−0.05, +0.08]` | indistinguishable from no change |
+
+An interval straddling zero means the data does not separate this change from
+nothing, whatever the point estimate says.
+
+### The two axes every number sits on
+
+No score above means anything without both of them stated.
+
+**Closed book or open book.** Open book supplies the passage, so the item tests
+reading comprehension; closed book withholds it, so the item tests what the
+weights hold. Both are scored against the same answer key. Fine-tuning has
+almost no room to move an open-book score — the answer is on the page — which is
+why the closed-book number is the one this benchmark reports, and why the
+open-book number is the one that matters for a system that will retrieve the
+clause anyway.
+
+**Probe or holdout.** The same kind of question mined from opposite sides of the
+split: probe from documents the model trained on, holdout from documents
+withheld from it. They are read as a pair, never singly — the table under
+[Design: holdout and probe](#design-holdout-and-probe) says what each
+combination means, and step 6 of the [Workflow](#workflow) reads it against a
+real run.
 
 ## Install
 
@@ -500,7 +668,7 @@ python cb.py compare --base base-closed --after ft-closed --markdown sft.md
 python cb.py compare --base base-probe  --after ft-probe  --markdown probe.md
 ```
 
-Read the three together, and read the probe against the held-out track:
+Read the three together, and read the probe against the held-out `sft` track:
 
 | probe | sft (held out) | Reading |
 |---|---|---|
