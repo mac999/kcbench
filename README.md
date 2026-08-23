@@ -193,14 +193,76 @@ while safety-list enumeration regressed the same way `sft` did (uc1 nameset F1
 −0.148 [−0.24, −0.06], exact matching — the two F1s are not scored by the same
 matcher). And the self-check validation earned its keep by failing honestly:
 sampling consistency separates wrong answers from right ones by 0.026 —
-nothing — because 61% of this model's wrong answers
-are *consistently* wrong, which is the same confident-hallucination behaviour
+nothing — because 61% of this model's wrong answers are *consistently* wrong,
+which is the same confident-hallucination behaviour
 the calibration number measures. A hallucination detector that assumes invented
 facts vary across samples does not work on a model that invents them stably.
 
 That is the whole argument for building a benchmark this way. Perplexity said
 the training worked. The probe set said what it had cost. You need both numbers,
 on frozen items, before and after, or you are guessing.
+
+### Every figure above, as score tables
+
+No new results here — this is the same run the charts plot and the prose quotes,
+gathered so a number can be looked up rather than hunted for. The limits stated
+at the top of this section govern all of it. `qwen3:8b` before any fine-tuning,
+on the `kcbench` instantiation:
+
+| Metric | Items | Score |
+|---|---:|---:|
+| `dapt` perplexity | 5,381 chunks | 7.589 |
+| `sft` numeric, closed book | 320 | 0.166 |
+| `sft` nameset F1, closed book | 75 | 0.000 |
+| `sft` numeric, open book | 320 | 0.953 |
+| `sft` nameset F1, open book | 75 | 0.582 |
+| probe numeric, closed book | 320 | 0.169 |
+| probe nameset F1, closed book | 80 | 0.000 |
+
+The closed-open gap is the corpus doing its job: the model reads these
+documents competently and knows almost nothing in them from memory. Probe and
+`sft` sit at the same number before training, which is what should happen —
+nothing has been learned yet, so trained-on and held-out documents are equally
+unfamiliar. They are expected to separate afterwards, and how they separate is
+the diagnosis.
+
+After stage 1 (domain-adaptive pre-training, 836 steps, LoRA on Qwen3-8B):
+
+| Metric | Base | After DAPT | Change | Items |
+|---|---:|---:|---:|---:|
+| `dapt` perplexity | 7.589 | 4.553 | -40.0% | 5,381 chunks |
+| probe numeric, closed book | 0.169 | 0.114 | -32.5% | 325 of 400 |
+| probe replies with no answer | 0.000 | 0.283 | — | 325 of 400 |
+
+After stage 2 (SFT, 978 steps on 15,666 instruction pairs, continuing the DAPT
+adapter), scored with identical decoding for both models (`--think off`,
+temperature 0):
+
+| Metric | Base | After DAPT+SFT | Significance | Items |
+|---|---:|---:|---|---:|
+| probe numeric, closed book | 0.147 | 0.153 | p = 0.89, noise | 320 |
+| `sft` numeric, closed book | 0.147 | 0.156 | p = 0.78, noise | 320 |
+| `sft` numeric, open book | 0.944 | 0.959 | p = 0.18, noise | 320 |
+| `sft` nameset F1, open book | 0.587 | 0.379 | **−0.21 [−0.29, −0.12], significant** | 75 |
+| `sft` ECE, closed book | 0.641 | **0.320** | self-consistency, 8 samples | 320 |
+| uc4 faithfulness, open book | 0.912 | 0.931 | p = 0.51, preserved | 160 |
+| uc5 incident F1, open book | 0.468 | 0.564 | **+0.10 [+0.03, +0.17], significant** | 118 |
+| uc1 nameset F1, open book | 0.473 | 0.325 | −0.15 [−0.24, −0.06], significant | 72 |
+| replies with no answer | 0.000 | 0.000 | — | — |
+
+The base numbers differ from the first table because the decoding differs:
+these runs disable the reasoning pass so that the fine-tune — trained with
+`enable_thinking=False` — and its base are served the same format. Neither
+delta is distinguishable from noise: stage 2 repaired the answer format stage 1
+had damaged and added no measurable closed-book knowledge. The two-stage
+pipeline needs rework before its scores are worth reporting further — likely
+suspects are the LoRA rank and single-epoch stage 1.
+
+The stage 1 probe figures are from 325 of the 400 items; that run was stopped
+there to free the GPU, and its journal is kept so it resumes rather than
+restarts. An earlier run of the same checkpoint scored 0.029 with 43% silence —
+that one was served without its chat template and stop tokens, and is the reason
+the registration step is spelled out in the [Workflow](#workflow).
 
 ## Design: holdout and probe
 
@@ -796,65 +858,6 @@ be able to recognise what is being computed without reading the code.
 The grading types themselves — which published benchmark each one follows, and
 why — are tabulated separately in
 [benchmark/README.md](benchmark/README.md#precedent-for-each-grading-type).
-
-## Baseline and stage 1 scores
-
-`qwen3:8b`, before any fine-tuning, on the `kcbench` instantiation:
-
-| Metric | Items | Score |
-|---|---:|---:|
-| `dapt` perplexity | 5,381 chunks | 7.589 |
-| `sft` numeric, closed book | 320 | 0.166 |
-| `sft` nameset F1, closed book | 75 | 0.000 |
-| `sft` numeric, open book | 320 | 0.953 |
-| `sft` nameset F1, open book | 75 | 0.582 |
-| probe numeric, closed book | 320 | 0.169 |
-| probe nameset F1, closed book | 80 | 0.000 |
-
-The closed-open gap is the corpus doing its job: the model reads these
-documents competently and knows almost nothing in them from memory. Probe and
-`sft` sit at the same number before training, which is what should happen —
-nothing has been learned yet, so trained-on and held-out documents are equally
-unfamiliar. They are expected to separate afterwards, and how they separate is
-the diagnosis.
-
-After stage 1 (domain-adaptive pre-training, 836 steps, LoRA on Qwen3-8B):
-
-| Metric | Base | After DAPT | Change | Items |
-|---|---:|---:|---:|---:|
-| `dapt` perplexity | 7.589 | 4.553 | -40.0% | 5,381 chunks |
-| probe numeric, closed book | 0.169 | 0.114 | -32.5% | 325 of 400 |
-| probe replies with no answer | 0.000 | 0.283 | — | 325 of 400 |
-
-After stage 2 (SFT, 978 steps on 15,666 instruction pairs, continuing the DAPT
-adapter), scored with identical decoding for both models (`--think off`,
-temperature 0):
-
-| Metric | Base | After DAPT+SFT | Significance | Items |
-|---|---:|---:|---|---:|
-| probe numeric, closed book | 0.147 | 0.153 | p = 0.89, noise | 320 |
-| `sft` numeric, closed book | 0.147 | 0.156 | p = 0.78, noise | 320 |
-| `sft` numeric, open book | 0.944 | 0.959 | p = 0.18, noise | 320 |
-| `sft` nameset F1, open book | 0.587 | 0.379 | **−0.21 [−0.29, −0.12], significant** | 75 |
-| `sft` ECE, closed book | 0.641 | **0.320** | self-consistency, 8 samples | 320 |
-| uc4 faithfulness, open book | 0.912 | 0.931 | p = 0.51, preserved | 160 |
-| uc5 incident F1, open book | 0.468 | 0.564 | **+0.10 [+0.03, +0.17], significant** | 118 |
-| uc1 nameset F1, open book | 0.473 | 0.325 | −0.15 [−0.24, −0.06], significant | 72 |
-| replies with no answer | 0.000 | 0.000 | — | — |
-
-The base numbers differ from the first table because the decoding differs:
-these runs disable the reasoning pass so that the fine-tune — trained with
-`enable_thinking=False` — and its base are served the same format. Neither
-delta is distinguishable from noise: stage 2 repaired the answer format stage 1
-had damaged and added no measurable closed-book knowledge. The two-stage
-pipeline needs rework before its scores are worth reporting further — likely
-suspects are the LoRA rank and single-epoch stage 1.
-
-The probe figures are from 325 of the 400 items; the run was stopped there to
-free the GPU, and its journal is kept so it resumes rather than restarts. An earlier run of the same checkpoint scored 0.029 with 43%
-silence — that one was served without its chat template and stop tokens, and is
-the reason the registration step is written out in the workflow above.
-Stage 2 is what the two-stage design is for; its scores will replace this table.
 
 ## Limits
 
