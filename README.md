@@ -481,6 +481,26 @@ three ways a turn of the loop can:
   mixture needs abstention pairs alongside it, or it trades recall it does not
   gain for honesty it had.
 
+The third turn tested the refined recipe — 7,692 LLM-generated paraphrases of
+the closed-book questions and 1,920 refusal-target pairs — and both prescriptions
+failed on their own metrics. Recall stayed at the base rate (0.156, p = 0.78),
+which after three attempts closes the question: SFT-side augmentation does not
+put facts into this adapter, and the remaining levers are on the pre-training
+side — paraphrase-augmented DAPT text, more passes, or more adapter capacity.
+Abstention stayed where v2 left it (0.750): the refusal pairs swapped in clauses
+from unrelated documents, which are easy to recognise as unrelated, while the
+faithfulness track swaps in plausible same-corpus clauses — a refusal trained on
+easy negatives does not transfer to hard ones. Meanwhile calibration improved
+for the third straight turn (ECE 0.641 → 0.281) and answering on supported
+clauses reached 0.988, the best of any checkpoint.
+
+Three turns in, the honest summary is that this pipeline reliably improves how
+the model handles what it is given — calibration, reading, answering with
+support — and has not moved what the model knows. For the RAG agent the corpus
+was built for, the first half is the half that matters, and the checkpoint to
+deploy on safety grounds is still v1, the only fine-tune that kept abstention
+intact.
+
 Which is the loop working as intended: two measurements in, the dataset's
 authors know one thing to keep, one thing not to scale, and one interaction
 they would not have predicted.
