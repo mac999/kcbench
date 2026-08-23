@@ -333,10 +333,14 @@ combined number would hide which happened.
 
 **perplexity — the only metric here where lower is better.** No question is
 asked: held-out text is run through the weights and the score is how surprised
-the model was by it. It says the model has grown familiar with the prose. It
-does not say the model can answer a question about it, and the difference is the
-reason the other five types exist — in the worked example above, perplexity fell
-40% while closed-book recall did not move at all.
+the model was by it. The measure is
+[Jelinek, Mercer, Bahl and Baker's (1977)](https://doi.org/10.1121/1.2016299),
+proposed to say how hard a speech recognition task is and still the standard way
+to state how well a language model fits a text. It says the model has grown
+familiar with the prose. It does not say the model can answer a question about
+it, and the difference is the reason the other five types exist — in the worked
+example above, perplexity fell 40% while closed-book recall did not move at
+all.
 
 ### 2. Two checks on whether a score is real
 
@@ -347,29 +351,43 @@ model that emits an empty think block and stops all produce the second. This
 field is what caught the worked example's serving bug: 2.9% correct looked like
 a destroyed model until `no_answer` showed that 43% of the replies were empty.
 
-**`*_ci95` — a 95% Wilson interval on every proportion.** A 39-item track and a
-320-item track can print the same `0.15` and mean very different things by it.
-The interval puts that difference on the page instead of leaving it to be
-remembered.
+**`*_ci95` — a 95%
+[Wilson (1927)](https://doi.org/10.1080/01621459.1927.10502953) interval on
+every proportion.** A 39-item track and a 320-item track can print the same
+`0.15` and mean very different things by it, and the interval puts that
+difference on the page instead of leaving it to be remembered. Wilson's
+construction rather than the textbook normal one because these tracks sit in
+exactly the regime — small n, p near 0 — where the normal interval puts the
+lower bound below zero.
 
 ### 3. Two questions a score cannot answer
 
 **Expected Calibration Error — `cb.py ece`.** Not *is it right* but *does it
 know when it is right*, because the dangerous failure is being wrong and sure.
-The same question is asked eight times at temperature 0.7 and the modal answer's
-share becomes the model's confidence; ECE is the average gap between stated
-confidence and actual accuracy, bucketed by confidence. Lower is better and 0 is
-perfect. The Brier score reported beside it is the same idea without the
-buckets. Covers `numeric` and `label` items only.
+A model that states no probability has to be asked more than once, so the same
+question goes in eight times at temperature 0.7 and the modal answer's share
+becomes its confidence — self-consistency, after
+[Wang et al. (2022)](https://arxiv.org/abs/2203.11171). ECE is then the average
+gap between that confidence and actual accuracy, taken over confidence bins:
+the binned estimator of
+[Naeini, Cooper and Hauskrecht (2015)](https://ojs.aaai.org/index.php/AAAI/article/view/9602),
+in the form [Guo et al. (2017)](https://arxiv.org/abs/1706.04599) made standard
+for neural networks. Lower is better and 0 is perfect. The
+[Brier score (1950)](https://journals.ametsoc.org/view/journals/mwre/78/1/1520-0493_1950_078_0001_vofeit_2_0_co_2.xml),
+reported beside it, asks the same question without the bins and comes from
+weather forecasting, where being confidently wrong has always been the
+expensive failure. Covers `numeric` and `label` items only.
 
 **Inconsistency — `cb.py selfcheck`.** A hallucination signal that needs no
 answer key, so it also works on free-form answers no track can grade. Sample the
 same question several times: a fact the weights hold comes back the same way, an
-invented one drifts. It reports `separation` as its own validation — how much
-higher the inconsistency runs on answers that were in fact wrong. On the worked
-example that came out at 0.026, meaning the detector does not work on this
-model, which is a result worth having and is why the number is printed rather
-than the flag rate alone.
+invented one drifts. That is
+[SelfCheckGPT (Manakul, Liusie and Gales, EMNLP 2023)](https://aclanthology.org/2023.emnlp-main.557/),
+reduced here to the one comparison an extractive answer allows. It reports
+`separation` as its own validation — how much higher the inconsistency runs on
+answers that were in fact wrong. On the worked example that came out at 0.026,
+meaning the detector does not work on this model, which is a result worth having
+and is why the number is printed rather than the flag rate alone.
 
 ### 4. The comparison, which is the actual result
 
@@ -378,7 +396,9 @@ exists to produce.
 
 **Delta** is the subtraction, and on its own it is not evidence.
 
-**McNemar's exact test**, for binary metrics. The two runs answered the *same*
+**[McNemar's exact test](https://doi.org/10.1007/BF02295996)**, for binary
+metrics. McNemar wrote it in 1947 for correlated proportions, which is exactly
+what two runs over one frozen item set produce: the runs answered the *same*
 questions, so they are paired, and only the items whose verdict changed carry
 information about the change. Reported as gained, lost and a p-value:
 
@@ -389,7 +409,10 @@ unpaired difference of two aggregates, those same numbers read as a 0.6-point
 improvement — which is the mistake the paired test exists to prevent.
 
 **Paired bootstrap**, for continuous metrics such as F1, reporting a 95%
-interval on the mean per-item change:
+interval on the mean per-item change. The resampling procedure is
+[Koehn's (2004)](https://aclanthology.org/W04-3250/), introduced for this
+problem exactly — deciding whether one system really beats another on a test
+set too small for a raw difference to be trusted:
 
 | Interval | Reading |
 |---|---|
@@ -418,6 +441,26 @@ withheld from it. They are read as a pair, never singly — the table under
 [Design: holdout and probe](#design-holdout-and-probe) says what each
 combination means, and step 6 of the [Workflow](#workflow) reads it against a
 real run.
+
+### Where these come from
+
+Nothing above is this project's invention, which is the point: a reviewer should
+be able to recognise what is being computed without reading the code.
+
+| Metric | Source |
+|---|---|
+| perplexity | Jelinek, Mercer, Bahl & Baker, [*Perplexity — a measure of the difficulty of speech recognition tasks*](https://doi.org/10.1121/1.2016299), JASA 62 (1977) |
+| Wilson interval | E. B. Wilson, [*Probable Inference, the Law of Succession, and Statistical Inference*](https://doi.org/10.1080/01621459.1927.10502953), JASA 22 (1927) |
+| Expected Calibration Error | Naeini, Cooper & Hauskrecht, [*Obtaining Well Calibrated Probabilities Using Bayesian Binning*](https://ojs.aaai.org/index.php/AAAI/article/view/9602), AAAI (2015); Guo, Pleiss, Sun & Weinberger, [*On Calibration of Modern Neural Networks*](https://arxiv.org/abs/1706.04599), ICML (2017) |
+| confidence by self-consistency | Wang et al., [*Self-Consistency Improves Chain of Thought Reasoning in Language Models*](https://arxiv.org/abs/2203.11171) (2022) |
+| Brier score | G. W. Brier, [*Verification of Forecasts Expressed in Terms of Probability*](https://journals.ametsoc.org/view/journals/mwre/78/1/1520-0493_1950_078_0001_vofeit_2_0_co_2.xml), Monthly Weather Review 78 (1950) |
+| inconsistency / selfcheck | Manakul, Liusie & Gales, [*SelfCheckGPT: Zero-Resource Black-Box Hallucination Detection*](https://aclanthology.org/2023.emnlp-main.557/), EMNLP (2023) |
+| McNemar's test | Q. McNemar, [*Note on the sampling error of the difference between correlated proportions or percentages*](https://doi.org/10.1007/BF02295996), Psychometrika 12 (1947) |
+| paired bootstrap | P. Koehn, [*Statistical Significance Tests for Machine Translation Evaluation*](https://aclanthology.org/W04-3250/), EMNLP (2004) |
+
+The grading types themselves — which published benchmark each one follows, and
+why — are tabulated separately in
+[benchmark/README.md](benchmark/README.md#precedent-for-each-grading-type).
 
 ## Install
 
