@@ -25,19 +25,17 @@ corpus it was built for, charts and score tables included.
 
 **Contents**
 
-| | |
-|---|---|
-| [Install](#install) | dependencies, and the inference server |
-| [Use](#use) | the fifteen commands, and what each does |
-| [Design: holdout and probe](#design-holdout-and-probe) | the two sets, and why one is contaminated on purpose |
-| [The development loop](#the-development-loop) | what to do with the numbers, and the line against Goodharting |
-| [Workflow](#workflow) | build, baseline, train, register, score, compare — in order |
-| [Layout](#layout) | what each file in the repository does |
-| [Worked example](#worked-example) | a Qwen3-8B campaign end to end: charts, three training turns, score tables |
-| [What each track contains](#what-each-track-contains) | the nine item sets, their sizes and answer types |
-| [Adapting it to another domain](#adapting-it-to-another-domain) | what to change when the corpus is not construction |
-| [What each metric means](#what-each-metric-means) | every number in a run file, defined and sourced |
-| [Limits](#limits) | what this benchmark cannot decide |
+- [Install](#install) — dependencies, and the inference server
+- [Use](#use) — the fifteen commands, and what each does
+- [Design: holdout and probe](#design-holdout-and-probe) — the two sets, and why one is contaminated on purpose
+- [The development loop](#the-development-loop) — what to do with the numbers, and the line against Goodharting
+- [Workflow](#workflow) — build, baseline, train, register, score, compare — in order
+- [Layout](#layout) — what each file in the repository does
+- [Worked example](#worked-example) — a Qwen3-8B campaign end to end: charts, three training turns, score tables
+- [What each track contains](#what-each-track-contains) — the nine item sets, their sizes and answer types
+- [Adapting it to another domain](#adapting-it-to-another-domain) — what to change when the corpus is not construction
+- [What each metric means](#what-each-metric-means) — every number in a run file, defined and sourced
+- [Limits](#limits) — what this benchmark cannot decide
 
 ## Install
 
