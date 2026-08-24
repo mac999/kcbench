@@ -23,68 +23,6 @@ To use it, start at [Install](#install). To see what it produces and what it
 found, read the [worked example](#worked-example) — a full campaign on the
 corpus it was built for, charts and score tables included.
 
-## Design: holdout and probe
-
-A benchmark carved out of the same corpus a model trained on answers only half
-the question. If a fine-tuned model scores well on held-out documents, it
-generalized. If it scores badly, you cannot tell whether training failed or
-whether the answers were never in the training data to begin with.
-
-So kcbench builds two sets from one corpus:
-
-| Set | Drawn from | Answer present in training data | Question it answers |
-|---|---|---:|---|
-| holdout tracks | documents withheld from training | 25% | does it generalize to unseen text |
-| probe | documents the model trained on | 83% | did it acquire what was taught |
-
-The probe is deliberately contaminated — every item carries
-`split: "train"` and `contamination: "intentional"`, and probe scores must
-never be reported as benchmark results. Its value is diagnostic, and it comes
-from reading the two together:
-
-| After training | Reading |
-|---|---|
-| probe up, holdout up | acquired and generalized |
-| probe up, holdout flat | memorized the corpus, did not generalize |
-| both flat | training did not take |
-
-Those percentages are measured, not assumed: `build_probe.py` checks each item's
-subject and answer against the training rows and reports the share that are
-jointly present.
-
-## Tracks
-
-A track is one self-contained set of items with its own answer type and its own
-score — the sense the word carries in TREC. Each answers a different question, so
-they are read separately, never averaged into a single figure. Tracks are named
-for what they test:
-
-| Track | Items | Answer type | What it measures |
-|---|---:|---|---|
-| `dapt` | 5,381 chunks | perplexity | fit to held-out text — did pre-training take |
-| `sft` | 395 | numeric 320, nameset 75 | held-out QA — does it generalise to unseen regulation |
-| `vlm` | 10 | nameset 6, mapping 4 | vision: element types from renders, model-to-photo mapping |
-| `probe` | 400 | numeric 320, nameset 80 | training-side QA — did it acquire what it was taught. Diagnostic only |
-| `uc1_safety` | 157 | numeric 85, nameset 72 | safety regulation lookup |
-| `uc2_rebar_spec` | 150 | numeric 150 | specification limits and tolerances |
-| `uc3_bim_site` | 39 | label 39 | render and site photo judged together |
-| `uc4_faithfulness` | 160 | faithfulness 160 | abstention when the passage does not support an answer |
-| `uc5_incident` | 118 | nameset 118 | causes and controls from incident reports |
-
-`--tracks uc` runs every use-case track. Use-case tracks are registered in
-`config.json`, so adding one takes a config entry rather than a code change.
-
-`dapt`, `sft` and `vlm` were originally numbered 1, 2 and 3, for the training
-stage each diagnoses. The numbers are still accepted — `--tracks 2` is `--tracks
-sft` — and run files still key on them, so scores from older runs stay
-comparable. Nothing else needs them.
-
-Grading is by answer type, and every type has precedent in a published
-benchmark — the mapping is in
-[benchmark/README.md](benchmark/README.md#precedent-for-each-grading-type).
-What each type scores, and what the rest of the numbers in a run file mean, is
-set out under [What each metric means](#what-each-metric-means) near the end.
-
 ## Install
 
 Python 3.11 or newer.
@@ -107,7 +45,8 @@ ollama pull qwen3:8b
 ## Use
 
 Everything runs through one entry point, `cb.py`. Each command takes its own
-flags, shown by `python cb.py <command> -h`.
+flags, shown by `python cb.py <command> -h`. Commands that take `--tracks` take
+the names listed under [Tracks](#tracks).
 
 | Command | What it does |
 |---|---|
@@ -174,6 +113,35 @@ Two guards stop a dead inference server from being scored as a bad model: a run
 of failed calls aborts the track, and so does a run of blank replies, which is
 what a server that answers but no longer generates looks like. Neither writes a
 score file. The journal survives, so restarting picks up where it stopped.
+
+## Design: holdout and probe
+
+A benchmark carved out of the same corpus a model trained on answers only half
+the question. If a fine-tuned model scores well on held-out documents, it
+generalized. If it scores badly, you cannot tell whether training failed or
+whether the answers were never in the training data to begin with.
+
+So kcbench builds two sets from one corpus:
+
+| Set | Drawn from | Answer present in training data | Question it answers |
+|---|---|---:|---|
+| holdout tracks | documents withheld from training | 25% | does it generalize to unseen text |
+| probe | documents the model trained on | 83% | did it acquire what was taught |
+
+The probe is deliberately contaminated — every item carries
+`split: "train"` and `contamination: "intentional"`, and probe scores must
+never be reported as benchmark results. Its value is diagnostic, and it comes
+from reading the two together:
+
+| After training | Reading |
+|---|---|
+| probe up, holdout up | acquired and generalized |
+| probe up, holdout flat | memorized the corpus, did not generalize |
+| both flat | training did not take |
+
+Those percentages are measured, not assumed: `build_probe.py` checks each item's
+subject and answer against the training rows and reports the share that are
+jointly present.
 
 ## The development loop
 
@@ -715,6 +683,39 @@ Prompts default to Korean because the reference corpus is Korean regulation and
 translating the terms changes the question. Every item carries an English
 prompt as well (`question_en`, and `answer_en` for numeric units), so
 `--lang en` scores the same answer key in English.
+
+## Tracks
+
+A track is one self-contained set of items with its own answer type and its own
+score — the sense the word carries in TREC. Each answers a different question, so
+they are read separately, never averaged into a single figure. Tracks are named
+for what they test:
+
+| Track | Items | Answer type | What it measures |
+|---|---:|---|---|
+| `dapt` | 5,381 chunks | perplexity | fit to held-out text — did pre-training take |
+| `sft` | 395 | numeric 320, nameset 75 | held-out QA — does it generalise to unseen regulation |
+| `vlm` | 10 | nameset 6, mapping 4 | vision: element types from renders, model-to-photo mapping |
+| `probe` | 400 | numeric 320, nameset 80 | training-side QA — did it acquire what it was taught. Diagnostic only |
+| `uc1_safety` | 157 | numeric 85, nameset 72 | safety regulation lookup |
+| `uc2_rebar_spec` | 150 | numeric 150 | specification limits and tolerances |
+| `uc3_bim_site` | 39 | label 39 | render and site photo judged together |
+| `uc4_faithfulness` | 160 | faithfulness 160 | abstention when the passage does not support an answer |
+| `uc5_incident` | 118 | nameset 118 | causes and controls from incident reports |
+
+`--tracks uc` runs every use-case track. Use-case tracks are registered in
+`config.json`, so adding one takes a config entry rather than a code change.
+
+`dapt`, `sft` and `vlm` were originally numbered 1, 2 and 3, for the training
+stage each diagnoses. The numbers are still accepted — `--tracks 2` is `--tracks
+sft` — and run files still key on them, so scores from older runs stay
+comparable. Nothing else needs them.
+
+Grading is by answer type, and every type has precedent in a published
+benchmark — the mapping is in
+[benchmark/README.md](benchmark/README.md#precedent-for-each-grading-type).
+What each type scores, and what the rest of the numbers in a run file mean, is
+set out under [What each metric means](#what-each-metric-means) near the end.
 
 ## What each metric means
 
