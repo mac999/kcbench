@@ -19,6 +19,354 @@ building models — which is where the name comes from: **K**orean
 of prompt strings; see [Adapting it to another
 domain](#adapting-it-to-another-domain).
 
+To use it, start at [Install](#install). To see what it produces and what it
+found, read the [worked example](#worked-example) — a full campaign on the
+corpus it was built for, charts and score tables included.
+
+## Design: holdout and probe
+
+A benchmark carved out of the same corpus a model trained on answers only half
+the question. If a fine-tuned model scores well on held-out documents, it
+generalized. If it scores badly, you cannot tell whether training failed or
+whether the answers were never in the training data to begin with.
+
+So kcbench builds two sets from one corpus:
+
+| Set | Drawn from | Answer present in training data | Question it answers |
+|---|---|---:|---|
+| holdout tracks | documents withheld from training | 25% | does it generalize to unseen text |
+| probe | documents the model trained on | 83% | did it acquire what was taught |
+
+The probe is deliberately contaminated — every item carries
+`split: "train"` and `contamination: "intentional"`, and probe scores must
+never be reported as benchmark results. Its value is diagnostic, and it comes
+from reading the two together:
+
+| After training | Reading |
+|---|---|
+| probe up, holdout up | acquired and generalized |
+| probe up, holdout flat | memorized the corpus, did not generalize |
+| both flat | training did not take |
+
+Those percentages are measured, not assumed: `build_probe.py` checks each item's
+subject and answer against the training rows and reports the share that are
+jointly present.
+
+## Tracks
+
+A track is one self-contained set of items with its own answer type and its own
+score — the sense the word carries in TREC. Each answers a different question, so
+they are read separately, never averaged into a single figure. Tracks are named
+for what they test:
+
+| Track | Items | Answer type | What it measures |
+|---|---:|---|---|
+| `dapt` | 5,381 chunks | perplexity | fit to held-out text — did pre-training take |
+| `sft` | 395 | numeric 320, nameset 75 | held-out QA — does it generalise to unseen regulation |
+| `vlm` | 10 | nameset 6, mapping 4 | vision: element types from renders, model-to-photo mapping |
+| `probe` | 400 | numeric 320, nameset 80 | training-side QA — did it acquire what it was taught. Diagnostic only |
+| `uc1_safety` | 157 | numeric 85, nameset 72 | safety regulation lookup |
+| `uc2_rebar_spec` | 150 | numeric 150 | specification limits and tolerances |
+| `uc3_bim_site` | 39 | label 39 | render and site photo judged together |
+| `uc4_faithfulness` | 160 | faithfulness 160 | abstention when the passage does not support an answer |
+| `uc5_incident` | 118 | nameset 118 | causes and controls from incident reports |
+
+`--tracks uc` runs every use-case track. Use-case tracks are registered in
+`config.json`, so adding one takes a config entry rather than a code change.
+
+`dapt`, `sft` and `vlm` were originally numbered 1, 2 and 3, for the training
+stage each diagnoses. The numbers are still accepted — `--tracks 2` is `--tracks
+sft` — and run files still key on them, so scores from older runs stay
+comparable. Nothing else needs them.
+
+Grading is by answer type, and every type has precedent in a published
+benchmark — the mapping is in
+[benchmark/README.md](benchmark/README.md#precedent-for-each-grading-type).
+What each type scores, and what the rest of the numbers in a run file mean, is
+set out under [What each metric means](#what-each-metric-means) near the end.
+
+## Install
+
+Python 3.11 or newer.
+
+```
+pip install requests                        # building and scoring
+pip install torch transformers              # dapt perplexity
+pip install torch transformers peft         # fine-tuning under training/
+```
+
+Scoring goes through an [Ollama](https://ollama.com) server for `sft`, `vlm`
+and the use-case tracks. `dapt` loads the checkpoint locally instead, because
+perplexity needs logprobs over a fixed text rather than generation.
+
+```
+ollama serve
+ollama pull qwen3:8b
+```
+
+## Use
+
+Everything runs through one entry point, `cb.py`. Each command takes its own
+flags, shown by `python cb.py <command> -h`.
+
+| Command | What it does |
+|---|---|
+| `build` | run every build stage in order |
+| `holdout` | reserve the evaluation documents |
+| `tracks` | mine the dapt, sft and vlm items from the held-out documents |
+| `probe` | mine the training-side probe set |
+| `usecases` | build the use-case tracks from the config registry |
+| `split` | write the training split, holdout excluded |
+| `verify` | trace every item to its source and prove nothing trains on it |
+| `eval` | score a model over the generation tracks |
+| `ppl` | score the dapt track's perplexity locally |
+| `ece` | expected calibration error — is the model's confidence justified |
+| `compare` | compare two runs, with a significance test |
+| `matrix` | score several models and tabulate |
+| `triage` | pick the items a human should review |
+| `review` | apply review verdicts, kept across rebuilds |
+| `export` | package the built benchmark, with an lm-eval-harness config |
+
+Build the benchmark from a corpus. `build` runs the stages in order: split the
+holdout, mine the tracks, mine the probe, build the use-case tracks, write the
+training split, verify provenance, then export.
+
+```
+python cb.py build
+python cb.py build -i /data/my_corpus -o /tmp/bench --config my.json
+```
+
+Score a model, once per book setting:
+
+```
+python cb.py eval -m qwen3:8b       --tag base  --tracks sft --closed-book
+python cb.py eval -m my-finetune:v1 --tag ft-v1 --tracks sft --closed-book
+python cb.py ppl  -m ./out/my-dapt  --tag ft-v1-ppl        # the dapt track
+```
+
+Ask whether its confidence is worth anything — expected calibration error over
+the same items:
+
+```
+python cb.py ece -m my-finetune:v1 --tag ft-v1-ece --tracks sft --closed-book
+```
+
+Compare them. This is the step that produces the answer:
+
+```
+python cb.py compare --base base --after ft-v1 --markdown report.md
+```
+
+Score several models side by side:
+
+```
+python cb.py matrix --models qwen3:8b,qwen3:14b,glm4:9b --tracks sft --book both
+```
+
+Long runs journal every scored item, so a run that dies resumes rather than
+restarting. `run_resumable.sh` adds the retry loop around it:
+
+```
+./run_resumable.sh my-finetune:v1 ft-probe:probe ft-t2:2
+```
+
+Two guards stop a dead inference server from being scored as a bad model: a run
+of failed calls aborts the track, and so does a run of blank replies, which is
+what a server that answers but no longer generates looks like. Neither writes a
+score file. The journal survives, so restarting picks up where it stopped.
+
+## The development loop
+
+A benchmark like this is one half of a cycle; the other half is what you do
+about the numbers. The intended loop is the standard data-centric one:
+
+```
+measure -> diagnose which capability is missing -> fix the TRAINING DATA
+        -> retrain -> measure again, same frozen items
+```
+
+The instrument never changes inside the loop. What changes is the training set,
+because that is where the diagnosis almost always points: in the worked example
+below, closed-book recall stayed flat not because the model lacked capacity but
+because 95% of the instruction pairs carried the source clause in the prompt —
+the training taught extraction and the benchmark asked for recall. That is a
+dataset design gap, and no amount of hyperparameter tuning fixes a task that
+was never trained.
+
+Editing training data in response to benchmark findings is legitimate practice
+— FLAN and T0 mix zero-context and reading-comprehension formats deliberately,
+and the knowledge-injection literature prescribes paraphrase diversity for
+facts — but only on one side of a line:
+
+| Legitimate | Goodharting |
+|---|---|
+| add the missing *format* or *capability* to the training data | plant the held-out answers in the training data |
+| iterate against `probe` (intentionally contaminated, diagnostic) | iterate against the held-out tracks until they look good |
+| re-measure on the same frozen items | change the items when the score disappoints |
+
+kcbench enforces the line mechanically: the training split excludes held-out
+text by content digest, `cb.py verify` re-proves it after any data change, and
+the probe/holdout pair exists so that iteration pressure lands on the
+deliberately contaminated set rather than the one that decides the result.
+
+`training/augment_sft.py` is the tool this loop drives: it rewrites the
+training pairs toward whatever the last measurement showed missing —
+closed-book variants, full-enumeration pairs, LLM-generated paraphrases,
+refusal targets. Every ratio and cap is a flag, because the right mixture is an
+empirical question the next measurement answers; the flag table is in
+[training/README.md](training/README.md), and the three measured turns it
+produced are reported at the end of the [worked example](#worked-example).
+
+What a turn of the loop can return is one of three things — a fix validated, a
+fix refuted, a tradeoff surfaced — and all three are worth having. The worked
+example's three turns returned all of them.
+
+### What this benchmark is good at, and not
+
+Good at: before/after deltas on frozen items; telling acquisition from
+generalisation (probe vs holdout); catching harness faults (three were found by
+its own runs: a serving-template mismatch, a reasoning-parse mismatch, and a
+grader format bias); calibration and abstention, which scores alone miss.
+
+Not good at: absolute rankings against public leaderboards (items are
+rule-mined, not expert-written); judging free-form prose (extractive answer
+types only — `selfcheck` is the reference-free aid there, and its own
+validation showed consistency is no hallucination signal on a model that
+hallucinates stably); vision beyond a smoke test (`vlm` is 10 items).
+
+## Workflow
+
+What the commands look like end to end, on the question this was built for:
+*we assembled a corpus and fine-tuned on it — did that help?* Times are from a
+GB10 workstation scoring an 8B model through Ollama.
+
+**1. Build the benchmark, once.** This splits the corpus, mines the items, and
+writes the training split with the held-out documents removed. Run it before
+any training: the split is what makes the later numbers mean anything.
+
+```bash
+python cb.py build -i /data/my_corpus --strict
+```
+
+`--strict` fails the build if an item turns out to be contaminated rather than
+warning and continuing. Do not change `holdout.seed` after this point — a
+different seed reserves different documents, and two runs on different items
+are not comparable.
+
+**2. Baseline the checkpoint you are about to fine-tune.** Every number below
+is meaningless without its "before". This is the step people skip and then
+cannot interpret anything.
+
+```bash
+python cb.py ppl  -m Qwen/Qwen3-8B --tag base-ppl              # ~4.5 h, local weights
+python cb.py eval -m qwen3:8b --tag base-closed --tracks sft --closed-book
+python cb.py eval -m qwen3:8b --tag base-open   --tracks sft   # reading, not knowledge
+python cb.py eval -m qwen3:8b --tag base-probe  --tracks probe --closed-book
+```
+
+The closed/open gap here tells you whether the corpus is worth training on at
+all. If the model already answers closed-book, there is nothing to teach it; if
+it cannot answer open-book, the items are broken rather than hard.
+
+**3. Train, on `data/train/` and nothing else.**
+
+```bash
+python ../training/dapt.py                                     # stage 1
+python ../training/sft.py --base ../training/out/qwen3-8b-dapt # stage 2
+python ../training/merge.py -a ../training/out/qwen3-8b-sft -o ../training/out/merged
+```
+
+**4. Register the fine-tuned model the same way as its base.** This step is
+easy to get wrong and it invalidates everything after it. A merged checkpoint
+served without its chat template and stop tokens is prompted differently from
+the base model it is being compared against, and the difference shows up as a
+model failure that is not one.
+
+```bash
+ollama show qwen3:8b --modelfile > Modelfile.ft     # take the base's template
+# edit FROM to point at the new gguf, keep TEMPLATE and every PARAMETER stop
+ollama create my-ft:v1 -f Modelfile.ft
+```
+
+Check it before scoring: `ollama show my-ft:v1 --modelfile` must show a real
+`TEMPLATE` and the `PARAMETER stop` lines, not `TEMPLATE {{ .Prompt }}`.
+
+**5. Score the fine-tuned checkpoint on the same items.** Same tracks, same
+flags, same config as step 2.
+
+```bash
+python cb.py ppl  -m ../training/out/merged --tag ft-ppl
+./run_resumable.sh my-ft:v1 ft-probe:probe ft-closed:sft
+python cb.py eval -m my-ft:v1 --tag ft-open --tracks sft
+```
+
+`run_resumable.sh` journals each item and retries, which is what you want for a
+multi-hour run. A bare `cb.py eval` is fine for anything under an hour.
+
+**6. Compare. This is the answer.**
+
+```bash
+python cb.py compare --base base-ppl    --after ft-ppl    --markdown ppl.md
+python cb.py compare --base base-closed --after ft-closed --markdown sft.md
+python cb.py compare --base base-probe  --after ft-probe  --markdown probe.md
+```
+
+Read the three together, and read the probe against the held-out `sft` track:
+
+| probe | sft (held out) | Reading |
+|---|---|---|
+| up | up | it learned the domain and generalised |
+| up | flat | it memorised the corpus and did not generalise |
+| flat | flat | training did not take — check perplexity moved at all |
+| down | down | something broke. Suspect the harness before the model |
+
+**7. Optional, once the above is understood.** Two questions the score cannot
+answer:
+
+```bash
+python cb.py ece       -m my-ft:v1 --tag ft-ece --tracks sft --closed-book
+python cb.py selfcheck -m my-ft:v1 --tag ft-sc  --tracks sft --closed-book
+```
+
+`ece` asks whether its confidence is worth anything — the dangerous failure is
+being wrong and sure. `selfcheck` asks the same question without an answer key,
+by sampling the model and seeing whether it tells the same story twice, so it
+also works on the free-form answers no track can grade.
+
+## Layout
+
+```
+benchmark/
+  cb.py                  the only entry point: build, eval, ppl, compare, ...
+  config.json            every tunable, overridden by command-line flags
+  run_resumable.sh       supervisor: retry, resume, stop when stuck
+  data/                  built artefacts; evaluation sets are tracked, the rest is rebuilt
+  kcbench/
+    build_holdout.py     choose the documents to withhold
+    build_tracks.py      mine tracks 1-3 from the held-out documents
+    build_probe.py       mine the probe from the trained-on documents
+    build_usecases.py    build the use-case tracks from the config registry
+    build_all.py         run the build stages in order
+    make_train_split.py  write the training split, holdout excluded
+    verify_provenance.py prove where each item came from and that nothing trains on it
+    evaluate.py          score a model over the generation tracks
+    perplexity.py        score the dapt track locally
+    compare.py           compare two runs, with a bootstrap significance test
+    calibration.py       expected calibration error: is its confidence justified
+    run_matrix.py        score several models and tabulate
+    triage_items.py      pick the items a human should look at
+    apply_review.py      fold human review decisions back into the set
+    export_dataset.py    package the built benchmark, with an lm-eval-harness config
+    common.py            config resolution, paths, shared helpers
+training/
+  dapt.py                stage 1, domain-adaptive pre-training
+  sft.py                 stage 2, supervised fine-tuning
+  merge.py               fold the adapter into the base weights
+```
+
+`training/` is kept separate from `benchmark/` deliberately: an instrument that
+shares code with the thing it measures stops being one.
+
 ## Worked example
 
 How a run of this benchmark reads, from the project it was built for: Qwen3-8B
@@ -338,350 +686,6 @@ there to free the GPU, and its journal is kept so it resumes rather than
 restarts. An earlier run of the same checkpoint scored 0.029 with 43% silence —
 that one was served without its chat template and stop tokens, and is the reason
 the registration step is spelled out in the [Workflow](#workflow).
-
-## Design: holdout and probe
-
-A benchmark carved out of the same corpus a model trained on answers only half
-the question. If a fine-tuned model scores well on held-out documents, it
-generalized. If it scores badly, you cannot tell whether training failed or
-whether the answers were never in the training data to begin with.
-
-So kcbench builds two sets from one corpus:
-
-| Set | Drawn from | Answer present in training data | Question it answers |
-|---|---|---:|---|
-| holdout tracks | documents withheld from training | 25% | does it generalize to unseen text |
-| probe | documents the model trained on | 83% | did it acquire what was taught |
-
-The probe is deliberately contaminated — every item carries
-`split: "train"` and `contamination: "intentional"`, and probe scores must
-never be reported as benchmark results. Its value is diagnostic, and it comes
-from reading the two together:
-
-| After training | Reading |
-|---|---|
-| probe up, holdout up | acquired and generalized |
-| probe up, holdout flat | memorized the corpus, did not generalize |
-| both flat | training did not take |
-
-Those percentages are measured, not assumed: `build_probe.py` checks each item's
-subject and answer against the training rows and reports the share that are
-jointly present.
-
-## Tracks
-
-A track is one self-contained set of items with its own answer type and its own
-score — the sense the word carries in TREC. Each answers a different question, so
-they are read separately, never averaged into a single figure. Tracks are named
-for what they test:
-
-| Track | Items | Answer type | What it measures |
-|---|---:|---|---|
-| `dapt` | 5,381 chunks | perplexity | fit to held-out text — did pre-training take |
-| `sft` | 395 | numeric 320, nameset 75 | held-out QA — does it generalise to unseen regulation |
-| `vlm` | 10 | nameset 6, mapping 4 | vision: element types from renders, model-to-photo mapping |
-| `probe` | 400 | numeric 320, nameset 80 | training-side QA — did it acquire what it was taught. Diagnostic only |
-| `uc1_safety` | 157 | numeric 85, nameset 72 | safety regulation lookup |
-| `uc2_rebar_spec` | 150 | numeric 150 | specification limits and tolerances |
-| `uc3_bim_site` | 39 | label 39 | render and site photo judged together |
-| `uc4_faithfulness` | 160 | faithfulness 160 | abstention when the passage does not support an answer |
-| `uc5_incident` | 118 | nameset 118 | causes and controls from incident reports |
-
-`--tracks uc` runs every use-case track. Use-case tracks are registered in
-`config.json`, so adding one takes a config entry rather than a code change.
-
-`dapt`, `sft` and `vlm` were originally numbered 1, 2 and 3, for the training
-stage each diagnoses. The numbers are still accepted — `--tracks 2` is `--tracks
-sft` — and run files still key on them, so scores from older runs stay
-comparable. Nothing else needs them.
-
-Grading is by answer type, and every type has precedent in a published
-benchmark — the mapping is in
-[benchmark/README.md](benchmark/README.md#precedent-for-each-grading-type).
-What each type scores, and what the rest of the numbers in a run file mean, is
-set out under [What each metric means](#what-each-metric-means) near the end.
-
-## Install
-
-Python 3.11 or newer.
-
-```
-pip install requests                        # building and scoring
-pip install torch transformers              # dapt perplexity
-pip install torch transformers peft         # fine-tuning under training/
-```
-
-Scoring goes through an [Ollama](https://ollama.com) server for `sft`, `vlm`
-and the use-case tracks. `dapt` loads the checkpoint locally instead, because
-perplexity needs logprobs over a fixed text rather than generation.
-
-```
-ollama serve
-ollama pull qwen3:8b
-```
-
-## Use
-
-Everything runs through one entry point, `cb.py`. Each command takes its own
-flags, shown by `python cb.py <command> -h`.
-
-| Command | What it does |
-|---|---|
-| `build` | run every build stage in order |
-| `holdout` | reserve the evaluation documents |
-| `tracks` | mine the dapt, sft and vlm items from the held-out documents |
-| `probe` | mine the training-side probe set |
-| `usecases` | build the use-case tracks from the config registry |
-| `split` | write the training split, holdout excluded |
-| `verify` | trace every item to its source and prove nothing trains on it |
-| `eval` | score a model over the generation tracks |
-| `ppl` | score the dapt track's perplexity locally |
-| `ece` | expected calibration error — is the model's confidence justified |
-| `compare` | compare two runs, with a significance test |
-| `matrix` | score several models and tabulate |
-| `triage` | pick the items a human should review |
-| `review` | apply review verdicts, kept across rebuilds |
-| `export` | package the built benchmark, with an lm-eval-harness config |
-
-Build the benchmark from a corpus. `build` runs the stages in order: split the
-holdout, mine the tracks, mine the probe, build the use-case tracks, write the
-training split, verify provenance, then export.
-
-```
-python cb.py build
-python cb.py build -i /data/my_corpus -o /tmp/bench --config my.json
-```
-
-Score a model, once per book setting:
-
-```
-python cb.py eval -m qwen3:8b       --tag base  --tracks sft --closed-book
-python cb.py eval -m my-finetune:v1 --tag ft-v1 --tracks sft --closed-book
-python cb.py ppl  -m ./out/my-dapt  --tag ft-v1-ppl        # the dapt track
-```
-
-Ask whether its confidence is worth anything — expected calibration error over
-the same items:
-
-```
-python cb.py ece -m my-finetune:v1 --tag ft-v1-ece --tracks sft --closed-book
-```
-
-Compare them. This is the step that produces the answer:
-
-```
-python cb.py compare --base base --after ft-v1 --markdown report.md
-```
-
-Score several models side by side:
-
-```
-python cb.py matrix --models qwen3:8b,qwen3:14b,glm4:9b --tracks sft --book both
-```
-
-Long runs journal every scored item, so a run that dies resumes rather than
-restarting. `run_resumable.sh` adds the retry loop around it:
-
-```
-./run_resumable.sh my-finetune:v1 ft-probe:probe ft-t2:2
-```
-
-Two guards stop a dead inference server from being scored as a bad model: a run
-of failed calls aborts the track, and so does a run of blank replies, which is
-what a server that answers but no longer generates looks like. Neither writes a
-score file. The journal survives, so restarting picks up where it stopped.
-
-## The development loop
-
-A benchmark like this is one half of a cycle; the other half is what you do
-about the numbers. The intended loop is the standard data-centric one:
-
-```
-measure -> diagnose which capability is missing -> fix the TRAINING DATA
-        -> retrain -> measure again, same frozen items
-```
-
-The instrument never changes inside the loop. What changes is the training set,
-because that is where the diagnosis almost always points: in the worked example
-above, closed-book recall stayed flat not because the model lacked capacity but
-because 95% of the instruction pairs carried the source clause in the prompt —
-the training taught extraction and the benchmark asked for recall. That is a
-dataset design gap, and no amount of hyperparameter tuning fixes a task that
-was never trained.
-
-Editing training data in response to benchmark findings is legitimate practice
-— FLAN and T0 mix zero-context and reading-comprehension formats deliberately,
-and the knowledge-injection literature prescribes paraphrase diversity for
-facts — but only on one side of a line:
-
-| Legitimate | Goodharting |
-|---|---|
-| add the missing *format* or *capability* to the training data | plant the held-out answers in the training data |
-| iterate against `probe` (intentionally contaminated, diagnostic) | iterate against the held-out tracks until they look good |
-| re-measure on the same frozen items | change the items when the score disappoints |
-
-kcbench enforces the line mechanically: the training split excludes held-out
-text by content digest, `cb.py verify` re-proves it after any data change, and
-the probe/holdout pair exists so that iteration pressure lands on the
-deliberately contaminated set rather than the one that decides the result.
-
-`training/augment_sft.py` is the tool this loop drives: it rewrites the
-training pairs toward whatever the last measurement showed missing —
-closed-book variants, full-enumeration pairs, LLM-generated paraphrases,
-refusal targets. Every ratio and cap is a flag, because the right mixture is an
-empirical question the next measurement answers; the flag table is in
-[training/README.md](training/README.md), and the three measured turns it
-produced are reported at the end of the [worked example](#worked-example).
-
-What a turn of the loop can return is one of three things — a fix validated, a
-fix refuted, a tradeoff surfaced — and all three are worth having. The worked
-example's three turns returned all of them.
-
-### What this benchmark is good at, and not
-
-Good at: before/after deltas on frozen items; telling acquisition from
-generalisation (probe vs holdout); catching harness faults (three were found by
-its own runs: a serving-template mismatch, a reasoning-parse mismatch, and a
-grader format bias); calibration and abstention, which scores alone miss.
-
-Not good at: absolute rankings against public leaderboards (items are
-rule-mined, not expert-written); judging free-form prose (extractive answer
-types only — `selfcheck` is the reference-free aid there, and its own
-validation showed consistency is no hallucination signal on a model that
-hallucinates stably); vision beyond a smoke test (`vlm` is 10 items).
-
-## Workflow
-
-What the commands look like end to end, on the question this was built for:
-*we assembled a corpus and fine-tuned on it — did that help?* Times are from a
-GB10 workstation scoring an 8B model through Ollama.
-
-**1. Build the benchmark, once.** This splits the corpus, mines the items, and
-writes the training split with the held-out documents removed. Run it before
-any training: the split is what makes the later numbers mean anything.
-
-```bash
-python cb.py build -i /data/my_corpus --strict
-```
-
-`--strict` fails the build if an item turns out to be contaminated rather than
-warning and continuing. Do not change `holdout.seed` after this point — a
-different seed reserves different documents, and two runs on different items
-are not comparable.
-
-**2. Baseline the checkpoint you are about to fine-tune.** Every number below
-is meaningless without its "before". This is the step people skip and then
-cannot interpret anything.
-
-```bash
-python cb.py ppl  -m Qwen/Qwen3-8B --tag base-ppl              # ~4.5 h, local weights
-python cb.py eval -m qwen3:8b --tag base-closed --tracks sft --closed-book
-python cb.py eval -m qwen3:8b --tag base-open   --tracks sft   # reading, not knowledge
-python cb.py eval -m qwen3:8b --tag base-probe  --tracks probe --closed-book
-```
-
-The closed/open gap here tells you whether the corpus is worth training on at
-all. If the model already answers closed-book, there is nothing to teach it; if
-it cannot answer open-book, the items are broken rather than hard.
-
-**3. Train, on `data/train/` and nothing else.**
-
-```bash
-python ../training/dapt.py                                     # stage 1
-python ../training/sft.py --base ../training/out/qwen3-8b-dapt # stage 2
-python ../training/merge.py -a ../training/out/qwen3-8b-sft -o ../training/out/merged
-```
-
-**4. Register the fine-tuned model the same way as its base.** This step is
-easy to get wrong and it invalidates everything after it. A merged checkpoint
-served without its chat template and stop tokens is prompted differently from
-the base model it is being compared against, and the difference shows up as a
-model failure that is not one.
-
-```bash
-ollama show qwen3:8b --modelfile > Modelfile.ft     # take the base's template
-# edit FROM to point at the new gguf, keep TEMPLATE and every PARAMETER stop
-ollama create my-ft:v1 -f Modelfile.ft
-```
-
-Check it before scoring: `ollama show my-ft:v1 --modelfile` must show a real
-`TEMPLATE` and the `PARAMETER stop` lines, not `TEMPLATE {{ .Prompt }}`.
-
-**5. Score the fine-tuned checkpoint on the same items.** Same tracks, same
-flags, same config as step 2.
-
-```bash
-python cb.py ppl  -m ../training/out/merged --tag ft-ppl
-./run_resumable.sh my-ft:v1 ft-probe:probe ft-closed:sft
-python cb.py eval -m my-ft:v1 --tag ft-open --tracks sft
-```
-
-`run_resumable.sh` journals each item and retries, which is what you want for a
-multi-hour run. A bare `cb.py eval` is fine for anything under an hour.
-
-**6. Compare. This is the answer.**
-
-```bash
-python cb.py compare --base base-ppl    --after ft-ppl    --markdown ppl.md
-python cb.py compare --base base-closed --after ft-closed --markdown sft.md
-python cb.py compare --base base-probe  --after ft-probe  --markdown probe.md
-```
-
-Read the three together, and read the probe against the held-out `sft` track:
-
-| probe | sft (held out) | Reading |
-|---|---|---|
-| up | up | it learned the domain and generalised |
-| up | flat | it memorised the corpus and did not generalise |
-| flat | flat | training did not take — check perplexity moved at all |
-| down | down | something broke. Suspect the harness before the model |
-
-**7. Optional, once the above is understood.** Two questions the score cannot
-answer:
-
-```bash
-python cb.py ece       -m my-ft:v1 --tag ft-ece --tracks sft --closed-book
-python cb.py selfcheck -m my-ft:v1 --tag ft-sc  --tracks sft --closed-book
-```
-
-`ece` asks whether its confidence is worth anything — the dangerous failure is
-being wrong and sure. `selfcheck` asks the same question without an answer key,
-by sampling the model and seeing whether it tells the same story twice, so it
-also works on the free-form answers no track can grade.
-
-## Layout
-
-```
-benchmark/
-  cb.py                  the only entry point: build, eval, ppl, compare, ...
-  config.json            every tunable, overridden by command-line flags
-  run_resumable.sh       supervisor: retry, resume, stop when stuck
-  data/                  built artefacts; evaluation sets are tracked, the rest is rebuilt
-  kcbench/
-    build_holdout.py     choose the documents to withhold
-    build_tracks.py      mine tracks 1-3 from the held-out documents
-    build_probe.py       mine the probe from the trained-on documents
-    build_usecases.py    build the use-case tracks from the config registry
-    build_all.py         run the build stages in order
-    make_train_split.py  write the training split, holdout excluded
-    verify_provenance.py prove where each item came from and that nothing trains on it
-    evaluate.py          score a model over the generation tracks
-    perplexity.py        score the dapt track locally
-    compare.py           compare two runs, with a bootstrap significance test
-    calibration.py       expected calibration error: is its confidence justified
-    run_matrix.py        score several models and tabulate
-    triage_items.py      pick the items a human should look at
-    apply_review.py      fold human review decisions back into the set
-    export_dataset.py    package the built benchmark, with an lm-eval-harness config
-    common.py            config resolution, paths, shared helpers
-training/
-  dapt.py                stage 1, domain-adaptive pre-training
-  sft.py                 stage 2, supervised fine-tuning
-  merge.py               fold the adapter into the base weights
-```
-
-`training/` is kept separate from `benchmark/` deliberately: an instrument that
-shares code with the thing it measures stops being one.
 
 ## Adapting it to another domain
 
