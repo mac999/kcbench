@@ -202,6 +202,58 @@ That is the whole argument for building a benchmark this way. Perplexity said
 the training worked. The probe set said what it had cost. You need both numbers,
 on frozen items, before and after, or you are guessing.
 
+### Three turns of the loop, on this dataset
+
+The example's fine-tunes are numbered by turn — each is the same base model and
+the same stage 1 adapter, retrained at stage 2 on a different data recipe, then
+scored on the same frozen items. That is the whole experimental design: the
+version number counts trips around the loop, nothing else.
+
+| Version | Stage 2 data | Pairs | What the turn tested |
+|---|---|---:|---|
+| `v1` | the original pairs, as generated | 15,666 | the dataset as designed (for RAG) |
+| `v2` | + closed-book variants, + enumeration pairs | 22,249 | can recall and full lists be trained in |
+| `v3` | + LLM paraphrases, + refusal-target pairs | 32,080 | does fact repetition inject recall; does trained refusal survive hard cases |
+
+The second turn — stage 2 retrained on the augmented 22,249 pairs, rescored on
+the same frozen items — answered all three ways a turn of the loop can:
+
+- **One fix validated.** The 637 enumeration pairs moved open-book nameset F1
+  0.379 → 0.491 (+0.11, interval [+0.05, +0.18]), recovering more than half of
+  the regression. The mechanism was the mechanism.
+- **One fix refuted.** 5,946 closed-book variants moved probe recall not at
+  all — 0.153 → 0.128, still level with the untrained base. Asking from memory
+  once per fact does not put the fact into a rank-64 adapter; the
+  knowledge-injection literature's prescription (many paraphrases per fact,
+  more pre-training passes) is the next candidate, and it is a data-generation
+  and budget question, not a mixing-ratio question.
+- **One tradeoff surfaced.** Training the model to answer without a clause also
+  taught it to answer when the clause does not support one: abstention on
+  swapped clauses fell 0.925 → 0.750 (p = 0.0005), the first significant
+  regression on the safety track across the whole example. A closed-book
+  mixture needs abstention pairs alongside it, or it trades recall it does not
+  gain for honesty it had.
+
+The third turn tested the refined recipe — 7,692 LLM-generated paraphrases of
+the closed-book questions and 1,920 refusal-target pairs — and both prescriptions
+failed on their own metrics. Recall stayed at the base rate (0.156, p = 0.78),
+which after three attempts closes the question: SFT-side augmentation does not
+put facts into this adapter, and the remaining levers are on the pre-training
+side — paraphrase-augmented DAPT text, more passes, or more adapter capacity.
+Abstention stayed where v2 left it (0.750): the refusal pairs swapped in clauses
+from unrelated documents, which are easy to recognise as unrelated, while the
+faithfulness track swaps in plausible same-corpus clauses — a refusal trained on
+easy negatives does not transfer to hard ones. Meanwhile calibration improved
+for the third straight turn (ECE 0.641 → 0.281) and answering on supported
+clauses reached 0.988, the best of any checkpoint.
+
+Three turns in, the honest summary is that this pipeline reliably improves how
+the model handles what it is given — calibration, reading, answering with
+support — and has not moved what the model knows. For the RAG agent the corpus
+was built for, the first half is the half that matters, and the checkpoint to
+deploy on safety grounds is still v1, the only fine-tune that kept abstention
+intact.
+
 ### Every figure above, as score tables
 
 No new results here — this is the same run the charts plot and the prose quotes,
@@ -450,71 +502,17 @@ text by content digest, `cb.py verify` re-proves it after any data change, and
 the probe/holdout pair exists so that iteration pressure lands on the
 deliberately contaminated set rather than the one that decides the result.
 
-`training/augment_sft.py` is the worked example's own turn of this loop. It
-started with two transformations aimed at the capabilities the benchmark showed
-missing — closed-book variants of the open-book pairs, and full-enumeration
-pairs mined from the training-side chunks — and the second measured turn added
-two more that its results demanded: LLM-generated paraphrases of each
-closed-book question (a fact stated one way is stored but not extractable) and
-refusal-target pairs with swapped clauses (because closed-book training alone
-taught answering without support). Every ratio and cap is a flag, because the
-right mixture is an empirical question the next measurement answers; the flag
-table is in [training/README.md](training/README.md).
+`training/augment_sft.py` is the tool this loop drives: it rewrites the
+training pairs toward whatever the last measurement showed missing —
+closed-book variants, full-enumeration pairs, LLM-generated paraphrases,
+refusal targets. Every ratio and cap is a flag, because the right mixture is an
+empirical question the next measurement answers; the flag table is in
+[training/README.md](training/README.md), and the three measured turns it
+produced are reported at the end of the [worked example](#worked-example).
 
-The example's fine-tunes are numbered by turn — each is the same base model and
-the same stage 1 adapter, retrained at stage 2 on a different data recipe, then
-scored on the same frozen items. That is the whole experimental design: the
-version number counts trips around the loop, nothing else.
-
-| Version | Stage 2 data | Pairs | What the turn tested |
-|---|---|---:|---|
-| `v1` | the original pairs, as generated | 15,666 | the dataset as designed (for RAG) |
-| `v2` | + closed-book variants, + enumeration pairs | 22,249 | can recall and full lists be trained in |
-| `v3` | + LLM paraphrases, + refusal-target pairs | 32,080 | does fact repetition inject recall; does trained refusal survive hard cases |
-
-That measurement has since been taken — stage 2 was retrained on the augmented
-set (22,249 pairs) and rescored on the same frozen items — and it answered all
-three ways a turn of the loop can:
-
-- **One fix validated.** The 637 enumeration pairs moved open-book nameset F1
-  0.379 → 0.491 (+0.11, interval [+0.05, +0.18]), recovering more than half of
-  the regression. The mechanism was the mechanism.
-- **One fix refuted.** 5,946 closed-book variants moved probe recall not at
-  all — 0.153 → 0.128, still level with the untrained base. Asking from memory
-  once per fact does not put the fact into a rank-64 adapter; the
-  knowledge-injection literature's prescription (many paraphrases per fact,
-  more pre-training passes) is the next candidate, and it is a data-generation
-  and budget question, not a mixing-ratio question.
-- **One tradeoff surfaced.** Training the model to answer without a clause also
-  taught it to answer when the clause does not support one: abstention on
-  swapped clauses fell 0.925 → 0.750 (p = 0.0005), the first significant
-  regression on the safety track across the whole example. A closed-book
-  mixture needs abstention pairs alongside it, or it trades recall it does not
-  gain for honesty it had.
-
-The third turn tested the refined recipe — 7,692 LLM-generated paraphrases of
-the closed-book questions and 1,920 refusal-target pairs — and both prescriptions
-failed on their own metrics. Recall stayed at the base rate (0.156, p = 0.78),
-which after three attempts closes the question: SFT-side augmentation does not
-put facts into this adapter, and the remaining levers are on the pre-training
-side — paraphrase-augmented DAPT text, more passes, or more adapter capacity.
-Abstention stayed where v2 left it (0.750): the refusal pairs swapped in clauses
-from unrelated documents, which are easy to recognise as unrelated, while the
-faithfulness track swaps in plausible same-corpus clauses — a refusal trained on
-easy negatives does not transfer to hard ones. Meanwhile calibration improved
-for the third straight turn (ECE 0.641 → 0.281) and answering on supported
-clauses reached 0.988, the best of any checkpoint.
-
-Three turns in, the honest summary is that this pipeline reliably improves how
-the model handles what it is given — calibration, reading, answering with
-support — and has not moved what the model knows. For the RAG agent the corpus
-was built for, the first half is the half that matters, and the checkpoint to
-deploy on safety grounds is still v1, the only fine-tune that kept abstention
-intact.
-
-Which is the loop working as intended: two measurements in, the dataset's
-authors know one thing to keep, one thing not to scale, and one interaction
-they would not have predicted.
+What a turn of the loop can return is one of three things — a fix validated, a
+fix refuted, a tradeoff surfaced — and all three are worth having. The worked
+example's three turns returned all of them.
 
 ### What this benchmark is good at, and not
 
