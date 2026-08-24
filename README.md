@@ -461,6 +461,17 @@ taught answering without support). Every ratio and cap is a flag, because the
 right mixture is an empirical question the next measurement answers; the flag
 table is in [training/README.md](training/README.md).
 
+The example's fine-tunes are numbered by turn — each is the same base model and
+the same stage 1 adapter, retrained at stage 2 on a different data recipe, then
+scored on the same frozen items. That is the whole experimental design: the
+version number counts trips around the loop, nothing else.
+
+| Version | Stage 2 data | Pairs | What the turn tested |
+|---|---|---:|---|
+| `v1` | the original pairs, as generated | 15,666 | the dataset as designed (for RAG) |
+| `v2` | + closed-book variants, + enumeration pairs | 22,249 | can recall and full lists be trained in |
+| `v3` | + LLM paraphrases, + refusal-target pairs | 32,080 | does fact repetition inject recall; does trained refusal survive hard cases |
+
 That measurement has since been taken — stage 2 was retrained on the augmented
 set (22,249 pairs) and rescored on the same frozen items — and it answered all
 three ways a turn of the loop can:
@@ -701,6 +712,15 @@ reports two numbers rather than their mean.
 | `faithfulness` | accuracy + **abstention rate** | 0–1 | does it refuse when unsupported |
 | `mapping` | key F1 + value accuracy | 0–1 | named the right things, counted them right |
 | perplexity | perplexity | 1–∞, **lower is better** | fit to unseen text |
+
+Three more numbers are not grading types — they are asked of the model about
+its own answers, and defined in section 3 below:
+
+| Metric | Score | Range | Read as |
+|---|---|---|---|
+| **ECE** (`cb.py ece`) | calibration error | 0–1, **lower is better** | does it know when it is right |
+| Brier (beside ECE) | squared error of confidence | 0–1, lower is better | accuracy and calibration in one number |
+| inconsistency (`cb.py selfcheck`) | 1 − sampling agreement | 0–1 | does it tell the same story twice, no answer key needed |
 
 **`numeric` — the first number in the reply, within 2% relative tolerance.**
 *"What is the minimum thickness?"* → `40mm`. An item is right or wrong and the
