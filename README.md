@@ -46,7 +46,7 @@ ollama pull qwen3:8b
 
 Everything runs through one entry point, `cb.py`. Each command takes its own
 flags, shown by `python cb.py <command> -h`. Commands that take `--tracks` take
-the names listed under [Tracks](#tracks).
+the names listed under [What each track contains](#what-each-track-contains).
 
 | Command | What it does |
 |---|---|
@@ -684,7 +684,7 @@ translating the terms changes the question. Every item carries an English
 prompt as well (`question_en`, and `answer_en` for numeric units), so
 `--lang en` scores the same answer key in English.
 
-## Tracks
+## What each track contains
 
 A track is one self-contained set of items with its own answer type and its own
 score — the sense the word carries in TREC. Each answers a different question, so
