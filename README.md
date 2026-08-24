@@ -215,6 +215,15 @@ version number counts trips around the loop, nothing else.
 | `v2` | + closed-book variants, + enumeration pairs | 22,249 | can recall and full lists be trained in |
 | `v3` | + LLM paraphrases, + refusal-target pairs | 32,080 | does fact repetition inject recall; does trained refusal survive hard cases |
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="doc/turns-dark.png">
+  <img alt="Four metrics across base, v1, v2 and v3. Recall stays near 0.15 throughout; nameset F1 falls 0.59 to 0.38 then recovers to 0.49 and 0.46; abstention falls 0.95 to 0.93 to 0.75 and stays; ECE improves 0.64 to 0.32 to 0.29 to 0.28." src="doc/turns-light.png">
+</picture>
+
+Read down each metric rather than across: recall never moves, lists break and
+partly recover, abstention pays for the recall attempt, calibration improves
+every turn. What follows is what each turn did to produce that picture.
+
 The second turn — stage 2 retrained on the augmented 22,249 pairs, rescored on
 the same frozen items — answered all three ways a turn of the loop can:
 
@@ -246,6 +255,20 @@ faithfulness track swaps in plausible same-corpus clauses — a refusal trained 
 easy negatives does not transfer to hard ones. Meanwhile calibration improved
 for the third straight turn (ECE 0.641 → 0.281) and answering on supported
 clauses reached 0.988, the best of any checkpoint.
+
+All four checkpoints on the same frozen items, identical decoding
+(`--think off`, temperature 0):
+
+| Metric | base | v1 | v2 | v3 | Verdict |
+|---|---:|---:|---:|---:|---|
+| probe numeric, closed book | 0.147 | 0.153 | 0.128 | 0.156 | flat throughout (p = 0.78 vs base) |
+| `sft` numeric, closed book | 0.147 | 0.156 | 0.153 | 0.156 | flat throughout |
+| `sft` nameset F1, open book | 0.587 | 0.379 | 0.491 | 0.459 | broken by v1, half recovered by v2 |
+| `sft` numeric, open book | 0.944 | 0.959 | 0.956 | 0.947 | reading intact throughout |
+| uc4 abstention on swapped clauses | 0.950 | 0.925 | 0.750 | 0.750 | v2's cost, not repaired by v3 |
+| uc4 accuracy on supported clauses | 0.875 | 0.938 | 0.938 | **0.988** | best at v3 |
+| uc5 incident F1, open book | 0.468 | 0.564 | 0.530 | 0.565 | improved and held |
+| ECE, closed book (lower better) | 0.641 | 0.320 | 0.286 | **0.281** | improved every turn |
 
 Three turns in, the honest summary is that this pipeline reliably improves how
 the model handles what it is given — calibration, reading, answering with
