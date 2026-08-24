@@ -655,35 +655,6 @@ restarts. An earlier run of the same checkpoint scored 0.029 with 43% silence �
 that one was served without its chat template and stop tokens, and is the reason
 the registration step is spelled out in the [Workflow](#workflow).
 
-## Adapting it to another domain
-
-Everything tunable lives in `config.json`, and every value there is overridden
-by the matching command-line flag. The parts worth knowing:
-
-- `corpus_dir`, `generated_dir`, `out_dir` — where documents are read and
-  artefacts are written.
-- `holdout` — what fraction of chunks to withhold, per-document caps, and the
-  seed. The seed is what makes a split reproducible.
-- `track2_sft`, `probe` — how many items to mine, per-document caps, and the
-  filters that decide whether a mined fact is answerable: numeric uniqueness,
-  subject length bounds, minimum set size for nameset items.
-- `usecases` — a registry. Adding a use-case track is a config entry plus a
-  track file; `cb.py eval --tracks uc` picks up whatever is enabled without a
-  code change.
-- `eval` — endpoint, context and prediction lengths, temperature, repeats,
-  numeric tolerance, and the two dead-server guards.
-
-What is domain-specific and would need editing: the prompt strings for the
-vision tracks in `kcbench/build_tracks.py` and `build_usecases.py`, which name IFC
-classes and construction site photos, and the IFC reader itself. The text
-tracks make no assumption about subject matter beyond the corpus being chunked
-prose with numbers and named lists in it.
-
-Prompts default to Korean because the reference corpus is Korean regulation and
-translating the terms changes the question. Every item carries an English
-prompt as well (`question_en`, and `answer_en` for numeric units), so
-`--lang en` scores the same answer key in English.
-
 ## What each track contains
 
 A track is one self-contained set of items with its own answer type and its own
@@ -716,6 +687,35 @@ benchmark — the mapping is in
 [benchmark/README.md](benchmark/README.md#precedent-for-each-grading-type).
 What each type scores, and what the rest of the numbers in a run file mean, is
 set out under [What each metric means](#what-each-metric-means) near the end.
+
+## Adapting it to another domain
+
+Everything tunable lives in `config.json`, and every value there is overridden
+by the matching command-line flag. The parts worth knowing:
+
+- `corpus_dir`, `generated_dir`, `out_dir` — where documents are read and
+  artefacts are written.
+- `holdout` — what fraction of chunks to withhold, per-document caps, and the
+  seed. The seed is what makes a split reproducible.
+- `track2_sft`, `probe` — how many items to mine, per-document caps, and the
+  filters that decide whether a mined fact is answerable: numeric uniqueness,
+  subject length bounds, minimum set size for nameset items.
+- `usecases` — a registry. Adding a use-case track is a config entry plus a
+  track file; `cb.py eval --tracks uc` picks up whatever is enabled without a
+  code change.
+- `eval` — endpoint, context and prediction lengths, temperature, repeats,
+  numeric tolerance, and the two dead-server guards.
+
+What is domain-specific and would need editing: the prompt strings for the
+vision tracks in `kcbench/build_tracks.py` and `build_usecases.py`, which name IFC
+classes and construction site photos, and the IFC reader itself. The text
+tracks make no assumption about subject matter beyond the corpus being chunked
+prose with numbers and named lists in it.
+
+Prompts default to Korean because the reference corpus is Korean regulation and
+translating the terms changes the question. Every item carries an English
+prompt as well (`question_en`, and `answer_en` for numeric units), so
+`--lang en` scores the same answer key in English.
 
 ## What each metric means
 
