@@ -609,21 +609,49 @@ from vocabulary alone. It made things worse. Abstention fell again, 0.750 →
 clauses gave back its v3 gain, and calibration regressed for the first time in
 the campaign (ECE 0.281 → 0.349).
 
-That result reframes the diagnosis. Three different refusal recipes — none,
-easy negatives, hard negatives — produced 0.925, 0.750 and 0.688, and the
-untrained base is the best of all at 0.950. Abstention here does not behave like
-a skill that training installs; it behaves like one the base model already has
-and that every domain fine-tune erodes, harder the more directly it is targeted.
-Teaching a model to say "not in this clause" appears to teach hedging rather
-than judgement — which is why the supported-clause accuracy and the calibration
-error moved with it.
+That result reframes the diagnosis. Across four checkpoints the amount of
+refusal training varies while everything else is held constant, so the four
+abstention scores can be read as one dose-response series:
 
-Four turns in, the honest summary is that this pipeline reliably improves how
-the model handles what it is given — reading, answering with support, and
-calibration up to v3 — and has not moved what the model knows, and cannot be
-made to stop costing safety behaviour. For the RAG agent the corpus was built
-for, the checkpoint to deploy is still v1: the only fine-tune that kept
-abstention near its base, and the cheapest of the four to produce.
+| Refusal pairs in stage 2 | Abstention on swapped clauses |
+|---|---:|
+| none (untrained base) | 0.950 |
+| none (v1, ordinary pairs only) | 0.925 |
+| 1,920, drawn from unrelated documents | 0.750 |
+| 1,920, drawn from the same document | 0.688 |
+
+The score is highest with no training and falls monotonically as refusal
+training is added and made more targeted. If refusal were a skill the fine-tune
+installs, the ordering would run the other way.
+
+Two further observations locate the mechanism. First, the base model already
+abstains correctly 95% of the time, so there is no deficit to fill — the
+capability is present before stage 2 begins. Second, the losses do not appear
+only on swapped clauses: in v4 accuracy on *supported* clauses fell 0.988 →
+0.938 and calibration error rose 0.281 → 0.349. A model that had learned
+"refuse when the clause does not support an answer" would abstain more precisely
+and leave supported clauses alone. One that has learned "be less committal on
+inputs of this shape" would lose accuracy on both, and that is the pattern in
+the data.
+
+So the effect is best explained as interference rather than instruction: adding
+refusal examples shifts the model's response distribution toward non-commitment
+generally, rather than teaching the conditional judgement the track measures.
+Whether this generalises beyond this corpus and this adapter size is untested —
+what is established here is that on this setup, more refusal training produced
+less correct refusal.
+
+Four turns in, three results hold across every checkpoint measured. Handling of
+supplied text improved: open-book reading stayed intact and calibration error
+fell from 0.641 to 0.281 through v3. Closed-book recall did not change: four
+data recipes produced 0.147, 0.153, 0.128, 0.156 and 0.144 against a base of
+0.147, with no comparison reaching significance. And abstention was lower after
+every fine-tune than before any of them, by the dose-response pattern above.
+
+For the RAG agent this corpus was built for — where retrieval supplies the
+clause and the model's job is to use it or decline it — v1 is the checkpoint to
+deploy: abstention 0.925 against the base's 0.950, calibration error halved, and
+the cheapest of the four to produce.
 
 ### Every figure above, as score tables
 
