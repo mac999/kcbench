@@ -539,17 +539,27 @@ the same stage 1 adapter, retrained at stage 2 on a different data recipe, then
 scored on the same frozen items. That is the whole experimental design: the
 version number counts trips around the loop, nothing else.
 
-| Version | Stage 2 data | Pairs | Ability it aimed at | The question that tests it |
-|---|---|---:|---|---|
-| `v1` | the original pairs, as generated | 15,666 | reading a clause it is handed | *Given this clause, what is the minimum cover thickness?* → `40mm` |
-| `v2` | + closed-book variants, + enumeration pairs | 22,249 | recall without the clause, and complete lists | *Without the clause: what is the minimum cover thickness?* → `40mm`<br>*List every document required for the application* → all four, not two |
-| `v3` | + LLM paraphrases, + refusal-target pairs | 32,080 | the same fact asked differently, and refusing when unsupported | *How thick must the cover be, at minimum?* → still `40mm`<br>*(clause is about something else)* → `자료 없음` |
-| `v4` | same, refusal clauses swapped from the *same document* | 32,005 | refusing when the clause looks relevant but is not | *(clause is a neighbouring article of the same standard)* → still `자료 없음` |
+| Version | Stage 2 data | Pairs | Ability it aimed at | Track that scores it | How that track asks |
+|---|---|---:|---|---|---|
+| `v1` | the original pairs, as generated | 15,666 | reading a clause it is handed | `sft` **open book** | passage in the prompt: *[조문] … [질문] 최소 피복 두께는?* → `40mm` |
+| `v2` | + closed-book variants, + enumeration pairs | 22,249 | recall without the clause; complete lists | `probe`, `sft` **closed book**; `sft` nameset | no passage, document named instead: *「KDS 14 20 50」에 따르면, 최소 피복 두께는?* → `40mm` |
+| `v3` | + LLM paraphrases, + refusal-target pairs | 32,080 | the same fact asked differently; refusing when unsupported | `probe` closed book; `uc4` | as above, plus a swapped passage where the only right answer is `자료 없음` |
+| `v4` | same, refusal clauses swapped from the *same document* | 32,005 | refusing when the passage looks relevant but is not | `uc4` | the swapped passage is a neighbouring article of the same standard, so its vocabulary matches the question |
 
-Each row's ability is measured by a different track, which is why the campaign
-needs more than one score: `sft` open book for reading, `probe` and `sft` closed
-book for recall, `sft` nameset for lists, `uc4` for refusal. A recipe can move
-one and break another, and three of these four did.
+**The recipes differ; the tests do not.** Open and closed book are scoring
+modes, not versions — every checkpoint including the untrained base is scored
+both ways on the same frozen items, so the columns of the results table are
+comparable. Open book supplies the passage, which is the shape a RAG system
+serves at runtime, and it is close to its ceiling on any competent model.
+Closed book withholds the passage and names the document instead, which is the
+only form where domain training has anything to add. `uc4` is a third shape:
+the passage is supplied but swapped for one that does not answer the question,
+paired one-to-one with unmodified controls so that abstaining on everything
+scores 0.5 rather than 1.0.
+
+v1's *training* pairs are the RAG-shaped ones — 95% carry the clause in the
+prompt — which is exactly why it scored well open book and moved nothing closed
+book, and why the later recipes exist.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/turns-dark.png">
