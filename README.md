@@ -534,44 +534,81 @@ on frozen items, before and after, or you are guessing.
 
 ### Four turns of the loop, on this dataset
 
-The example's fine-tunes are numbered by turn — each is the same base model and
-the same stage 1 adapter, retrained at stage 2 on a different data recipe, then
-scored on the same frozen items. That is the whole experimental design: the
-version number counts trips around the loop, nothing else.
+The version number counts trips around the loop. Every version trains the same
+base model on the same stage 1 adapter with the same hyperparameters, and is
+scored on the same frozen items; the only thing that changes is which kinds of
+pair are in the stage 2 training file, so a score difference is attributable to
+the data. `v1` is the generated dataset as it came, and each later version adds
+augmented pairs on top, produced by `training/augment_sft.py`.
 
-| Version | Stage 2 data | Pairs | Ability it aimed at | Track that scores it | How that track asks |
-|---|---|---:|---|---|---|
-| `v1` | the original pairs, as generated | 15,666 | reading a clause it is handed | `sft` **open book** | passage in the prompt: *[조문] … [질문] 최소 피복 두께는?* → `40mm` |
-| `v2` | + closed-book variants, + enumeration pairs | 22,249 | recall without the clause; complete lists | `probe`, `sft` **closed book**; `sft` nameset | no passage, document named instead: *「KDS 14 20 50」에 따르면, 최소 피복 두께는?* → `40mm` |
-| `v3` | + LLM paraphrases, + refusal-target pairs | 32,080 | the same fact asked differently; refusing when unsupported | `probe` closed book; `uc4` | as above, plus a swapped passage where the only right answer is `자료 없음` |
-| `v4` | same, refusal clauses swapped from the *same document* | 32,005 | refusing when the passage looks relevant but is not | `uc4` | the swapped passage is a neighbouring article of the same standard, so its vocabulary matches the question |
+| Version | Pairs | What was added | Total |
+|---|---|---|---:|
+| `v1` | the generated pairs, untouched | — | 15,666 |
+| `v2` | + closed-book variants<br>+ enumeration pairs | strip the clause out of an existing pair; mine full lists out of the corpus | 22,249 |
+| `v3` | + paraphrases<br>+ refusal pairs (easy) | restate each closed-book question several ways; swap in a clause from an *unrelated* document and make refusal the answer | 32,080 |
+| `v4` | + refusal pairs (hard) | same, but the swapped clause comes from the *same* document | 32,005 |
 
-**The recipes differ; the tests do not.** Open and closed book are scoring
-modes, not versions — every checkpoint including the untrained base is scored
-both ways on the same frozen items, so the columns of the results table are
-comparable. Open book supplies the passage, which is the shape a RAG system
-serves at runtime, and it is close to its ceiling on any competent model.
-Closed book withholds the passage and names the document instead, which is the
-only form where domain training has anything to add. `uc4` is a third shape:
-the passage is supplied but swapped for one that does not answer the question,
-paired one-to-one with unmodified controls so that abstaining on everything
-scores 0.5 rather than 1.0.
+### The five kinds of pair
 
-v1's *training* pairs are the RAG-shaped ones — 95% carry the clause in the
-prompt — which is exactly why it scored well open book and moved nothing closed
-book, and why the later recipes exist.
+Real examples from the v4 file, abridged. The first is what the dataset
+generator produces; the other four are what the augmenter makes from it.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="doc/turns-dark.png">
-  <img alt="Four metrics across base, v1, v2, v3 and v4. Recall stays near 0.15 throughout; nameset F1 falls 0.59 to 0.38 then recovers to 0.49 and 0.46; abstention falls 0.95 to 0.93 to 0.75 and stays; ECE improves 0.64 to 0.32 to 0.29 to 0.28." src="doc/turns-light.png">
-</picture>
+**1. Original — 15,666 pairs.** Question, clause, answer. The clause is in the
+prompt, so this teaches extraction.
 
-Read down each metric rather than across: recall never moves, lists break and
-partly recover, abstention pays for the recall attempt, calibration improves
-every turn. What follows is what each turn did to produce that picture.
+> **Q** 행정중심복합도시건설청 공무직 등 근로자 관리규정에서 채용담당부서가 해서는 안 되는 행위는?
+> **조문** ① 채용담당부서는 특정 응시자에게 유리하도록 채용계획을 수립하거나, 공고내용을 변경하는 등 …
+> **A** 특정 응시자에게 유리하도록 채용계획을 수립하거나, 공고내용을 변경하는 등 채용 공정성을 해치는 행위입니다.
 
-The second turn — stage 2 retrained on the augmented 22,249 pairs, rescored on
-the same frozen items — answered all three ways a turn of the loop can:
+**2. Closed-book variant — 5,910 pairs (v2 on).** The same question and answer
+with the clause deleted, so answering requires memory rather than reading. The
+instruction rotates through several phrasings so the skill is not welded to one.
+
+> **Q** 소규모주택정비사업 중 '가로주택정비'는 어떤 조항에 포함되나요? *(조문 없음)*
+> **A** … '3. 소규모주택정비사업(가로주택정비ㆍ자율주택정비ㆍ소규모재건축ㆍ소규모재개발) 관리에 관한 사항'에 포함됩니다.
+
+**3. Paraphrase — 7,600 pairs (v3 on).** A local model rewrites each
+closed-book question two ways; the answer is unchanged. A fact met in only one
+wording tends to be stored but not retrievable, so each fact is asked several
+ways.
+
+> **Q** 하천보수원 채용 인사위원회 구성에 관련된 규정은 무엇인가요? **기억나는 대로 알려주세요.**
+> **A** 인사위원회의 위원은 관리국장, 채용권자가 지명하는 3인 이상의 5급 이상 공무원으로 구성되며 …
+
+**4. Enumeration — 892 pairs (v2 on).** Mined from clauses that introduce a
+list, with every item as the answer. The generated pairs answer in a median of
+56 characters, which taught brevity; these are the counterweight.
+
+> **Q** 「철도안전관리체계 기술기준」에서 다음을 모두 나열하시오: … 필요한 기록을 …
+> **A** 관리하여야 할 기록의 정의, 기록의 식별, 보관, 보호, 검색, 보유 및 폐기 등, 위험관리
+
+**5. Refusal — 1,920 pairs (v3 on), 1,937 (v4).** The question keeps its own
+wording but is given a clause that does not answer it, verified not to contain
+the answer, and the target becomes a refusal. Refusal phrasing rotates. **This
+is the only pair type that differs between v3 and v4**: v3 draws the swapped
+clause from an unrelated document, v4 from the same document as the question,
+so its vocabulary matches and refusing cannot be decided from topic alone.
+
+> **Q** 민자도로 운영평가 결과를 민자도로사업자에게 통보하는 주무관청의 의무는 어떤 조항에?
+> **조문** 제18조(지령실의 운영과 무선통신망의 운용절차) 지령실은 각 지구대 및 순찰차 … *(질문과 무관)*
+> **A** 제시된 조문에서 관련 근거를 확인할 수 없습니다.
+
+### How the versions are scored
+
+The training recipes above differ; the tests below do not. Every checkpoint,
+including the untrained base, is scored on the same frozen items in all three
+prompt shapes, which is what makes the results table's columns comparable.
+
+| Scoring mode | Prompt shape | What it measures | Which pair type it checks |
+|---|---|---|---|
+| **open book** | clause supplied, as a RAG system would at runtime | reading comprehension | 1 |
+| **closed book** | no clause; the document is named instead — *「KDS 14 20 50」에 따르면, …* | domain knowledge in the weights | 2, 3, 4 |
+| **`uc4`** | clause supplied but swapped, paired 1:1 with unmodified controls so blanket refusal scores 0.5 | refusing without support | 5 |
+
+### What each turn returned
+
+The second turn — v2, the closed-book and enumeration pairs — answered all three
+ways a turn of the loop can:
 
 - **One fix validated.** The 637 enumeration pairs moved open-book nameset F1
   0.379 → 0.491 (+0.11, interval [+0.05, +0.18]), recovering more than half of
