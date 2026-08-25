@@ -3,7 +3,7 @@
 # 각 단계는 산출물이 이미 있으면 건너뛰므로, 중간에 죽어도 재실행하면 이어진다.
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PY=/home/tom/miniforge3/bin/python
+PY="${KCBENCH_PY:-/home/tom/venvs/cu130/bin/python}"
 LOG="$HERE/pipeline_sft.log"
 say() { echo "$(date '+%F %T') $*" | tee -a "$LOG"; }
 

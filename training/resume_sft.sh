@@ -7,7 +7,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT="${1:-$HERE/out/qwen3-8b-sft}"
 DAPT="$HERE/out/qwen3-8b-dapt"
 LOG="$HERE/sft_run.log"
-PY=/home/tom/miniforge3/bin/python
+PY="${KCBENCH_PY:-/home/tom/venvs/cu130/bin/python}"
 
 LATEST=$(ls -d "$OUT"/step-* 2>/dev/null | sed 's/.*step-//' | sort -n | tail -1)
 if [ -z "${LATEST:-}" ]; then
