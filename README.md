@@ -199,9 +199,9 @@ empirical question the next measurement answers; the flag table is in
 [training/README.md](training/README.md), and the three measured turns it
 produced are reported at the end of the [worked example](#worked-example).
 
-What a turn of the loop can return is one of three things — a fix validated, a
-fix refuted, a tradeoff surfaced — and all three are worth having. The worked
-example's three turns returned all of them.
+A turn returns one of three things — a fix validated, a fix refuted, a tradeoff
+surfaced — and all three are worth having. The worked example ran four turns,
+augmenting the training pairs a different way each time, and got all three.
 
 ### What this benchmark is good at, and not
 
@@ -532,13 +532,13 @@ That is the whole argument for building a benchmark this way. Perplexity said
 the training worked. The probe set said what it had cost. You need both numbers,
 on frozen items, before and after, or you are guessing.
 
-### Four turns of the loop, on this dataset
+### Four training-data recipes, measured
 
-The version number counts trips around the loop. Every version trains the same
-base model on the same stage 1 adapter with the same hyperparameters, and is
-scored on the same frozen items; the only thing that changes is which kinds of
-pair are in the stage 2 training file, so a score difference is attributable to
-the data. `v1` is the generated dataset as it came, and each later version adds
+Four fine-tunes, each trained on the same corpus augmented a different way, to
+find out which augmentation teaches what. Everything else is held constant —
+same base model, same stage 1 adapter, same hyperparameters, same frozen
+evaluation items — so a score difference is attributable to the training data
+and nothing else. `v1` is the generated dataset as it came, and each later version adds
 augmented pairs on top, produced by `training/augment_sft.py`.
 
 | Version | Pairs | What was added | Total |
@@ -605,7 +605,7 @@ prompt shapes, which is what makes the results table's columns comparable.
 | **closed book** | no clause; the document is named instead — *「KDS 14 20 50」에 따르면, …* | domain knowledge in the weights | 2, 3, 4 |
 | **`uc4`** | clause supplied but swapped, paired 1:1 with unmodified controls so blanket refusal scores 0.5 | refusing without support | 5 |
 
-### What each turn returned
+### What each recipe returned
 
 The second turn — v2, the closed-book and enumeration pairs — answered all three
 ways a turn of the loop can:
