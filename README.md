@@ -532,7 +532,7 @@ That is the whole argument for building a benchmark this way. Perplexity said
 the training worked. The probe set said what it had cost. You need both numbers,
 on frozen items, before and after, or you are guessing.
 
-### Three turns of the loop, on this dataset
+### Four turns of the loop, on this dataset
 
 The example's fine-tunes are numbered by turn — each is the same base model and
 the same stage 1 adapter, retrained at stage 2 on a different data recipe, then
@@ -544,10 +544,11 @@ version number counts trips around the loop, nothing else.
 | `v1` | the original pairs, as generated | 15,666 | the dataset as designed (for RAG) |
 | `v2` | + closed-book variants, + enumeration pairs | 22,249 | can recall and full lists be trained in |
 | `v3` | + LLM paraphrases, + refusal-target pairs | 32,080 | does fact repetition inject recall; does trained refusal survive hard cases |
+| `v4` | same, refusal clauses drawn from the *same document* | 32,005 | is abstention recoverable with harder negatives |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/turns-dark.png">
-  <img alt="Four metrics across base, v1, v2 and v3. Recall stays near 0.15 throughout; nameset F1 falls 0.59 to 0.38 then recovers to 0.49 and 0.46; abstention falls 0.95 to 0.93 to 0.75 and stays; ECE improves 0.64 to 0.32 to 0.29 to 0.28." src="doc/turns-light.png">
+  <img alt="Four metrics across base, v1, v2, v3 and v4. Recall stays near 0.15 throughout; nameset F1 falls 0.59 to 0.38 then recovers to 0.49 and 0.46; abstention falls 0.95 to 0.93 to 0.75 and stays; ECE improves 0.64 to 0.32 to 0.29 to 0.28." src="doc/turns-light.png">
 </picture>
 
 Read down each metric rather than across: recall never moves, lists break and
@@ -589,23 +590,40 @@ clauses reached 0.988, the best of any checkpoint.
 All four checkpoints on the same frozen items, identical decoding
 (`--think off`, temperature 0):
 
-| Metric | base | v1 | v2 | v3 | Verdict |
-|---|---:|---:|---:|---:|---|
-| probe numeric, closed book | 0.147 | 0.153 | 0.128 | 0.156 | flat throughout (p = 0.78 vs base) |
-| `sft` numeric, closed book | 0.147 | 0.156 | 0.153 | 0.156 | flat throughout |
-| `sft` nameset F1, open book | 0.587 | 0.379 | 0.491 | 0.459 | broken by v1, half recovered by v2 |
-| `sft` numeric, open book | 0.944 | 0.959 | 0.956 | 0.947 | reading intact throughout |
-| uc4 abstention on swapped clauses | 0.950 | 0.925 | 0.750 | 0.750 | v2's cost, not repaired by v3 |
-| uc4 accuracy on supported clauses | 0.875 | 0.938 | 0.938 | **0.988** | best at v3 |
-| uc5 incident F1, open book | 0.468 | 0.564 | 0.530 | 0.565 | improved and held |
-| ECE, closed book (lower better) | 0.641 | 0.320 | 0.286 | **0.281** | improved every turn |
+| Metric | base | v1 | v2 | v3 | v4 | Verdict |
+|---|---:|---:|---:|---:|---:|---|
+| probe numeric, closed book | 0.147 | 0.153 | 0.128 | 0.156 | 0.144 | flat throughout (p = 0.78 vs base) |
+| `sft` numeric, closed book | 0.147 | 0.156 | 0.153 | 0.156 | 0.131 | flat throughout |
+| `sft` nameset F1, open book | 0.587 | 0.379 | 0.491 | 0.459 | 0.459 | broken by v1, half recovered by v2 |
+| `sft` numeric, open book | 0.944 | 0.959 | 0.956 | 0.947 | 0.941 | reading intact throughout |
+| uc4 abstention on swapped clauses | 0.950 | 0.925 | 0.750 | 0.750 | 0.688 | falls at every turn that targets it |
+| uc4 accuracy on supported clauses | 0.875 | 0.938 | 0.938 | **0.988** | 0.938 | best at v3 |
+| uc5 incident F1, open book | 0.468 | 0.564 | 0.530 | 0.565 | 0.529 | improved and held |
+| ECE, closed book (lower better) | 0.641 | 0.320 | 0.286 | **0.281** | 0.349 | improved until v4 |
 
-Three turns in, the honest summary is that this pipeline reliably improves how
-the model handles what it is given — calibration, reading, answering with
-support — and has not moved what the model knows. For the RAG agent the corpus
-was built for, the first half is the half that matters, and the checkpoint to
-deploy on safety grounds is still v1, the only fine-tune that kept abstention
-intact.
+The fourth turn attacked the abstention loss directly. If refusal trained on
+easy negatives did not transfer, harder ones should help: v4 draws each swapped
+clause from the *same document* as the question, so refusing cannot be decided
+from vocabulary alone. It made things worse. Abstention fell again, 0.750 →
+0.688 (p = 0.035 against v3, p = 0.005 against base), accuracy on supported
+clauses gave back its v3 gain, and calibration regressed for the first time in
+the campaign (ECE 0.281 → 0.349).
+
+That result reframes the diagnosis. Three different refusal recipes — none,
+easy negatives, hard negatives — produced 0.925, 0.750 and 0.688, and the
+untrained base is the best of all at 0.950. Abstention here does not behave like
+a skill that training installs; it behaves like one the base model already has
+and that every domain fine-tune erodes, harder the more directly it is targeted.
+Teaching a model to say "not in this clause" appears to teach hedging rather
+than judgement — which is why the supported-clause accuracy and the calibration
+error moved with it.
+
+Four turns in, the honest summary is that this pipeline reliably improves how
+the model handles what it is given — reading, answering with support, and
+calibration up to v3 — and has not moved what the model knows, and cannot be
+made to stop costing safety behaviour. For the RAG agent the corpus was built
+for, the checkpoint to deploy is still v1: the only fine-tune that kept
+abstention near its base, and the cheapest of the four to produce.
 
 ### Every figure above, as score tables
 
