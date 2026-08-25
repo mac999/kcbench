@@ -539,12 +539,17 @@ the same stage 1 adapter, retrained at stage 2 on a different data recipe, then
 scored on the same frozen items. That is the whole experimental design: the
 version number counts trips around the loop, nothing else.
 
-| Version | Stage 2 data | Pairs | What the turn tested |
-|---|---|---:|---|
-| `v1` | the original pairs, as generated | 15,666 | the dataset as designed (for RAG) |
-| `v2` | + closed-book variants, + enumeration pairs | 22,249 | can recall and full lists be trained in |
-| `v3` | + LLM paraphrases, + refusal-target pairs | 32,080 | does fact repetition inject recall; does trained refusal survive hard cases |
-| `v4` | same, refusal clauses drawn from the *same document* | 32,005 | is abstention recoverable with harder negatives |
+| Version | Stage 2 data | Pairs | Ability it aimed at | The question that tests it |
+|---|---|---:|---|---|
+| `v1` | the original pairs, as generated | 15,666 | reading a clause it is handed | *Given this clause, what is the minimum cover thickness?* → `40mm` |
+| `v2` | + closed-book variants, + enumeration pairs | 22,249 | recall without the clause, and complete lists | *Without the clause: what is the minimum cover thickness?* → `40mm`<br>*List every document required for the application* → all four, not two |
+| `v3` | + LLM paraphrases, + refusal-target pairs | 32,080 | the same fact asked differently, and refusing when unsupported | *How thick must the cover be, at minimum?* → still `40mm`<br>*(clause is about something else)* → `자료 없음` |
+| `v4` | same, refusal clauses swapped from the *same document* | 32,005 | refusing when the clause looks relevant but is not | *(clause is a neighbouring article of the same standard)* → still `자료 없음` |
+
+Each row's ability is measured by a different track, which is why the campaign
+needs more than one score: `sft` open book for reading, `probe` and `sft` closed
+book for recall, `sft` nameset for lists, `uc4` for refusal. A recipe can move
+one and break another, and three of these four did.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/turns-dark.png">
