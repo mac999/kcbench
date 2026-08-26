@@ -20,7 +20,7 @@ of prompt strings; see [Adapting it to another
 domain](#adapting-it-to-another-domain).
 
 To use it, start at [Install](#install). To see what it produces and what it
-found, read the [worked example](#worked-example) — a full campaign on the
+found, read the [worked example](#worked-example-a-korean-construction-corpus) — a full campaign on the
 corpus it was built for, charts and score tables included.
 
 **Contents**
@@ -31,7 +31,7 @@ corpus it was built for, charts and score tables included.
 - [The development loop](#the-development-loop) — what to do with the numbers, and the line against Goodharting
 - [Workflow](#workflow) — build, baseline, train, register, score, compare — in order
 - [Layout](#layout) — what each file in the repository does
-- [Worked example](#worked-example) — a Qwen3-8B campaign end to end: charts, three training turns, score tables
+- [Worked example](#worked-example-a-korean-construction-corpus) — Qwen3-8B on Korean construction regulation, end to end: four data recipes, charts, score tables
 - [What each track contains](#what-each-track-contains) — the nine item sets, their sizes and answer types
 - [Adapting it to another domain](#adapting-it-to-another-domain) — what to change when the corpus is not construction
 - [What each metric means](#what-each-metric-means) — every number in a run file, defined and sourced
@@ -197,7 +197,7 @@ closed-book variants, full-enumeration pairs, LLM-generated paraphrases,
 refusal targets. Every ratio and cap is a flag, because the right mixture is an
 empirical question the next measurement answers; the flag table is in
 [training/README.md](training/README.md), and the three measured turns it
-produced are reported at the end of the [worked example](#worked-example).
+produced are reported at the end of the [worked example](#worked-example-a-korean-construction-corpus).
 
 A turn returns one of three things — a fix validated, a fix refuted, a tradeoff
 surfaced — and all three are worth having. The worked example ran four turns,
@@ -349,7 +349,7 @@ training/
 `training/` is kept separate from `benchmark/` deliberately: an instrument that
 shares code with the thing it measures stops being one.
 
-## Worked example
+## Worked example: a Korean construction corpus
 
 How a run of this benchmark reads, from the project it was built for: Qwen3-8B
 fine-tuned in two stages — domain-adaptive pre-training over 26,767 raw chunks,
@@ -372,21 +372,43 @@ tracks, the rest became `data/train/`, and every number below rests on that
 split.
 
 **Known limits of this example dataset, as of August 2026.** The corpus is
-still being collected and these figures describe the snapshot the example was
-run on, not the dataset's ceiling. The charts below are honest about the corpus
-they came from, so its weaknesses belong up front. Nearly all of its
-instruction pairs (95%) carry the source clause in the prompt and answer in a
-median of 56 characters — it was generated for RAG-style use, so it teaches
-extraction and brevity, and stage 2 below shows exactly that signature.
-The corpus collects the same regulation more than once, under names differing
-by a suffix and as amendment pairs — splitting by document name would have
-leaked 759 held-out chunks into training, which is why the split works by
-content digest instead. And of its 93 IFC building models, 57 are parser
-regression fixtures with one or two elements each; after exclusions only 12
-carry enough geometry to ask about, which is why the `vlm` track is 10 items
-and read as a smoke test, not a measurement. None of these are benchmark
-defects, but every number below should be read knowing them — and the first
-one is what the development loop at the end of this example exists to fix.
+still being collected and these figures describe the snapshot the example ran
+on, not the dataset's ceiling. Its weaknesses belong up front, because they
+bound what the results below can be taken to mean.
+
+**Scale is the first and largest of them.** Stage 1 saw **3.7 million tokens**
+of Korean construction regulation — 26,767 chunks from 865 documents — in a
+single pass, and stage 2 trained on 15,666 instruction pairs. Continued
+pre-training that successfully adds domain knowledge is normally reported at
+billions of tokens with several passes over each fact; this is roughly three
+orders of magnitude below that, and the adapter was LoRA rank 64, 174.6M
+trainable parameters or 2.1% of an 8B model. **The campaign's central negative
+result — that four data recipes moved closed-book recall not at all — is
+therefore a statement about this corpus at this scale and this adapter size,
+not about domain fine-tuning in general.** The augmentation turns rearranged
+3.7M tokens; none of them added information the corpus did not already contain.
+
+Three further limits shape specific numbers. Nearly all instruction pairs (95%)
+carry the source clause in the prompt and answer in a median of 56 characters —
+generated for RAG-style use, so they teach extraction and brevity, and stage 2
+shows exactly that signature. The corpus collects the same regulation more than
+once, under names differing by a suffix and as amendment pairs, so splitting by
+document name would have leaked 759 held-out chunks into training, which is why
+the split works by content digest. And of its 93 IFC building models, 57 are
+parser regression fixtures holding one or two elements each; after exclusions
+only 12 carry enough geometry to ask about, which is why the `vlm` track is 10
+items and reads as a smoke test rather than a measurement.
+
+> **Before reading these results as a verdict on fine-tuning, size your own run
+> against them.** If closed-book domain knowledge is your goal, budget the
+> pre-training corpus in billions of tokens rather than millions, plan several
+> passes over each fact, and give the adapter enough capacity to store what you
+> are asking it to learn — or fine-tune the full weights. If your corpus is the
+> size of this one, the honest expectation is what this campaign measured:
+> better handling of text you supply at inference, and no new knowledge in the
+> weights. That is a perfectly useful outcome for a RAG system, and a poor one
+> if you needed the model to answer from memory. The benchmark will tell you
+> which you got; it cannot make a small corpus behave like a large one.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/closed-vs-open-dark.png">
