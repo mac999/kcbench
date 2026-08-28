@@ -31,6 +31,7 @@ COMMANDS = {
     "eval":     ("kcbench.evaluate", "score a model over the generation tracks"),
     "ppl":      ("kcbench.perplexity", "score track 1 perplexity locally"),
     "compare":  ("kcbench.compare", "compare two runs, with a significance test"),
+    "rag":      ("kcbench.rag_baseline", "score with retrieved context, not the gold clause"),
     "ece":      ("kcbench.calibration", "calibration error: is its confidence worth anything"),
     "selfcheck": ("kcbench.selfcheck", "hallucination signal from sampling consistency, no answer key"),
     "matrix":   ("kcbench.run_matrix", "score several models and tabulate"),

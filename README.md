@@ -75,6 +75,7 @@ the names listed under [What each track contains](#what-each-track-contains).
 | `ppl` | score the dapt track's perplexity locally |
 | `ece` | expected calibration error — is the model's confidence justified |
 | `compare` | compare two runs, with a significance test |
+| `rag` | score with retrieved context instead of the gold clause |
 | `matrix` | score several models and tabulate |
 | `triage` | pick the items a human should review |
 | `review` | apply review verdicts, kept across rebuilds |
@@ -821,6 +822,51 @@ benchmark — the mapping is in
 [benchmark/README.md](benchmark/README.md#precedent-for-each-grading-type).
 What each type scores, and what the rest of the numbers in a run file mean, is
 set out under [What each metric means](#what-each-metric-means) near the end.
+
+## What retrieval quality buys
+
+Closed and open book are the ends of a scale, not the whole of it. Closed book
+is a model answering from memory; open book hands it the exact clause the item
+was mined from, which is what a *perfect* retriever would do. A deployed system
+sits between them, and `cb.py rag` scores that middle: the held-out chunks are
+embedded, searched per question, and the top-k concatenated as the passage in
+place of the gold clause. Everything downstream is identical to an open-book
+run, so the numbers are directly comparable.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="doc/rag-dark.png">
+  <img alt="Numeric accuracy for the untrained base model under four retrieval conditions: closed book 0.147, RAG top-3 0.397, RAG top-10 0.481, open book 0.944." src="doc/rag-light.png">
+</picture>
+
+| Condition | recall@k | numeric | nameset F1 |
+|---|---:|---:|---:|
+| closed book, no retrieval | — | 0.147 | 0.000 |
+| RAG, top-3 | 0.240 | 0.397 | 0.236 |
+| RAG, top-10 | 0.400 | 0.481 | 0.318 |
+| open book, perfect retrieval | 1.000 | 0.944 | 0.587 |
+
+`recall@k` is the share of items whose source chunk the retriever actually
+returned, so it separates the two ways a RAG answer goes wrong. At top-10 the
+retriever finds the right chunk 40% of the time and the system answers 48% of
+items — the model is doing slightly better than the retriever, because some
+questions are answerable from a neighbouring clause. The gap between 0.481 and
+0.944 is not a model deficiency; it is retrieval headroom.
+
+**This is the comparison a fine-tuning decision should be made against.** On
+this corpus, moving from a mediocre retriever to a good one is worth roughly
+0.35 accuracy, while four rounds of fine-tuning moved closed-book recall by
+nothing at all. Retrieval quality dominates, and a project with a fixed budget
+should spend it there first.
+
+**One finding worth stating separately: the embedding model decides whether any
+of this works.** The first run used `nomic-embed-text`, which is
+English-centred, and scored **recall@3 of 0.000** — not a bug, a measurement.
+Its similarity scores on Korean regulation clustered in a narrow band with no
+discriminative power, so the retrieved passages were unrelated to the question.
+Switching to `bge-m3`, a multilingual model, on the same corpus and the same
+queries gave recall@3 of 0.240. Anyone building Korean-language RAG on this kind
+of corpus should verify their embedder against a held-out set before trusting
+anything downstream of it.
 
 ## Are the items any good?
 
