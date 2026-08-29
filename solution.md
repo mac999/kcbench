@@ -33,6 +33,34 @@ trainable parameters, about 2.1% of an 8B model. Knowledge injection is
 believed to scale with adapter capacity, so a larger adapter, a different
 tuning method, or full fine-tuning may not behave as this campaign did.
 
+This is not a hypothetical. **Closed-book knowledge injection has been achieved
+at a corpus scale comparable to this one**, and the published cases differ from
+this campaign in three specific ways at once — all of them things it did not do:
+
+| | This campaign | [Knowledge-Instruct (2025)](https://arxiv.org/html/2504.05571v1) |
+|---|---|---|
+| Tuning | LoRA rank 64 (2.1% of weights) | **full SFT** |
+| Restatements per fact | 2 | **5**, plus 25 instruction templates |
+| Preparation | rule-mined from clauses | entity and fact extraction, contextualisation, deduplication, then paraphrase |
+| Result | closed-book flat, 0.147 → 0.156 | **0% → 81.8%** on new facts; 13.2% → 76.8% on long-tail facts, Llama-3.1-8B |
+
+Two further conditions are worth naming because they are cheap to get wrong.
+Paraphrase counts are reported to help until roughly three restatements per
+fact and to plateau after; this campaign used two, below that point. And
+[capacity saturation at rank 64 has been observed directly](https://arxiv.org/html/2607.21861v1)
+— recall collapsing from 71% to 50% as documents were added, restored by
+doubling to rank 128 — though the same line of work found that
+[raising the rank without raising the learning rate with it can make things
+worse](https://aclanthology.org/2025.findings-ijcnlp.58.pdf), and that
+[higher ranks buy memorisation without necessarily buying accuracy](https://arxiv.org/pdf/2502.05087).
+
+So the honest statement of this campaign's central negative result is narrower
+than "fine-tuning does not add knowledge here". It is: **at rank 64, with two
+restatements per fact, on clause-mined pairs, four recipes moved closed-book
+recall by nothing.** The published successes changed all three of those
+variables together, which is also why this campaign cannot say which one
+mattered.
+
 **The GPU — one memory pool, shared.** The machine has 128 GB of *unified*
 memory: the CPU, the GPU, the page cache and every process draw on the same
 pool, so there is no separate VRAM to protect a training job. Training this 8B
@@ -274,6 +302,12 @@ The measured ladder, base model, numeric accuracy on the held-out set:
 | retrieval with `snowflake-arctic-embed2`, top-10 | 0.428 | 0.478 |
 | perfect retrieval (the passage handed over) | 1.000 | 0.944 |
 
+This ordering is not peculiar to this corpus. A controlled comparison of the two
+approaches found [retrieval outperforming fine-tuning consistently, for both
+knowledge the model had seen in training and knowledge it had
+not](https://arxiv.org/abs/2312.05934) — so "retrieval first" is a recommendation
+this campaign's numbers agree with rather than one they establish alone.
+
 Three things follow.
 
 **The open-book figure is a ceiling, not a forecast.** 0.944 is what the system
@@ -396,7 +430,11 @@ as untested at larger adapter sizes, not as settled.
    costs nothing and takes fragmentation out of the picture on long runs.
 
 With those, the headroom for a rank sweep is ample, and the knowledge-injection
-question can be answered rather than assumed.
+question can be answered rather than assumed. The literature above suggests what
+to change first if the goal is recall rather than a clean ablation: raise the
+restatements per fact to five, raise the rank to 128 with the learning rate
+adjusted alongside it, and — if those do not move it — try full fine-tuning,
+which is what the published successes used.
 
 ## Does the split cost too much time?
 
@@ -465,4 +503,9 @@ design tradeoffs to make deliberately, not surprises to discover in production.
 - [NVIDIA DGX Spark In-Depth Review](https://www.lmsys.org/blog/2025-10-13-nvidia-dgx-spark/) — LMSYS, for the throughput figures
 - [Throughput and latency degradation with a LoRA adapter](https://github.com/vllm-project/vllm/issues/10062) — vLLM issue #10062
 - [Measuring the Effectiveness and Performance of AI Guardrails](https://developer.nvidia.com/blog/measuring-the-effectiveness-and-performance-of-ai-guardrails-in-generative-ai-applications/) — NVIDIA, on the layered guardrail stack
+- [*Knowledge-Instruct: Effective Continual Pre-training from Limited Data using Instructions*](https://arxiv.org/html/2504.05571v1) — closed-book injection succeeding at a comparable corpus scale, via full SFT and five restatements per fact
+- [*Fine-Tuning or Retrieval? Comparing Knowledge Injection in LLMs*](https://arxiv.org/abs/2312.05934) — retrieval outperforming fine-tuning for both existing and new knowledge, independently of this campaign
+- [*Data Quality over Capacity: Internalizing Documents into LoRA Adapters for Closed-Book QA*](https://arxiv.org/html/2607.21861v1) — rank-64 capacity saturation, restored at rank 128
+- [*How Much is Too Much? Exploring LoRA Rank Trade-offs*](https://aclanthology.org/2025.findings-ijcnlp.58.pdf) — why raising rank without the learning rate regresses
+- [*Mitigating Unintended Memorization with LoRA*](https://arxiv.org/pdf/2502.05087) — higher rank increases memorisation without guaranteeing accuracy
 - All benchmark figures: [README.md](README.md#worked-example-a-korean-construction-corpus)
