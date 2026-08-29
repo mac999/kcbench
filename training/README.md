@@ -171,7 +171,8 @@ when nothing else is running.
 
 **One memory pool, so do not score while training.** This machine has no
 separate VRAM: the CPU, the GPU, the page cache and every process draw on the
-same 128 GB. Fine-tuning here has died with an out-of-memory failure five
+same 128 GB, so whether an 8B run fits depends on how it is configured and what
+else is resident. Fine-tuning here has died with an out-of-memory failure five
 times, every one of them while the benchmark was scoring on the same box, and
 every one at the default rank 64 — so adapter size was never the cause.
 Approximate steady-state cost of running them together:
