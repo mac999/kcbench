@@ -338,16 +338,18 @@ analysis:
 
 ## The memory ceiling, and what it does not prove
 
-Fine-tuning the 8B model on this machine has died with an out-of-memory failure
-**five times**. Every one of those crashes happened while the benchmark was
-scoring on the same box. That detail decides what the crashes are evidence of,
-and it is worth being precise because the wrong reading would close off the most
-promising remaining experiment.
+A machine of this class can run out of memory while fine-tuning an 8B model,
+depending on how the training run is configured and what else is resident. It
+did here, five times — and each time the benchmark was scoring on the same box.
+That circumstance is what decides how much the crashes prove, which is worth
+being careful about, because the pessimistic reading would close off the most
+promising experiment still open.
 
-**Why concurrency is expensive here.** The 128 GB is unified: CPU, GPU, page
-cache and every process share one pool, so a scoring run subtracts directly from
-what training can allocate. Rough steady-state figures for Qwen3-8B (36 layers,
-hidden 4096, intermediate 12288, vocabulary 151,936):
+**Why the memory is easy to exhaust.** The 128 GB is unified: CPU, GPU, page
+cache and every process share one pool, so anything else resident subtracts
+directly from what training can allocate. Rough steady-state figures for
+Qwen3-8B (36 layers, hidden 4096, intermediate 12288, vocabulary 151,936),
+in the configuration this campaign used:
 
 | Process | Consumes | Approx. |
 |---|---|---:|
@@ -360,21 +362,20 @@ hidden 4096, intermediate 12288, vocabulary 151,936):
 | `cb.py eval` | Ollama's Q4 weights plus an 8,192-token KV cache | ~6 GB |
 | | **total** | **~67 GB** |
 
-Sixty-seven gigabytes against 128 nominally fits. It does not survive contact
-with four things: the operating system and a page cache that has just been
-handed a 16 GB GGUF to write; allocator fragmentation, which this repository
-already fights with `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` and a
-comment noting that *"unified memory on GB10 fragments under long runs"*; the
-two logit spikes above, which are transient and can coincide; and the fact that
-on a unified pool an over-allocation can be resolved by the kernel killing the
-process rather than by a catchable CUDA error.
+Sixty-seven gigabytes against 128 nominally fits, and none of the individual
+figures is alarming. What consumes the remainder is less visible: the operating
+system and a page cache that may have just been handed a 16 GB checkpoint to
+write; allocator fragmentation over a long run, which unified memory is
+particularly prone to; the two logit spikes above, which are transient and can
+coincide; and the fact that on a unified pool an over-allocation can end with
+the kernel killing the process rather than raising a catchable CUDA error.
 
-**What this does not show.** The crashed runs were at the default rank 64 — the
-setting `resume_dapt.sh` uses. **Adapter size was never the variable.** Training
-on its own accounts for roughly 41 GB of the 128, and raising the rank is cheap
-in comparison: rank 128 roughly doubles the LoRA parameters to ~349M, adding
-about 3 GB, and rank 256 adds about 6 GB. Run without the benchmark alongside
-it, a substantially larger adapter fits with room left over.
+**What this does not show.** Every crashed run was at the default rank 64.
+**Adapter size was never the variable being tested.** Training on its own
+accounts for roughly 41 GB of the 128, and raising the rank is cheap in
+comparison: rank 128 roughly doubles the LoRA parameters to ~349M, adding about
+3 GB, and rank 256 adds about 6 GB. Given the box to itself, a substantially
+larger adapter fits with room left over.
 
 So "more adapter capacity" is **not** foreclosed by this hardware. The
 experiment simply has not been run cleanly, and the project's own training notes
@@ -387,14 +388,12 @@ as untested at larger adapter sizes, not as settled.
 
 1. **Do not score while training.** Serialise the two. This is a scheduling
    change and it recovers roughly 22 GB.
-2. **Turn on gradient checkpointing.** `dapt.py --checkpointing` is opt-in and
-   neither resume script passes it, so the runs carried ~16 GB of activations
-   they did not have to. It costs about a third of the throughput and it is the
-   single largest saving available. (Note that `training/README.md` describes
-   the setup as "bf16 with gradient checkpointing", which the scripts do not
-   actually do — worth reconciling.)
-3. **Keep `expandable_segments`.** Already done in `resume_dapt.sh`; it belongs
-   in the non-resume path too.
+2. **Turn on gradient checkpointing.** It is opt-in in this pipeline and the
+   campaign's runs did not use it, so they carried ~16 GB of activations they
+   did not have to. It costs about a third of the throughput and it is the
+   single largest saving available.
+3. **Let the allocator grow in place.** `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`
+   costs nothing and takes fragmentation out of the picture on long runs.
 
 With those, the headroom for a rank sweep is ample, and the knowledge-injection
 question can be answered rather than assumed.
