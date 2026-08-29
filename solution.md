@@ -10,6 +10,45 @@ citation. Where something is inference rather than measurement, it says so.
 
 ---
 
+## What these conclusions depend on
+
+Read this first. Nothing below is a general result about fine-tuning, retrieval
+or agent design. Every conclusion is conditioned on four things, and changing
+any of them can change the answer.
+
+**The corpus — its scale and how it was made.** Stage 1 saw 3.7 million tokens
+(26,767 chunks from 865 documents) in a single pass; stage 2 trained on 15,666
+instruction pairs. Continued pre-training that demonstrably adds domain
+knowledge is normally reported at billions of tokens with several passes per
+fact, so this is roughly three orders of magnitude below that. The pairs are
+also synthetic, generated for retrieval-augmented use: 95% carry the source
+passage in the prompt and answer in a median of 56 characters, which teaches
+extraction and brevity rather than recall. **A larger or differently generated
+corpus could plausibly move the closed-book recall that four recipes here could
+not.** The augmentation turns rearranged the same 3.7M tokens; none of them
+added information the corpus did not already hold.
+
+**The adapter — its parameter budget.** Stage 2 used LoRA at rank 64: 174.6M
+trainable parameters, about 2.1% of an 8B model. Knowledge injection is
+believed to scale with adapter capacity, so a larger adapter, a different
+tuning method, or full fine-tuning may not behave as this campaign did.
+
+**The GPU — how much memory is available.** This matters more than it looks,
+because it is what caps the previous point. Raising the LoRA rank has
+repeatedly exhausted memory on the 128 GB machine mid-training and killed the
+run, so on this hardware "use a bigger adapter" is not an experiment that can be
+run. On a machine with more memory it is, and the negative result on knowledge
+injection should be retested there before being treated as settled.
+
+**The base model.** Qwen3-8B. In particular, its untrained abstention rate of
+0.950 is what makes "do not train what the model already does" the right advice
+here. A base model that abstained poorly would justify the opposite conclusion.
+
+The latency arithmetic later on has the same character: it describes one class
+of machine, named there, and does not transfer unchanged to a datacentre GPU.
+
+---
+
 ## Terms used here
 
 The campaign's vocabulary is compressed. Spelled out:
@@ -143,19 +182,28 @@ architectural answer is to stop asking one model to do both.
 Splitting a generator from a verifier is an established pattern, not an
 improvisation: the generator produces an answer, and a separate component judges
 only whether that answer is supported by the retrieved passages. Production
-guardrail stacks are built this way — NVIDIA's reference stack pairs NeMo
-Guardrails for flow control with Llama Guard 3 8B for classification and a
-86M-parameter Prompt Guard for cheap first-pass filtering, rather than
-concentrating every judgement in the largest model.
+guardrail stacks are layered this way rather than concentrating every judgement
+in the largest model — one published reference stack pairs a flow-control layer
+(NVIDIA NeMo Guardrails) with an 8B classifier (Llama Guard 3) and an
+86M-parameter first-pass filter (Prompt Guard). That is cited as an existence
+proof of the shape, not as the stack to adopt; equivalent layered designs exist
+from other vendors and in open source.
 
 The important detail is that **the second model does not need to be large.** Its
-task is narrow and its output is a verdict, not prose:
+task is narrow and its output is a verdict, not prose. Three published models
+illustrate the size range — again as examples of a category, not
+recommendations. Others in the same class exist, the field moves quickly, and
+the right choice is whichever scores best on *your* held-out data:
 
 | Verifier | Size | Reported result |
 |---|---:|---|
 | Patronus Lynx | 8B | +24.5% over GPT-3.5 on HaluBench |
 | MiniCheck-FT5 | 770M | GPT-4-level accuracy at ~400× lower cost |
 | Vectara HHEM-2.1-Open | 110M | <600 MB RAM; 2k-token input in ~1.5 s on ordinary CPU |
+
+The figures are the publishers' own, measured on English benchmarks. Treat them
+as evidence that small verifiers are viable, not as scores that will reproduce
+on Korean regulation — see option **c** below.
 
 Four ways to implement the split, cheapest first. Work down the list only as far
 as the accuracy requirement demands.
@@ -291,13 +339,24 @@ analysis:
 
 ## Does the split cost too much time?
 
-On the target hardware, no — provided the verifier is configured to emit a
-verdict rather than an explanation.
+On the hardware this campaign ran on, no — provided the verifier is configured
+to emit a verdict rather than an explanation.
 
-The GB10 machine has 128 GB of unified LPDDR5x at roughly 273 GB/s, which is
-well below a datacentre GPU. Published measurements for Llama 3.1 8B on this
-platform give about **7,991 tokens/s reading the prompt and 20.5 tokens/s
-generating** at batch 1, rising to 368 tokens/s generation at batch 32.
+That hardware is an **NVIDIA DGX Spark**, a desktop machine built on the
+**NVIDIA GB10 Grace Blackwell Superchip**: a 20-core Arm CPU and a Blackwell GPU
+sharing **128 GB of LPDDR5X unified memory at roughly 273 GB/s**. The bandwidth
+figure is the one that matters here, and it is well below a datacentre GPU's.
+Published measurements for Llama 3.1 8B on this platform give about **7,991
+tokens/s reading the prompt and 20.5 tokens/s generating** at batch 1, rising to
+368 tokens/s generation at batch 32.
+
+Everything in this section is therefore specific to that machine. It is the
+environment the benchmark happened to run on, not a recommended target. On a
+datacentre GPU generation is far faster, which shrinks the denominator and makes
+the verifier's share of end-to-end latency correspondingly larger — the
+conclusion that verification is nearly free holds most strongly on
+bandwidth-limited hardware like this one. Re-derive the arithmetic for whatever
+you deploy on; the method below is what transfers, not the numbers.
 
 The asymmetry is the whole argument. **Generation is slow; reading is fast.** A
 verifier reads a long passage and an answer, then emits a few tokens — it is
@@ -340,7 +399,8 @@ design tradeoffs to make deliberately, not surprises to discover in production.
 - [Lynx: State-of-the-Art Open Source Hallucination Detection Model](https://www.patronus.ai/blog/lynx-state-of-the-art-open-source-hallucination-detection-model) — Patronus AI
 - Liu et al., [*MiniCheck: Efficient Fact-Checking of LLMs on Grounding Documents*](https://aclanthology.org/2024.emnlp-main.499/), EMNLP 2024
 - [HHEM 2.1: A Better Hallucination Detection Model](https://www.vectara.com/blog/hhem-2-1-a-better-hallucination-detection-model) — Vectara
-- [NVIDIA DGX Spark In-Depth Review](https://www.lmsys.org/blog/2025-10-13-nvidia-dgx-spark/) — LMSYS, for the GB10 throughput figures
+- [NVIDIA DGX Spark](https://www.nvidia.com/en-us/products/workstations/dgx-spark/) — NVIDIA, for the GB10 Grace Blackwell specification
+- [NVIDIA DGX Spark In-Depth Review](https://www.lmsys.org/blog/2025-10-13-nvidia-dgx-spark/) — LMSYS, for the throughput figures
 - [Throughput and latency degradation with a LoRA adapter](https://github.com/vllm-project/vllm/issues/10062) — vLLM issue #10062
 - [Measuring the Effectiveness and Performance of AI Guardrails](https://developer.nvidia.com/blog/measuring-the-effectiveness-and-performance-of-ai-guardrails-in-generative-ai-applications/) — NVIDIA, on the layered guardrail stack
 - All benchmark figures: [README.md](README.md#worked-example-a-korean-construction-corpus)
