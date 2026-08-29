@@ -370,6 +370,49 @@ analysis:
 
 ---
 
+---
+
+## Solution 4 — full fine-tuning, if recall is the goal
+
+Only relevant if closed-book recall is a requirement. If the deployment supplies
+the clause at inference, Solution 2 is the cheaper answer and this section does
+not apply.
+
+**What is known to work.** Closed-book injection has succeeded at a corpus scale
+comparable to this one, and the reported recipe changes three things together:
+full SFT rather than a low-rank adapter, five restatements per fact rather than
+one or two, and fact extraction before paraphrasing rather than mining clauses
+as they stand. On an 8B model that took new facts from 0% to 81.8% and
+long-tail facts from 13.2% to 76.8%
+([Knowledge-Instruct](https://arxiv.org/html/2504.05571v1)).
+
+**What it costs on this class of machine.** An 8B model wants roughly 122 GB
+before activations — 15 GB of weights, 15 GB of gradients, 91 GB of AdamW
+moments and the fp32 master copy — against 128 GB shared with the OS, the page
+cache and anything else running. An 8-bit optimiser brings it to about 76 GB and
+gradient checkpointing covers the activations, so it is reachable, but only with
+both turned on and nothing else scoring at the same time.
+
+| | For | Against |
+|---|---|---|
+| Capacity | the only method with published closed-book success at this corpus scale | LoRA at rank 128 is untested here and much cheaper to try |
+| Memory | fits with an 8-bit optimiser and checkpointing | does not fit as normally configured; no headroom for concurrent work |
+| Time | one run answers the question | ~20 h per run on this hardware, and the recipe changes three variables at once, so a failure does not say which |
+| Risk | — | full-weight training can degrade behaviour the base model already had, which this campaign saw repeatedly with a *much* smaller intervention |
+
+**Is it worth it against better retrieval?** Unknown, and worth saying plainly:
+the literature has full SFT succeeding at injection and, separately,
+[retrieval outperforming fine-tuning for the same
+purpose](https://arxiv.org/abs/2312.05934), but the two have not been priced
+against each other at equal effort on a corpus like this. What this campaign can
+report is which was cheaper *here*: retrieval moved accuracy from 0.147 to 0.481
+in an afternoon, and four training rounds moved it nothing. Try retrieval first
+for that reason — not because full fine-tuning is known to lose.
+
+**Order of attempts**, cheapest first: five restatements per fact, then rank 128
+with the learning rate raised alongside it, then full SFT. Each answers whether
+the next is necessary.
+
 ## The memory ceiling, and what it does not prove
 
 A machine of this class can run out of memory while fine-tuning an 8B model,
@@ -436,22 +479,8 @@ restatements per fact to five, raise the rank to 128 with the learning rate
 adjusted alongside it, and — if those do not move it — try full fine-tuning,
 which is what the published successes used.
 
-Full fine-tuning does not fit on this machine as normally configured. An 8B
-model needs about 122 GB before activations — 15 GB of weights, 15 GB of
-gradients, and 91 GB of AdamW moments and the fp32 master copy — against 128 GB
-of memory shared with everything else on the box. An 8-bit optimiser brings that
-to roughly 76 GB and gradient checkpointing covers the activations, so it is
-reachable, but only with those two turned on.
-
-Whether it is worth reaching for is not something this campaign can answer.
-Published work has closed-book injection succeeding with full SFT
-([Knowledge-Instruct](https://arxiv.org/html/2504.05571v1)) and, separately,
-retrieval beating fine-tuning for the same purpose
-([Ovadia et al.](https://arxiv.org/abs/2312.05934)) — the two have not been
-priced against each other at equal effort on a corpus like this one. Here
-retrieval was the cheaper win by a wide margin: an afternoon's work took
-accuracy from 0.147 to 0.481, while four training rounds moved it nothing. Try
-retrieval first for that reason, not because full fine-tuning is known to lose.
+Full fine-tuning is the other lever the literature points at, and it has its own
+memory arithmetic — see [Solution 4](#solution-4--full-fine-tuning-if-recall-is-the-goal).
 
 ## Does the split cost too much time?
 
