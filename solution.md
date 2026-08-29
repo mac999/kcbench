@@ -386,17 +386,29 @@ as they stand. On an 8B model that took new facts from 0% to 81.8% and
 long-tail facts from 13.2% to 76.8%
 ([Knowledge-Instruct](https://arxiv.org/html/2504.05571v1)).
 
-**What it costs on this class of machine.** An 8B model wants roughly 122 GB
-before activations — 15 GB of weights, 15 GB of gradients, 91 GB of AdamW
-moments and the fp32 master copy — against 128 GB shared with the OS, the page
-cache and anything else running. An 8-bit optimiser brings it to about 76 GB and
-gradient checkpointing covers the activations, so it is reachable, but only with
-both turned on and nothing else scoring at the same time.
+**What it costs on this class of machine — it will OOM by default.** An 8B model
+in a standard bf16 + AdamW configuration wants roughly 122 GB *before a single
+activation is allocated*: 15 GB of weights, 15 GB of gradients, 61 GB of
+optimiser moments and a 30 GB fp32 master copy. The machine has 128 GB, shared
+with the OS, the page cache and anything else running. **Launched as configured,
+the run does not start — it exhausts memory during setup.**
+
+Two changes are required, not optional:
+
+| Change | Brings it to | Why it is needed |
+|---|---|---|
+| 8-bit optimiser | ~76 GB | the moments are 61 GB of the 122; nothing else recovers that much |
+| gradient checkpointing | activations bounded | without it activations are unbounded at this sequence length |
+
+With both on there is roughly 45 GB of headroom for activations, which is enough
+— provided nothing else touches the pool. Scoring on the same box while training
+has already crashed this pipeline five times at a *far* smaller memory
+footprint, so serialise the two.
 
 | | For | Against |
 |---|---|---|
 | Capacity | the only method with published closed-book success at this corpus scale | LoRA at rank 128 is untested here and much cheaper to try |
-| Memory | fits with an 8-bit optimiser and checkpointing | does not fit as normally configured; no headroom for concurrent work |
+| Memory | fits with an 8-bit optimiser and checkpointing | **OOMs by default** — both are mandatory, and no concurrent work is possible |
 | Time | one run answers the question | ~20 h per run on this hardware, and the recipe changes three variables at once, so a failure does not say which |
 | Risk | — | full-weight training can degrade behaviour the base model already had, which this campaign saw repeatedly with a *much* smaller intervention |
 
