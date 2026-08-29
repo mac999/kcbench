@@ -254,7 +254,12 @@ The closed/open gap here tells you whether the corpus is worth training on at
 all. If the model already answers closed-book, there is nothing to teach it; if
 it cannot answer open-book, the items are broken rather than hard.
 
-**3. Train, on `data/train/` and nothing else.**
+**3. Train, on `data/train/` and nothing else.** On a unified-memory machine,
+train with nothing else on the box — a concurrent `cb.py ppl` loads a second
+full copy of the model and a concurrent `cb.py eval` keeps Ollama resident, and
+the three together have been enough to have the kernel kill the training run.
+Add `--checkpointing` if memory is tight; [training/README.md](training/README.md)
+has the budget.
 
 ```bash
 python ../training/dapt.py                                     # stage 1
@@ -391,6 +396,11 @@ result — that four data recipes moved closed-book recall not at all — is
 therefore a statement about this corpus at this scale and this adapter size,
 not about domain fine-tuning in general.** The augmentation turns rearranged
 3.7M tokens; none of them added information the corpus did not already contain.
+The larger-adapter test that would settle it has not been run: fine-tuning here
+crashed with out-of-memory five times, but always at rank 64 and always while
+the benchmark was scoring on the same unified-memory box, so what those crashes
+measured was contention rather than adapter capacity. The arithmetic is in
+[solution.md](solution.md#the-memory-ceiling-and-what-it-does-not-prove).
 
 Three further limits shape specific numbers. Nearly all instruction pairs (95%)
 carry the source clause in the prompt and answer in a median of 56 characters —
