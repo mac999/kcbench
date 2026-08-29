@@ -436,6 +436,23 @@ restatements per fact to five, raise the rank to 128 with the learning rate
 adjusted alongside it, and — if those do not move it — try full fine-tuning,
 which is what the published successes used.
 
+Full fine-tuning does not fit on this machine as normally configured. An 8B
+model needs about 122 GB before activations — 15 GB of weights, 15 GB of
+gradients, and 91 GB of AdamW moments and the fp32 master copy — against 128 GB
+of memory shared with everything else on the box. An 8-bit optimiser brings that
+to roughly 76 GB and gradient checkpointing covers the activations, so it is
+reachable, but only with those two turned on.
+
+Whether it is worth reaching for is not something this campaign can answer.
+Published work has closed-book injection succeeding with full SFT
+([Knowledge-Instruct](https://arxiv.org/html/2504.05571v1)) and, separately,
+retrieval beating fine-tuning for the same purpose
+([Ovadia et al.](https://arxiv.org/abs/2312.05934)) — the two have not been
+priced against each other at equal effort on a corpus like this one. Here
+retrieval was the cheaper win by a wide margin: an afternoon's work took
+accuracy from 0.147 to 0.481, while four training rounds moved it nothing. Try
+retrieval first for that reason, not because full fine-tuning is known to lose.
+
 ## Does the split cost too much time?
 
 On the hardware this campaign ran on, no — provided the verifier is configured
