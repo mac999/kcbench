@@ -990,12 +990,15 @@ set of weights, and four ways to implement that split in ascending order of cost
 already the best abstainer measured here. It covers what the abstention collapse
 is best explained by and the one grader check that should precede believing it,
 why the retrieval budget comes first and what recall target is worth chasing,
-the latency arithmetic for the GB10 machine these runs were made on, and a list
-of what to validate before committing to any of it.
+the latency arithmetic for the machine these runs were made on (an NVIDIA DGX
+Spark, GB10 Grace Blackwell), and a list of what to validate before committing
+to any of it.
 
 Those are that project's conclusions rather than the benchmark's — the
-benchmark only supplies the numbers. The reasoning transfers further than the
-figures do.
+benchmark only supplies the numbers, and the document opens by saying what they
+are conditioned on: a 3.7M-token corpus of synthetic pairs, a rank-64 adapter,
+128 GB of GPU memory, and one base model. Change any of those and the answers
+may change. The reasoning transfers further than the figures do.
 
 ## Adapting it to another domain
 
