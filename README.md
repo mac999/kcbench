@@ -835,14 +835,16 @@ run, so the numbers are directly comparable.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/rag-dark.png">
-  <img alt="Numeric accuracy for the untrained base model under four retrieval conditions: closed book 0.147, RAG top-3 0.397, RAG top-10 0.481, open book 0.944." src="doc/rag-light.png">
+  <img alt="Numeric accuracy for the untrained base model under six retrieval conditions: closed book 0.147, RAG with an English-centred embedder 0.144, RAG bge-m3 top-3 0.397, bge-m3 top-10 0.481, arctic-embed2 top-10 0.478, open book 0.944." src="doc/rag-light.png">
 </picture>
 
 | Condition | recall@k | numeric | nameset F1 |
 |---|---:|---:|---:|
 | closed book, no retrieval | — | 0.147 | 0.000 |
-| RAG, top-3 | 0.240 | 0.397 | 0.236 |
-| RAG, top-10 | 0.400 | 0.481 | 0.318 |
+| RAG, `nomic-embed-text`, top-10 | 0.041 | 0.144 | 0.068 |
+| RAG, `bge-m3`, top-3 | 0.240 | 0.397 | 0.236 |
+| RAG, `bge-m3`, top-10 | 0.400 | 0.481 | 0.318 |
+| RAG, `snowflake-arctic-embed2`, top-10 | 0.428 | 0.478 | 0.319 |
 | open book, perfect retrieval | 1.000 | 0.944 | 0.587 |
 
 `recall@k` is the share of items whose source chunk the retriever actually
@@ -858,15 +860,29 @@ this corpus, moving from a mediocre retriever to a good one is worth roughly
 nothing at all. Retrieval quality dominates, and a project with a fixed budget
 should spend it there first.
 
-**One finding worth stating separately: the embedding model decides whether any
-of this works.** The first run used `nomic-embed-text`, which is
-English-centred, and scored **recall@3 of 0.000** — not a bug, a measurement.
-Its similarity scores on Korean regulation clustered in a narrow band with no
-discriminative power, so the retrieved passages were unrelated to the question.
-Switching to `bge-m3`, a multilingual model, on the same corpus and the same
-queries gave recall@3 of 0.240. Anyone building Korean-language RAG on this kind
-of corpus should verify their embedder against a held-out set before trusting
-anything downstream of it.
+**The embedder decides whether any of this works.** Four embedding models were
+swept over the same 5,381 chunks and the same 395 questions, scoring retrieval
+alone:
+
+| Embedder | r@1 | r@3 | r@10 | r@20 |
+|---|---:|---:|---:|---:|
+| `snowflake-arctic-embed2` (multilingual) | 0.170 | 0.306 | 0.428 | 0.496 |
+| `bge-m3` (multilingual) | 0.134 | 0.241 | 0.400 | 0.468 |
+| `nomic-embed-text` (English-centred) | 0.010 | 0.023 | 0.041 | 0.061 |
+| `mxbai-embed-large` (English-centred) | 0.005 | 0.018 | 0.028 | 0.035 |
+
+The split is not a matter of degree. The two multilingual models retrieve the
+right chunk 10 to 15 times more often than the two English-centred ones, and
+end to end the difference is total: **RAG with `nomic-embed-text` scores 0.144,
+which is what the model scores with no retrieval at all (0.147).** Attaching a
+retriever that cannot search the language buys exactly nothing, and it fails
+silently — the pipeline returns passages, the model answers, and only the score
+shows that the passages were unrelated. Verify the embedder against a held-out
+set before trusting anything downstream of it.
+
+Between the two working embedders the difference is small (0.481 against 0.478
+at top-10), so the choice within a competent family matters far less than the
+choice of family.
 
 ## Are the items any good?
 
