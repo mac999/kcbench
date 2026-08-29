@@ -203,7 +203,7 @@ a grader bug; if it did not, everything above stands.
 
 ---
 
-## Solution 1 — separate generating from verifying
+## Solution 1 — generator–verifier separation (grounding verification)
 
 The campaign tried to put two jobs in one set of weights: *summarise and reason
 over construction regulation*, and *decline when the evidence does not support
@@ -239,7 +239,7 @@ on Korean regulation — see option **c** below.
 Four ways to implement the split, cheapest first. Work down the list only as far
 as the accuracy requirement demands.
 
-### a. Toggle the adapter — start here
+### a. Adapter toggling — start here
 
 Stage 2 was LoRA. Detaching the adapter returns the original general-purpose
 model, **and that model already abstains at 0.950** — the best score any
@@ -254,7 +254,7 @@ LoRA adapter active versus the base model, with degradation of roughly 24–47%
 depending on adapter rank. **Measure this on the target hardware before
 committing** — it is the one number that could make this option unattractive.
 
-### b. Decide with rules before involving a model
+### b. Rule-based pre-filtering
 
 Two checks that cost nothing because they add no inference call:
 
@@ -269,7 +269,7 @@ Two checks that cost nothing because they add no inference call:
 Both fit the plan to prepare retrieval per use case, because a per-use-case
 threshold can be tuned against that use case's own held-out questions.
 
-### c. Add a small dedicated verifier
+### c. Small grounding-verifier model
 
 If rules are not enough, a 110M–770M verifier runs on CPU and never touches the
 GPU serving the generator. **The blocker is language:** these models are
@@ -279,7 +279,7 @@ passage roughly 2% of the time at top-3 against 24% for multilingual ones.
 Validate any such verifier on a Korean held-out set before trusting it. Assume
 nothing transfers.
 
-### d. A dedicated 8B verifier, last
+### d. Dedicated 8B verifier model — last resort
 
 An 8B verifier such as Lynx is the highest-accuracy option and the most
 expensive. On this hardware two 8B models compete for the same memory bandwidth,
@@ -289,7 +289,7 @@ applying it to every request.
 
 ---
 
-## Solution 2 — spend the budget on retrieval first
+## Solution 2 — retrieval-first budget allocation
 
 The measured ladder, base model, numeric accuracy on the held-out set:
 
@@ -337,7 +337,7 @@ between a working system and a broken one.
 
 ---
 
-## Solution 3 — do not train what the base model already does
+## Solution 3 — capability preservation
 
 The campaign's clearest negative result is that refusal training made refusal
 worse at every dose. The corresponding rule is narrow and firm: **capabilities
@@ -372,7 +372,7 @@ analysis:
 
 ---
 
-## Solution 4 — full fine-tuning, if recall is the goal
+## Solution 4 — full-parameter fine-tuning for parametric knowledge injection
 
 Only relevant if closed-book recall is a requirement. If the deployment supplies
 the clause at inference, Solution 2 is the cheaper answer and this section does
@@ -492,7 +492,7 @@ adjusted alongside it, and — if those do not move it — try full fine-tuning,
 which is what the published successes used.
 
 Full fine-tuning is the other lever the literature points at, and it has its own
-memory arithmetic — see [Solution 4](#solution-4--full-fine-tuning-if-recall-is-the-goal).
+memory arithmetic — see [Solution 4](#solution-4--full-parameter-fine-tuning-for-parametric-knowledge-injection).
 
 ## Does the split cost too much time?
 
