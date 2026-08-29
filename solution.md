@@ -33,12 +33,15 @@ trainable parameters, about 2.1% of an 8B model. Knowledge injection is
 believed to scale with adapter capacity, so a larger adapter, a different
 tuning method, or full fine-tuning may not behave as this campaign did.
 
-**The GPU — how much memory is available.** This matters more than it looks,
-because it is what caps the previous point. Raising the LoRA rank has
-repeatedly exhausted memory on the 128 GB machine mid-training and killed the
-run, so on this hardware "use a bigger adapter" is not an experiment that can be
-run. On a machine with more memory it is, and the negative result on knowledge
-injection should be retested there before being treated as settled.
+**The GPU — one memory pool, shared.** The machine has 128 GB of *unified*
+memory: the CPU, the GPU, the page cache and every process draw on the same
+pool, so there is no separate VRAM to protect a training job. Training this 8B
+model has crashed on it five times, always while the benchmark was scoring on
+the same box — which turns out to matter for what can be concluded, and is
+worked through under [the memory ceiling](#the-memory-ceiling-and-what-it-does-not-prove).
+The short version: the crashes are best explained by concurrency and allocator
+fragmentation rather than adapter size, so the larger-adapter experiment is
+available and has simply not been run yet.
 
 **The base model.** Qwen3-8B. In particular, its untrained abstention rate of
 0.950 is what makes "do not train what the model already does" the right advice
@@ -316,15 +319,11 @@ base's 0.950), halved calibration error, intact reading, and it is the cheapest
 of the four to produce. v2 through v4 spent training budget on recall they never
 gained and paid for it in honesty they already had.
 
-**On adapter capacity, and why the obvious next step is blocked.** The campaign
-suggests the remaining levers for knowledge injection are on the pre-training
-side: paraphrase-augmented pre-training text, more passes, or more adapter
-capacity. The third is not available on this hardware — **raising the LoRA rank
-has repeatedly run the 128 GB machine out of memory while training the 8B model,
-killing the run.** So "more adapter capacity" and "the GPU we have" are the same
-constraint stated twice, and the realistic options reduce to more pre-training
-passes and better pre-training data. This is a budget question, not a
-mixing-ratio question.
+**On adapter capacity.** The campaign suggests the remaining levers for
+knowledge injection are on the pre-training side: paraphrase-augmented
+pre-training text, more passes over each fact, or more adapter capacity. All
+three remain open. The third looked blocked by hardware and is not — see the
+next section.
 
 **If refusal training is attempted anyway**, two changes follow from the
 analysis:
@@ -336,6 +335,69 @@ analysis:
   evidence*; the campaign shows what happens when both are present.
 
 ---
+
+## The memory ceiling, and what it does not prove
+
+Fine-tuning the 8B model on this machine has died with an out-of-memory failure
+**five times**. Every one of those crashes happened while the benchmark was
+scoring on the same box. That detail decides what the crashes are evidence of,
+and it is worth being precise because the wrong reading would close off the most
+promising remaining experiment.
+
+**Why concurrency is expensive here.** The 128 GB is unified: CPU, GPU, page
+cache and every process share one pool, so a scoring run subtracts directly from
+what training can allocate. Rough steady-state figures for Qwen3-8B (36 layers,
+hidden 4096, intermediate 12288, vocabulary 151,936):
+
+| Process | Consumes | Approx. |
+|---|---|---:|
+| Training | bf16 weights | 16.4 GB |
+| | LoRA parameters, gradients, AdamW state (rank 64) | ~3 GB |
+| | logits at the LM head, with the float32 upcast for the loss | ~6 GB |
+| | activations retained for backward, 36 layers, **no gradient checkpointing** | ~16 GB |
+| `cb.py ppl` | a *second* full bf16 copy of the model | 16.4 GB |
+| | `log_softmax` over a 2048-token chunk, upcast to float32 | ~3 GB spike |
+| `cb.py eval` | Ollama's Q4 weights plus an 8,192-token KV cache | ~6 GB |
+| | **total** | **~67 GB** |
+
+Sixty-seven gigabytes against 128 nominally fits. It does not survive contact
+with four things: the operating system and a page cache that has just been
+handed a 16 GB GGUF to write; allocator fragmentation, which this repository
+already fights with `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` and a
+comment noting that *"unified memory on GB10 fragments under long runs"*; the
+two logit spikes above, which are transient and can coincide; and the fact that
+on a unified pool an over-allocation can be resolved by the kernel killing the
+process rather than by a catchable CUDA error.
+
+**What this does not show.** The crashed runs were at the default rank 64 — the
+setting `resume_dapt.sh` uses. **Adapter size was never the variable.** Training
+on its own accounts for roughly 41 GB of the 128, and raising the rank is cheap
+in comparison: rank 128 roughly doubles the LoRA parameters to ~349M, adding
+about 3 GB, and rank 256 adds about 6 GB. Run without the benchmark alongside
+it, a substantially larger adapter fits with room left over.
+
+So "more adapter capacity" is **not** foreclosed by this hardware. The
+experiment simply has not been run cleanly, and the project's own training notes
+already prescribe it: *if probe accuracy does not move after a clean DAPT run,
+raise the rank before changing anything else.* The campaign's central negative
+result — that no data recipe moved closed-book recall — should therefore be read
+as untested at larger adapter sizes, not as settled.
+
+**Three changes make that test runnable**, in order of effect:
+
+1. **Do not score while training.** Serialise the two. This is a scheduling
+   change and it recovers roughly 22 GB.
+2. **Turn on gradient checkpointing.** `dapt.py --checkpointing` is opt-in and
+   neither resume script passes it, so the runs carried ~16 GB of activations
+   they did not have to. It costs about a third of the throughput and it is the
+   single largest saving available. (Note that `training/README.md` describes
+   the setup as "bf16 with gradient checkpointing", which the scripts do not
+   actually do — worth reconciling.)
+3. **Keep `expandable_segments`.** Already done in `resume_dapt.sh`; it belongs
+   in the non-resume path too.
+
+With those, the headroom for a rank sweep is ample, and the knowledge-injection
+question can be answered rather than assumed.
 
 ## Does the split cost too much time?
 
@@ -391,6 +453,7 @@ design tradeoffs to make deliberately, not surprises to discover in production.
 | 3 | Score any small verifier on Korean held-out items | These models are English-centred; the embedding sweep already showed what that does here |
 | 4 | Set the retrieval-score threshold per use case | The cheapest abstention mechanism, and it needs each use case's own data to calibrate |
 | 5 | Re-measure end-to-end once reranking lands | 0.481 is the current honest number; the whole retrieval argument rests on moving it |
+| 6 | Run a rank sweep with nothing else on the machine, gradient checkpointing on | The knowledge-injection result is untested above rank 64; the five OOM crashes were concurrency, not capacity |
 
 ---
 
