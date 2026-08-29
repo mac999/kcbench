@@ -159,10 +159,41 @@ the adapter to attention projections would be adapting the wrong part.
 than matching a tone does. The default is r=64, alpha=128. If probe accuracy does
 not move after a clean DAPT run, raise the rank before changing anything else.
 
-**bf16 with gradient checkpointing.** The 8B weights are 16 GB, activations are
-traded for compute, and the optimiser only carries the adapter. No quantised
-base: `bitsandbytes` has no ARM64 wheel for this machine, and a bf16 base avoids
-the accuracy question entirely on 130 GB of unified memory.
+**bf16, and gradient checkpointing when the box is not free.** The 8B weights
+are 16 GB and the optimiser carries only the adapter. No quantised base:
+`bitsandbytes` has no ARM64 wheel for this machine, and a bf16 base avoids the
+accuracy question entirely on 128 GB of unified memory.
+
+`--checkpointing` trades roughly a third of the throughput for the ~16 GB of
+activations a 36-layer forward pass retains for the backward. It is **off by
+default and neither resume script passes it**, which is the right choice only
+when nothing else is running.
+
+**One memory pool, so do not score while training.** This machine has no
+separate VRAM: the CPU, the GPU, the page cache and every process draw on the
+same 128 GB. Fine-tuning here has died with an out-of-memory failure five
+times, every one of them while the benchmark was scoring on the same box, and
+every one at the default rank 64 — so adapter size was never the cause.
+Approximate steady-state cost of running them together:
+
+| | |
+|---|---:|
+| training, batch 4 × 1024, rank 64, no checkpointing | ~41 GB |
+| `cb.py ppl` — loads a *second* full bf16 copy of the model | ~20 GB |
+| `cb.py eval` — Ollama's Q4 weights plus an 8k KV cache | ~6 GB |
+
+Roughly 67 GB before the operating system, before the page cache that a 16 GB
+GGUF write goes through, and before allocator fragmentation — which is real
+enough here that `resume_dapt.sh` sets
+`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` against it. On a unified pool
+an over-allocation can end with the kernel killing the process rather than a
+catchable CUDA error, which is what those five crashes looked like.
+
+Training on its own is about 41 GB of 128, so there is ample room to raise the
+rank — r=128 costs roughly 3 GB more, r=256 about 6 GB. **The rank sweep this
+file recommends has not actually been run, and it is a scheduling problem
+rather than a hardware one.** Serialise scoring and training, add
+`--checkpointing`, keep `expandable_segments`, and it fits.
 
 ## Settings
 
