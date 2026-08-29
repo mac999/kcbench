@@ -26,13 +26,16 @@ corpus it was built for, charts and score tables included.
 **Contents**
 
 - [Install](#install) — dependencies, and the inference server
-- [Use](#use) — the fifteen commands, and what each does
+- [Use](#use) — the sixteen commands, and what each does
 - [Design: holdout and probe](#design-holdout-and-probe) — the two sets, and why one is contaminated on purpose
 - [The development loop](#the-development-loop) — what to do with the numbers, and the line against Goodharting
 - [Workflow](#workflow) — build, baseline, train, register, score, compare — in order
 - [Layout](#layout) — what each file in the repository does
 - [Worked example](#worked-example-a-korean-construction-corpus) — Qwen3-8B on Korean construction regulation, end to end: four data recipes, charts, score tables
 - [What each track contains](#what-each-track-contains) — the nine item sets, their sizes and answer types
+- [What retrieval quality buys](#what-retrieval-quality-buys) — the RAG baseline, and why the embedder decides everything
+- [Are the items any good?](#are-the-items-any-good) — acceptance rate, provenance, and a bound on the answer-key error rate
+- [Designing an agent around these results](#designing-an-agent-around-these-results) — what the findings imply for the system that motivated them
 - [Adapting it to another domain](#adapting-it-to-another-domain) — what to change when the corpus is not construction
 - [What each metric means](#what-each-metric-means) — every number in a run file, defined and sourced
 - [Limits](#limits) — what this benchmark cannot decide
@@ -971,6 +974,28 @@ scored 0.284 on the first pass because `--think off` does not suppress reasoning
 on that model — its chain of thought landed in the answer field and graded as
 wrong. Rerun with the flag omitted it scores 0.950, in line with the others. A
 cross-check is only as good as the serving configuration underneath it.
+
+## Designing an agent around these results
+
+Three findings from the campaign above constrain how the agent that motivated it
+should be built. Fine-tuning moved output quality and never moved knowledge.
+Retrieval quality is worth more than any training recipe tried — a good embedder
+bought roughly 0.35 accuracy, four data recipes bought none. And every attempt to
+train refusal made refusal worse, at every dose.
+
+[solution.md](solution.md) works those through into design decisions: why the
+generating and the verifying roles are better separated than trained into one
+set of weights, and four ways to implement that split in ascending order of cost
+— starting with detaching the adapter, since the un-adapted base model is
+already the best abstainer measured here. It covers what the abstention collapse
+is best explained by and the one grader check that should precede believing it,
+why the retrieval budget comes first and what recall target is worth chasing,
+the latency arithmetic for the GB10 machine these runs were made on, and a list
+of what to validate before committing to any of it.
+
+Those are that project's conclusions rather than the benchmark's — the
+benchmark only supplies the numbers. The reasoning transfers further than the
+figures do.
 
 ## Adapting it to another domain
 
