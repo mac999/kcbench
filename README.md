@@ -324,78 +324,6 @@ being wrong and sure. `selfcheck` asks the same question without an answer key,
 by sampling the model and seeing whether it tells the same story twice, so it
 also works on the free-form answers no track can grade.
 
-## Training stages, and what each one is measurable on
-
-A domain model is usually built in stages — continued pre-training, supervised
-fine-tuning, preference alignment, retrieval — and each stage consumes a
-different kind of data and moves a different metric. Pointing the wrong metric
-at a stage is how a run gets called successful when nothing useful changed: the
-campaign below had perfect loss curves and a 40% perplexity improvement while
-closed-book knowledge stayed flat.
-
-The table gives each stage's data shape, the tracks that can detect it, and what
-this corpus actually produced. All figures are from the worked example: Qwen3-8B,
-3.7M tokens, LoRA rank 64.
-
-| Stage | Training data | Measured by | Result on this corpus |
-|---|---|---|---|
-| **DAPT** — continued pre-training | raw chunks, no labels | `dapt` perplexity | **7.589 → 4.553, −40%**, all 13 categories |
-| **SFT** — supervised fine-tuning | instruction/answer pairs | `sft`/`probe` closed book; `sft` open book; `uc5` | knowledge **+0.009 (noise)**; supported-clause use **0.875 → 0.988**; prose **0.468 → 0.565** |
-| **DPO** — preference alignment | chosen/rejected answer pairs | `uc4` abstention; ECE | **not run** — see below |
-| **RAG** — retrieval at inference | no training; an embedder and an index | `cb.py rag`, recall@k | **0.147 → 0.481**, recall@10 0.400 |
-| (any stage) | — | ECE, calibration | **0.641 → 0.281** across the SFT rounds |
-
-### The data each stage wants, from this corpus
-
-**DAPT — raw text, no questions.** Chunked regulation as written. The objective
-is next-token prediction, so nothing is labelled.
-
-> `상수도설계기준 제1조(목적) 이 고시는 「수도법」제18조제1항, 「건설기술 진흥법」 제44조제1항에 따라 …`
-
-26,767 chunks, 3.7M tokens. Perplexity fell furthest on the documents least like
-ordinary prose — specifications (KCS) 10.24 → 6.02 — which is the signature of
-a model learning clause structure and terminology.
-
-**SFT — instruction, context, answer.** Five shapes were tried across four
-rounds, and they teach measurably different things:
-
-| Pair type | Example | Teaches |
-|---|---|---|
-| original (open book) | *Q* 상수도설계기준의 시행일자는? · *조문* 이 고시는 발령한 날부터 시행한다 · *A* 2025년 10월 1일 | extraction from a supplied clause |
-| closed-book variant | same question, **clause deleted** | answering from memory |
-| paraphrase | *Q* 하천보수원 채용 인사위원회 구성 관련 규정은? **기억나는 대로** | the same fact under different wording |
-| enumeration | *Q* 「철도안전관리체계 기술기준」에서 다음을 모두 나열하시오 · *A* 기록의 정의, 식별, 보관, 보호, 검색, 보유 및 폐기, 위험관리 | complete lists, against a 56-character median answer |
-| refusal | *Q* 민자도로 운영평가 통보 의무 조항은? · *조문* 제18조(지령실의 운영과 무선통신망…) ← unrelated · *A* 제시된 조문에서 관련 근거를 확인할 수 없습니다 | declining without support |
-
-**DPO — chosen and rejected pairs.** Not run in this campaign, so nothing here
-is measured. What it would be measured on is worth stating anyway, because two
-of the campaign's findings bear on it: `uc4` abstention and ECE are exactly the
-behaviours preference alignment is normally used to shape, and both proved
-**sensitive to training in the wrong direction** — refusal pairs added through
-SFT drove abstention from 0.950 down to 0.688. Anyone reaching for DPO to fix
-abstention should measure `uc4` before and after rather than assume it helps.
-
-**RAG — no training data at all.** An embedder and an index over the same
-corpus. The one decision that matters is which embedder: on this corpus,
-English-centred models retrieved the source chunk 2% of the time at top-3 and
-multilingual ones 24–31%, and end to end the difference was **0.144 against
-0.481** — the first is what the model scores with no retrieval whatsoever.
-
-### Reading the stages against each other
-
-| If the metric that matters is… | The stage that moves it | Evidence here |
-|---|---|---|
-| perplexity on domain text | **DAPT** | −40%, the campaign's largest single move |
-| closed-book facts | **RAG**, not fine-tuning | +0.334 vs +0.009 across four recipes |
-| complete enumeration | RAG first, then SFT | +0.318 from retrieval; enumeration pairs recovered half of an SFT-caused regression |
-| output format, refusal to guess | **SFT** | blank replies 43% → 0% |
-| confidence calibration | **SFT** | ECE 0.641 → 0.281 |
-| abstention when unsupported | **none — preserve it** | base 0.950 was the best any checkpoint achieved |
-
-The last row is the one that cost this project the most to learn. Abstention was
-the only capability that got worse the more directly it was trained, and the
-untrained base model held the highest score of all five checkpoints.
-
 ## Layout
 
 ```
@@ -639,6 +567,70 @@ facts vary across samples does not work on a model that invents them stably.
 That is the whole argument for building a benchmark this way. Perplexity said
 the training worked. The probe set said what it had cost. You need both numbers,
 on frozen items, before and after, or you are guessing.
+
+### Training stages, and what each one is measurable on
+
+A domain model is usually built in stages — continued pre-training, supervised
+fine-tuning, preference alignment, retrieval — and each stage consumes a
+different kind of data and moves a different metric. Pointing the wrong metric
+at a stage is how a run gets called successful when nothing useful changed: this
+campaign had clean loss curves and a 40% perplexity improvement while closed-book
+knowledge stayed flat.
+
+The table gives each stage's data shape, the tracks that can detect it, and what
+this corpus produced — Qwen3-8B, 3.7M tokens, LoRA rank 64.
+
+| Stage | Training data | Measured by | Result on this corpus |
+|---|---|---|---|
+| **DAPT** — continued pre-training | raw chunks, no labels | `dapt` perplexity | **7.589 → 4.553, −40%**, all 13 categories |
+| **SFT** — supervised fine-tuning | instruction/answer pairs | `sft`/`probe` closed book; `sft` open book; `uc5` | knowledge **+0.009 (noise)**; supported-clause use **0.875 → 0.988**; prose **0.468 → 0.565** |
+| **DPO** — preference alignment | chosen/rejected answer pairs | `uc4` abstention; ECE | **not run** — see below |
+| **RAG** — retrieval at inference | no training; an embedder and an index | `cb.py rag`, recall@k | **0.147 → 0.481**, recall@10 0.400 |
+| (any stage) | — | ECE, calibration | **0.641 → 0.281** across the SFT rounds |
+
+#### The data each stage wants
+
+**DAPT — raw text, no questions.** Chunked regulation as written. The objective
+is next-token prediction, so nothing is labelled.
+
+> `상수도설계기준 제1조(목적) 이 고시는 「수도법」제18조제1항, 「건설기술 진흥법」 제44조제1항에 따라 …`
+
+26,767 chunks, 3.7M tokens. Perplexity fell furthest on the documents least like
+ordinary prose — specifications (KCS) 10.24 → 6.02 — which is the signature of
+a model learning clause structure and terminology.
+
+**SFT — instruction, context, answer.** Five pair shapes were tried across four
+rounds, each teaching something measurably different; they are shown with real
+examples under [the five kinds of pair](#the-five-kinds-of-pair) below.
+
+**DPO — chosen and rejected pairs.** Not run in this campaign, so nothing here
+is measured. What it would be measured on is worth stating anyway, because two
+of the campaign's findings bear on it: `uc4` abstention and ECE are exactly the
+behaviours preference alignment is normally used to shape, and both proved
+**sensitive to training in the wrong direction** — refusal pairs added through
+SFT drove abstention from 0.950 down to 0.688. Anyone reaching for DPO to fix
+abstention should measure `uc4` before and after rather than assume it helps.
+
+**RAG — no training data at all.** An embedder and an index over the same
+corpus. The one decision that matters is which embedder: on this corpus,
+English-centred models retrieved the source chunk 2% of the time at top-3 and
+multilingual ones 24–31%, and end to end the difference was **0.144 against
+0.481** — the first is what the model scores with no retrieval whatsoever.
+
+#### Reading the stages against each other
+
+| If the metric that matters is… | The stage that moves it | Evidence here |
+|---|---|---|
+| perplexity on domain text | **DAPT** | −40%, the campaign's largest single move |
+| closed-book facts | **RAG**, not fine-tuning | +0.334 vs +0.009 across four recipes |
+| complete enumeration | RAG first, then SFT | +0.318 from retrieval; enumeration pairs recovered half of an SFT-caused regression |
+| output format, refusal to guess | **SFT** | blank replies 43% → 0% |
+| confidence calibration | **SFT** | ECE 0.641 → 0.281 |
+| abstention when unsupported | **none — preserve it** | base 0.950 was the best any checkpoint achieved |
+
+The last row is the one that cost this project the most to learn. Abstention was
+the only capability that got worse the more directly it was trained, and the
+untrained base model held the highest score of all five checkpoints.
 
 ### Four training-data recipes, measured
 
