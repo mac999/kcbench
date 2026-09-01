@@ -424,6 +424,23 @@ items and reads as a smoke test rather than a measurement.
 > if you needed the model to answer from memory. The benchmark will tell you
 > which you got; it cannot make a small corpus behave like a large one.
 
+### Scoring protocol — the three prompt conditions
+
+Every number below comes from one of three prompt shapes. Every checkpoint,
+including the untrained base, is scored on the same frozen items in all three,
+which is what makes the result columns comparable — the training recipes differ,
+the tests do not.
+
+| Scoring mode | Prompt shape | What it measures |
+|---|---|---|
+| **open book** | the clause is supplied, as a RAG system would at runtime | reading comprehension |
+| **closed book** | no clause; the document is named instead — *「KDS 14 20 50」에 따르면, …* | domain knowledge held in the weights |
+| **`uc4`** | a clause is supplied but swapped for one that does not answer the question, paired 1:1 with unmodified controls so that blanket refusal scores 0.5 | refusing without support |
+
+Open book is near its ceiling on any competent model, so it cannot separate a
+fine-tune from its base; closed book is where domain training has something to
+add. Both are graded against the same answer key.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/closed-vs-open-dark.png">
   <img alt="Numeric accuracy on the sft track for six untrained models, closed book versus open book. Open book every model scores above 84 percent; closed book none clears 17 percent." src="doc/closed-vs-open-light.png">
@@ -433,8 +450,7 @@ items and reads as a smoke test rather than a measurement.
 it, scored on `sft` numeric accuracy. Hand them the clause and they answer
 correctly 85–95% of the time — they read Korean regulation fluently. Take the
 clause away and none of them clears 17% — they have not memorised any of it.
-That gap is the room fine-tuning has to work in, and it is why the closed-book
-number is the one this benchmark reports.
+That gap is the room fine-tuning has to work in.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/uc-baseline-dark.png">
@@ -650,6 +666,10 @@ augmented pairs on top, produced by `training/augment_sft.py`.
 
 ### Pair types in the augmented training set
 
+Each shape is checked by a different [scoring
+condition](#scoring-protocol--the-three-prompt-conditions): type 1 by open book,
+types 2–4 by closed book, type 5 by `uc4`.
+
 Real examples from the v4 file, abridged. The first is what the dataset
 generator produces; the other four are what the augmenter makes from it.
 
@@ -692,18 +712,6 @@ so its vocabulary matches and refusing cannot be decided from topic alone.
 > **Q** 민자도로 운영평가 결과를 민자도로사업자에게 통보하는 주무관청의 의무는 어떤 조항에?
 > **조문** 제18조(지령실의 운영과 무선통신망의 운용절차) 지령실은 각 지구대 및 순찰차 … *(질문과 무관)*
 > **A** 제시된 조문에서 관련 근거를 확인할 수 없습니다.
-
-### Scoring protocol — the three prompt conditions
-
-The training recipes above differ; the tests below do not. Every checkpoint,
-including the untrained base, is scored on the same frozen items in all three
-prompt shapes, which is what makes the results table's columns comparable.
-
-| Scoring mode | Prompt shape | What it measures | Which pair type it checks |
-|---|---|---|---|
-| **open book** | clause supplied, as a RAG system would at runtime | reading comprehension | 1 |
-| **closed book** | no clause; the document is named instead — *「KDS 14 20 50」에 따르면, …* | domain knowledge in the weights | 2, 3, 4 |
-| **`uc4`** | clause supplied but swapped, paired 1:1 with unmodified controls so blanket refusal scores 0.5 | refusing without support | 5 |
 
 ### Per-recipe results
 
