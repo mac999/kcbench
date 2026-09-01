@@ -405,7 +405,7 @@ still being collected and these figures describe the snapshot the example ran
 on, not the dataset's ceiling. Its weaknesses belong up front, because they
 bound what the results below can be taken to mean.
 
-**Scale is the first and largest of them.** Stage 1 saw **3.7 million tokens**
+**Scale is the first of them.** Stage 1 saw **3.7 million tokens**
 of Korean construction regulation — 26,767 chunks from 865 documents — in a
 single pass, and stage 2 trained on 15,666 instruction pairs. Continued
 pre-training that successfully adds domain knowledge is normally reported at
@@ -421,6 +421,30 @@ crashed with out-of-memory five times, but always at rank 64 and always while
 the benchmark was scoring on the same unified-memory box, so what those crashes
 measured was contention rather than adapter capacity. The arithmetic is in
 [solution.md](solution.md#the-memory-ceiling-and-what-it-does-not-prove).
+
+**Scale is not the only explanation, and probably not the largest.** An audit of
+the instruction pairs against the items they are scored on found three faults,
+of which only the first is about size:
+
+| Fault | Measured | Why it matters |
+|---|---|---|
+| **Scale** | 3.7M tokens, one pass | too few exposures per fact for recall to form |
+| **Format mismatch** | 82% of training answers are prose; 81% of scored items ask for a bare figure | the model was never shown the task it is graded on. **More data does not fix this** |
+| **Distribution mismatch** | equipment and services is 3.2% of training and 17.0% of the evaluation; structures is 25.7% against 13.4% | the categories weighted most heavily at scoring time are the thinnest in training |
+
+The format mismatch is the sharpest of the three. Training answers wrap their
+figures in sentences — *상수도설계기준의 재검토기한은 … 매 3년이 되는 시점* — while
+the scored items instruct *"숫자와 단위만 답하시오"* and key on `5 년`. Across a
+3,000-pair sample **no training instruction asks for a bare number at all**, so a
+model holding the fact can still score zero for expressing it the way it was
+taught to. That is a data-design fault rather than a capacity one, and it is
+repairable with the corpus already in hand.
+
+Three things the same audit found healthy, so they are not candidate
+explanations: duplication is low (1.8% of questions, 3.5% of answers); answers
+are reconstructed rather than copied out of the clause (7.0% appear verbatim);
+and question types are spread reasonably (what 42%, how 15%, quantity 14%,
+when 4%) rather than collapsing onto one form.
 
 Three further limits shape specific numbers. Nearly all instruction pairs (95%)
 carry the source clause in the prompt and answer in a median of 56 characters —
