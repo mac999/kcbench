@@ -367,6 +367,26 @@ the charts are the argument for the benchmark. Every metric named below —
 numeric accuracy, nameset F1, perplexity, ECE, McNemar — is defined, with its
 source, under [What each metric means](#metric-reference--definitions-and-sources) at the end.
 
+**What this example was for.** The metrics below were not chosen because they
+are the right way to judge DAPT or SFT. They were run to find out *which
+metrics register a difference at all* when the training data changes — the
+campaign is an experiment on the instrument as much as on the model. Several of
+them turned out not to move: closed-book recall was flat across four recipes,
+and reporting it as "the fine-tuning result" would say more about the metric's
+sensitivity than about the training.
+
+**And a warning about what to conclude.** Read task by task, retrieval beat
+fine-tuning here by a wide margin, and it will keep doing so for a large class
+of construction work. Clause text, dimensional thresholds, specification limits
+— anything that is *written down somewhere and revised periodically* — is
+better looked up than memorised: retrieval moved accuracy from 0.147 to 0.481
+on exactly those items while four rounds of training moved them 0.009, and a
+revised standard costs a re-index rather than a retrain. Fine-tuning earned its
+place on the other kind of task, the ones about *how* the model answers rather
+than *what* it knows: output format, calibration, use of a clause once it has
+been supplied. Anyone reading the numbers below as a verdict on fine-tuning in
+general should first ask which of those two kinds their own task is.
+
 **The training data behind these numbers.** The raw corpus is ~1 GB of Korean
 construction documents — design standards (KDS), specifications (KCS), safety
 and disaster regulation, quality and inspection, contract and cost, BIM and
