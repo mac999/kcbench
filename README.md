@@ -27,17 +27,17 @@ corpus it was built for, charts and score tables included.
 
 - [Install](#install) — dependencies, and the inference server
 - [Use](#use) — the sixteen commands, and what each does
-- [Design: holdout and probe](#design-holdout-and-probe) — the two sets, and why one is contaminated on purpose
-- [The development loop](#the-development-loop) — what to do with the numbers, and the line against Goodharting
+- [Evaluation design](#evaluation-design--held-out-and-contaminated-probe-sets) — the held-out and probe sets, and why one is contaminated on purpose
+- [Data-centric development loop](#data-centric-development-loop) — what to do with the numbers, and the line against Goodharting
 - [Workflow](#workflow) — build, baseline, train, register, score, compare — in order
 - [Layout](#layout) — what each file in the repository does
-- [Worked example](#worked-example-a-korean-construction-corpus) — Qwen3-8B on Korean construction regulation, end to end: four data recipes, charts, score tables
-- [What each track contains](#what-each-track-contains) — the nine item sets, their sizes and answer types
-- [What retrieval quality buys](#what-retrieval-quality-buys) — the RAG baseline, and why the embedder decides everything
-- [Are the items any good?](#are-the-items-any-good) — acceptance rate, provenance, and a bound on the answer-key error rate
-- [Designing an agent around these results](#designing-an-agent-around-these-results) — what the findings imply for the system that motivated them
+- [Worked example](#worked-example-a-korean-construction-corpus) — Qwen3-8B on Korean construction regulation: four data recipes, charts, score tables
+- [Track reference](#track-reference--item-counts-and-answer-types) — the nine item sets, their sizes and answer types
+- [Retrieval ablation](#retrieval-ablation--accuracy-against-retrieval-quality) — accuracy against retrieval quality, and why the embedder decides everything
+- [Item validity](#item-validity--what-is-measurable-without-expert-review) — acceptance rate, provenance, and a bound on the answer-key error rate
+- [System design implications](#system-design-implications) — what the findings imply for the system that motivated them
 - [Adapting it to another domain](#adapting-it-to-another-domain) — what to change when the corpus is not construction
-- [What each metric means](#what-each-metric-means) — every number in a run file, defined and sourced
+- [Metric reference](#metric-reference--definitions-and-sources) — every number in a run file, defined and sourced
 - [Limits](#limits) — what this benchmark cannot decide
 
 ## Install
@@ -63,7 +63,7 @@ ollama pull qwen3:8b
 
 Everything runs through one entry point, `cb.py`. Each command takes its own
 flags, shown by `python cb.py <command> -h`. Commands that take `--tracks` take
-the names listed under [What each track contains](#what-each-track-contains).
+the names listed under [What each track contains](#track-reference--item-counts-and-answer-types).
 
 | Command | What it does |
 |---|---|
@@ -132,7 +132,7 @@ of failed calls aborts the track, and so does a run of blank replies, which is
 what a server that answers but no longer generates looks like. Neither writes a
 score file. The journal survives, so restarting picks up where it stopped.
 
-## Design: holdout and probe
+## Evaluation design — held-out and contaminated probe sets
 
 A benchmark carved out of the same corpus a model trained on answers only half
 the question. If a fine-tuned model scores well on held-out documents, it
@@ -161,7 +161,7 @@ Those percentages are measured, not assumed: `build_probe.py` checks each item's
 subject and answer against the training rows and reports the share that are
 jointly present.
 
-## The development loop
+## Data-centric development loop
 
 A benchmark like this is one half of a cycle; the other half is what you do
 about the numbers. The intended loop is the standard data-centric one:
@@ -207,7 +207,7 @@ A turn returns one of three things — a fix validated, a fix refuted, a tradeof
 surfaced — and all three are worth having. The worked example ran four turns,
 augmenting the training pairs a different way each time, and got all three.
 
-### What this benchmark is good at, and not
+### Scope and known weaknesses
 
 Good at: before/after deltas on frozen items; telling acquisition from
 generalisation (probe vs holdout); catching harness faults (three were found by
@@ -365,7 +365,7 @@ fine-tuned in two stages — domain-adaptive pre-training over 26,767 raw chunks
 then supervised fine-tuning over 15,666 instruction pairs. Read top to bottom,
 the charts are the argument for the benchmark. Every metric named below —
 numeric accuracy, nameset F1, perplexity, ECE, McNemar — is defined, with its
-source, under [What each metric means](#what-each-metric-means) at the end.
+source, under [What each metric means](#metric-reference--definitions-and-sources) at the end.
 
 **The training data behind these numbers.** The raw corpus is ~1 GB of Korean
 construction documents — design standards (KDS), specifications (KCS), safety
@@ -568,7 +568,7 @@ That is the whole argument for building a benchmark this way. Perplexity said
 the training worked. The probe set said what it had cost. You need both numbers,
 on frozen items, before and after, or you are guessing.
 
-### Training stages, and what each one is measurable on
+### Training stages — data, metric and outcome per stage
 
 A domain model is usually built in stages — continued pre-training, supervised
 fine-tuning, preference alignment, retrieval — and each stage consumes a
@@ -588,7 +588,7 @@ this corpus produced — Qwen3-8B, 3.7M tokens, LoRA rank 64.
 | **RAG** — retrieval at inference | no training; an embedder and an index | `cb.py rag`, recall@k | **0.147 → 0.481**, recall@10 0.400 |
 | (any stage) | — | ECE, calibration | **0.641 → 0.281** across the SFT rounds |
 
-#### The data each stage wants
+#### Training data by stage
 
 **DAPT — raw text, no questions.** Chunked regulation as written. The objective
 is next-token prediction, so nothing is labelled.
@@ -601,7 +601,7 @@ a model learning clause structure and terminology.
 
 **SFT — instruction, context, answer.** Five pair shapes were tried across four
 rounds, each teaching something measurably different; they are shown with real
-examples under [the five kinds of pair](#the-five-kinds-of-pair) below.
+examples under [the five kinds of pair](#pair-types-in-the-augmented-training-set) below.
 
 **DPO — chosen and rejected pairs.** Not run in this campaign, so nothing here
 is measured. What it would be measured on is worth stating anyway, because two
@@ -617,7 +617,7 @@ English-centred models retrieved the source chunk 2% of the time at top-3 and
 multilingual ones 24–31%, and end to end the difference was **0.144 against
 0.481** — the first is what the model scores with no retrieval whatsoever.
 
-#### Reading the stages against each other
+#### Stage selection by target metric
 
 | If the metric that matters is… | The stage that moves it | Evidence here |
 |---|---|---|
@@ -632,7 +632,7 @@ The last row is the one that cost this project the most to learn. Abstention was
 the only capability that got worse the more directly it was trained, and the
 untrained base model held the highest score of all five checkpoints.
 
-### Four training-data recipes, measured
+### Ablation: four training-data recipes
 
 Four fine-tunes, each trained on the same corpus augmented a different way, to
 find out which augmentation teaches what. Everything else is held constant —
@@ -648,7 +648,7 @@ augmented pairs on top, produced by `training/augment_sft.py`.
 | `v3` | + paraphrases<br>+ refusal pairs (easy) | restate each closed-book question several ways; swap in a clause from an *unrelated* document and make refusal the answer | 32,080 |
 | `v4` | + refusal pairs (hard) | same, but the swapped clause comes from the *same* document | 32,005 |
 
-### The five kinds of pair
+### Pair types in the augmented training set
 
 Real examples from the v4 file, abridged. The first is what the dataset
 generator produces; the other four are what the augmenter makes from it.
@@ -693,7 +693,7 @@ so its vocabulary matches and refusing cannot be decided from topic alone.
 > **조문** 제18조(지령실의 운영과 무선통신망의 운용절차) 지령실은 각 지구대 및 순찰차 … *(질문과 무관)*
 > **A** 제시된 조문에서 관련 근거를 확인할 수 없습니다.
 
-### How the versions are scored
+### Scoring protocol — the three prompt conditions
 
 The training recipes above differ; the tests below do not. Every checkpoint,
 including the untrained base, is scored on the same frozen items in all three
@@ -705,7 +705,7 @@ prompt shapes, which is what makes the results table's columns comparable.
 | **closed book** | no clause; the document is named instead — *「KDS 14 20 50」에 따르면, …* | domain knowledge in the weights | 2, 3, 4 |
 | **`uc4`** | clause supplied but swapped, paired 1:1 with unmodified controls so blanket refusal scores 0.5 | refusing without support | 5 |
 
-### What each recipe returned
+### Per-recipe results
 
 The second turn — v2, the closed-book and enumeration pairs — answered all three
 ways a turn of the loop can:
@@ -805,7 +805,7 @@ clause and the model's job is to use it or decline it — v1 is the checkpoint t
 deploy: abstention 0.925 against the base's 0.950, calibration error halved, and
 the cheapest of the four to produce.
 
-### Every figure above, as score tables
+### Score tables
 
 No new results here — this is the same run the charts plot and the prose quotes,
 gathered so a number can be looked up rather than hunted for. The limits stated
@@ -867,7 +867,7 @@ restarts. An earlier run of the same checkpoint scored 0.029 with 43% silence �
 that one was served without its chat template and stop tokens, and is the reason
 the registration step is spelled out in the [Workflow](#workflow).
 
-## What each track contains
+## Track reference — item counts and answer types
 
 A track is one self-contained set of items with its own answer type and its own
 score — the sense the word carries in TREC. Each answers a different question, so
@@ -898,9 +898,9 @@ Grading is by answer type, and every type has precedent in a published
 benchmark — the mapping is in
 [benchmark/README.md](benchmark/README.md#precedent-for-each-grading-type).
 What each type scores, and what the rest of the numbers in a run file mean, is
-set out under [What each metric means](#what-each-metric-means) near the end.
+set out under [What each metric means](#metric-reference--definitions-and-sources) near the end.
 
-## What retrieval quality buys
+## Retrieval ablation — accuracy against retrieval quality
 
 Closed and open book are the ends of a scale, not the whole of it. Closed book
 is a model answering from memory; open book hands it the exact clause the item
@@ -961,7 +961,7 @@ Between the two working embedders the difference is small (0.481 against 0.478
 at top-10), so the choice within a competent family matters far less than the
 choice of family.
 
-## Are the items any good?
+## Item validity — what is measurable without expert review
 
 The items are mined by rule and verified against their source, not written by
 domain experts, and no human has reviewed them. That is the benchmark's largest
@@ -1049,7 +1049,7 @@ on that model — its chain of thought landed in the answer field and graded as
 wrong. Rerun with the flag omitted it scores 0.950, in line with the others. A
 cross-check is only as good as the serving configuration underneath it.
 
-## Designing an agent around these results
+## System design implications
 
 Three findings from the campaign above constrain how the agent that motivated it
 should be built. Fine-tuning moved output quality and never moved knowledge.
@@ -1103,14 +1103,14 @@ translating the terms changes the question. Every item carries an English
 prompt as well (`question_en`, and `answer_en` for numeric units), so
 `--lang en` scores the same answer key in English.
 
-## What each metric means
+## Metric reference — definitions and sources
 
 A run produces numbers in four layers: how an answer is graded, whether the
 score can be trusted, what the score cannot see, and the before/after comparison
 that is the actual result. Each layer is reported separately — nothing here is
 averaged into a single figure.
 
-### 1. Six ways to grade an answer
+### 1. Answer types and grading rules
 
 Every item declares an `eval_type`, and that decides how its reply is graded.
 The types are not comparable with each other, so a track carrying two of them
@@ -1191,7 +1191,7 @@ it, and the difference is the reason the other five types exist — in the worke
 example above, perplexity fell 40% while closed-book recall did not move at
 all.
 
-### 2. Two checks on whether a score is real
+### 2. Reliability checks
 
 **`no_answer` — the share of replies containing no answer at all.** A wrong
 answer and a missing answer both score zero and mean opposite things. An
@@ -1209,7 +1209,7 @@ construction rather than the textbook normal one because these tracks sit in
 exactly the regime — small n, p near 0 — where the normal interval puts the
 lower bound below zero.
 
-### 3. Two questions a score cannot answer
+### 3. Calibration and consistency
 
 **Expected Calibration Error — `cb.py ece`.** Not *is it right* but *does it
 know when it is right*, because the dangerous failure is being wrong and sure.
@@ -1238,7 +1238,7 @@ answers that were in fact wrong. On the worked example that came out at 0.026,
 meaning the detector does not work on this model, which is a result worth having
 and is why the number is printed rather than the flag rate alone.
 
-### 4. The comparison, which is the actual result
+### 4. Significance testing
 
 Everything above describes one checkpoint. `cb.py compare` is what the benchmark
 exists to produce.
@@ -1272,7 +1272,7 @@ set too small for a raw difference to be trusted:
 An interval straddling zero means the data does not separate this change from
 nothing, whatever the point estimate says.
 
-### The two axes every number sits on
+### The two axes of every score
 
 No score above means anything without both of them stated.
 
@@ -1287,11 +1287,11 @@ clause anyway.
 **Probe or holdout.** The same kind of question mined from opposite sides of the
 split: probe from documents the model trained on, holdout from documents
 withheld from it. They are read as a pair, never singly — the table under
-[Design: holdout and probe](#design-holdout-and-probe) says what each
+[Design: holdout and probe](#evaluation-design--held-out-and-contaminated-probe-sets) says what each
 combination means, and step 6 of the [Workflow](#workflow) reads it against a
 real run.
 
-### Where these come from
+### Provenance of the metrics
 
 Nothing above is this project's invention, which is the point: a reviewer should
 be able to recognise what is being computed without reading the code.
