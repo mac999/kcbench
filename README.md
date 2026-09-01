@@ -440,6 +440,19 @@ model holding the fact can still score zero for expressing it the way it was
 taught to. That is a data-design fault rather than a capacity one, and it is
 repairable with the corpus already in hand.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="doc/catdist-dark.png">
+  <img alt="Share of training pairs against share of scored items, by document category. Equipment and services is 3.2 percent of training and 17.0 percent of the evaluation; structures and facilities is 25.7 against 13.4; other categories are closer." src="doc/catdist-light.png">
+</picture>
+
+Safety, general construction and environment line up almost exactly, so the
+split is not systematically skewed — the mismatch is concentrated in a few
+categories. It arises because the two sets are built by different rules from the
+same corpus: training pairs follow document volume, while scored items follow
+how many clauses survive the miner's admission filter, and equipment
+specifications yield far more admissible numeric thresholds per document than
+structural design text does.
+
 Three things the same audit found healthy, so they are not candidate
 explanations: duplication is low (1.8% of questions, 3.5% of answers); answers
 are reconstructed rather than copied out of the clause (7.0% appear verbatim);
