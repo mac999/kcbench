@@ -1192,6 +1192,15 @@ reports two numbers rather than their mean.
 | `nameset` | precision / recall / **F1** | 0–1 | how much of a list was recovered |
 | `label` | accuracy | 0–1 | share of classifications correct |
 | `faithfulness` | accuracy + **abstention rate** | 0–1 | does it refuse when unsupported |
+
+Where a reply carries a JSON object naming `answer`, `answerable`, `verdict`,
+`value` or `evidence`, the field is graded rather than the whole string. That is
+what `eval.structured_answer` switches, and it is on by default: grading the raw
+text reads whichever number comes first, which on a reasoning model is a figure
+quoted inside the thought rather than the answer — the mechanism behind the
+0.284 that reran at 0.950 under [Item validity](#item-validity--what-is-measurable-without-expert-review).
+A reply with no object is passed through untouched, so models that answer in
+prose score exactly as they did before.
 | `mapping` | key F1 + value accuracy | 0–1 | named the right things, counted them right |
 | perplexity | perplexity | 1–∞, **lower is better** | fit to unseen text |
 

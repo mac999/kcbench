@@ -229,6 +229,97 @@ def _nameset_fuzzy(got_raw: List[str], want_raw: List[str]) -> Dict[str, float]:
 
 ABSTAIN_RE = re.compile(r"자료\s*없음|확인할\s*수\s*없|답할\s*수\s*없|알\s*수\s*없|no\s+data", re.I)
 
+# A model told to answer in JSON returns its answer in a field, and grading the
+# raw string then reads whatever number appears first -- a figure quoted inside
+# the reasoning, or an array index. That is how qwen3:30b-a3b first scored 0.284
+# on a track it answers at 0.950: the chain of thought landed in front of the
+# answer. Parsing the object and grading the field it names removes the guess.
+STRUCT_KEYS = ("answer", "answerable", "verdict", "value", "evidence")
+OBJ_RE = re.compile(r"\{.*\}", re.S)
+
+
+def parse_structured(reply: str) -> dict | None:
+    """The reply's JSON object, when it carries the answer contract. Else None.
+
+    Tolerates prose or a fenced block around the object and a reasoning block in
+    front of it. Requires one contract key, so an object that merely happens to
+    appear in prose is not mistaken for an answer.
+    """
+    body = THINK_RE.sub("", reply)
+    m = OBJ_RE.search(body)
+    if not m:
+        return None
+    try:
+        obj = json.loads(m.group(0))
+    except ValueError:
+        return None
+    if not isinstance(obj, dict) or not any(k in obj for k in STRUCT_KEYS):
+        return None
+    return obj
+
+
+def reduce_reply(reply: str) -> str:
+    """Grade the answer field rather than the whole reply, when there is one.
+
+    Returns plain text the existing graders already handle, so every answer type
+    benefits without a second grading path. A reply carrying no object is passed
+    through untouched, which is what keeps this compatible with models that
+    answer in prose.
+    """
+    obj = parse_structured(reply)
+    if obj is None:
+        return reply
+    if obj.get("answerable") is False:
+        return "확인할 수 없습니다"
+    value = obj.get("value")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    for key in ("answer", "verdict"):
+        got = obj.get(key)
+        if isinstance(got, str) and got.strip():
+            return got
+        if isinstance(got, list):
+            return "\n".join(str(x) for x in got)
+    return reply
+
+
+def grade_label(reply: str, item: dict) -> Dict[str, float]:
+    """
+    First vocabulary word in the reply is the model's verdict.
+
+    Positional, not membership, because the vocabulary overlaps itself:
+    'partial_match' contains 'match', and a reply naming several labels has to
+    be read as its first commitment rather than scored on whichever happens to
+    match the key.
+    """
+    low = reply.lower()
+    hits = [(low.find(w), w) for w in sorted(item["label_vocab"], key=len, reverse=True)
+            if w in low]
+    if not hits:
+        return {"correct": 0.0}
+    pos, got = min(hits)
+    # A longer label starting at the same offset wins: 'partial_match' over 'match'.
+    for p, w in hits:
+        if p == pos and len(w) > len(got):
+            got = w
+    return {"correct": float(got == item["answer"])}
+
+
+def grade_faithfulness(reply: str, item: dict, tol: float) -> Dict[str, float]:
+    """
+    Swapped context: correct means abstaining. Matched context: correct means
+    answering, and answering right. Abstention is tracked separately so the
+    aggregate can show a model that abstains on everything, which the accuracy
+    alone would half-reward.
+    """
+    abstained = bool(ABSTAIN_RE.search(reply))
+    if item.get("context_matches"):
+        correct = (not abstained) and grade_numeric(reply, item, tol)
+    else:
+        correct = abstained
+    return {"correct": float(correct), "abstained": float(abstained)}
+
+
 
 def grade_label(reply: str, item: dict) -> Dict[str, float]:
     """
@@ -463,6 +554,8 @@ def run_qa(cfg, model: str, rows: List[dict], lang: str, repeats: int,
     # every call "succeeds" and every answer grades as wrong. Blank replies in
     # a row are the second signal for the same dead-server case.
     max_empty = cfg["eval"].get("max_consecutive_empty", 25)
+    # Off only for a run that must reproduce a pre-existing score exactly.
+    structured = cfg["eval"].get("structured_answer", True)
     fails = 0
     empties = 0
     per_item = [ckpt.done[r["id"]] for r in rows
@@ -499,17 +592,18 @@ def run_qa(cfg, model: str, rows: List[dict], lang: str, repeats: int,
             else:
                 fails = 0
             replies.append(reply)
+            graded = reduce_reply(reply) if structured else reply
             kind = item["eval_type"]
             if kind == "numeric":
-                scores.append({"correct": float(grade_numeric(reply, item, tol))})
+                scores.append({"correct": float(grade_numeric(graded, item, tol))})
             elif kind == "nameset":
-                scores.append(grade_nameset(reply, item))
+                scores.append(grade_nameset(graded, item))
             elif kind == "label":
-                scores.append(grade_label(reply, item))
+                scores.append(grade_label(graded, item))
             elif kind == "faithfulness":
-                scores.append(grade_faithfulness(reply, item, tol))
+                scores.append(grade_faithfulness(graded, item, tol))
             else:
-                scores.append(grade_mapping(reply, item, tol))
+                scores.append(grade_mapping(graded, item, tol))
 
         keys = scores[0].keys()
         # Subgroup keys travel with the score so the aggregate can split a
