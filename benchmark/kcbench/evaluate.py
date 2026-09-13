@@ -320,42 +320,49 @@ def grade_faithfulness(reply: str, item: dict, tol: float) -> Dict[str, float]:
     return {"correct": float(correct), "abstained": float(abstained)}
 
 
-
-def grade_label(reply: str, item: dict) -> Dict[str, float]:
-    """
-    First vocabulary word in the reply is the model's verdict.
-
-    Positional, not membership, because the vocabulary overlaps itself:
-    'partial_match' contains 'match', and a reply naming several labels has to
-    be read as its first commitment rather than scored on whichever happens to
-    match the key.
-    """
-    low = reply.lower()
-    hits = [(low.find(w), w) for w in sorted(item["label_vocab"], key=len, reverse=True)
-            if w in low]
-    if not hits:
-        return {"correct": 0.0}
-    pos, got = min(hits)
-    # A longer label starting at the same offset wins: 'partial_match' over 'match'.
-    for p, w in hits:
-        if p == pos and len(w) > len(got):
-            got = w
-    return {"correct": float(got == item["answer"])}
+VERDICTS = ("entail", "contradict", "neutral")
 
 
-def grade_faithfulness(reply: str, item: dict, tol: float) -> Dict[str, float]:
+def grade_verdict(reply: str, item: dict) -> Dict[str, float]:
+    """Compliance judgement, scored apart from the evidence it cites.
+
+    Accuracy alone hides the failure that matters here: a model that reaches the
+    right verdict off the wrong clause has not read the regulation, and one that
+    abstains on an answerable item is wrong in a different way from one that
+    judges it backwards. Each is its own column.
     """
-    Swapped context: correct means abstaining. Matched context: correct means
-    answering, and answering right. Abstention is tracked separately so the
-    aggregate can show a model that abstains on everything, which the accuracy
-    alone would half-reward.
-    """
-    abstained = bool(ABSTAIN_RE.search(reply))
-    if item.get("context_matches"):
-        correct = (not abstained) and grade_numeric(reply, item, tol)
+    obj = parse_structured(reply)
+    want = item["answer_verdict"]
+    if obj is None:
+        # Prose fallback: the first verdict word the reply commits to, the same
+        # rule grade_label uses, so a model that answers in Korean is not zeroed
+        # for lacking JSON.
+        low = reply.lower()
+        hits = [(low.find(v), v) for v in VERDICTS if v in low]
+        for ko, v in (("적합", "entail"), ("부적합", "contradict"), ("판정 불가", "neutral")):
+            if ko in reply:
+                hits.append((reply.find(ko), v))
+        # '부적합' contains '적합', so the earliest match by position decides.
+        got = min(hits)[1] if hits else None
+        abstained = bool(ABSTAIN_RE.search(reply))
+        cited = []
     else:
-        correct = abstained
-    return {"correct": float(correct), "abstained": float(abstained)}
+        got = obj.get("verdict") if obj.get("answerable") is not False else None
+        abstained = obj.get("answerable") is False
+        cited = obj.get("evidence") or []
+        if not isinstance(cited, list):
+            cited = [cited]
+
+    want_ev = {normalise(e) for e in item.get("answer_evidence") or []}
+    got_ev = {normalise(str(e)) for e in cited}
+    hit = float(bool(want_ev & got_ev)) if want_ev else 0.0
+
+    return {
+        "correct": float(got == want),
+        "abstained": float(abstained),
+        "evidence_hit": hit,
+        "grounded": float(got == want and hit > 0),
+    }
 
 
 def grade_mapping(reply: str, item: dict, tol: float) -> Dict[str, float]:
@@ -602,6 +609,10 @@ def run_qa(cfg, model: str, rows: List[dict], lang: str, repeats: int,
                 scores.append(grade_label(graded, item))
             elif kind == "faithfulness":
                 scores.append(grade_faithfulness(graded, item, tol))
+            elif kind == "verdict":
+                # Graded on the raw reply: the evidence list is part of the
+                # answer here, and reduce_reply keeps only the verdict field.
+                scores.append(grade_verdict(reply, item))
             else:
                 scores.append(grade_mapping(graded, item, tol))
 

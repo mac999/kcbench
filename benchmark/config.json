@@ -104,6 +104,17 @@
       "max_items": 120,
       "include_train_side": true,
       "seed": 20260814
+    },
+    "uc6_verdict": {
+      "enabled": true,
+      "builder": "verdict_from_thresholds",
+      "track_file": "uc6_verdict.jsonl",
+      "sources": [
+        "track2_sft.jsonl",
+        "uc1_safety_qa.jsonl"
+      ],
+      "holdout_only": true,
+      "_comment": "Compliance judgement mined from threshold items by build_verdict.py. Answers follow the m1_model output contract so one label schema serves both the training data and this track."
     }
   },
   "eval": {
