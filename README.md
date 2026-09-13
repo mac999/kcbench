@@ -337,6 +337,7 @@ benchmark/
     build_tracks.py      mine tracks 1-3 from the held-out documents
     build_probe.py       mine the probe from the trained-on documents
     build_usecases.py    build the use-case tracks from the config registry
+    build_verdict.py     mine the verdict track from threshold items
     build_all.py         run the build stages in order
     make_train_split.py  write the training split, holdout excluded
     verify_provenance.py prove where each item came from and that nothing trains on it
@@ -950,6 +951,7 @@ for what they test:
 | `uc3_bim_site` | 39 | label 39 | render and site photo judged together |
 | `uc4_faithfulness` | 160 | faithfulness 160 | abstention when the passage does not support an answer |
 | `uc5_incident` | 118 | nameset 118 | causes and controls from incident reports |
+| `uc6_verdict` | 810 | verdict 810 | compliance judgement against a stated threshold |
 
 `--tracks uc` runs every use-case track. Use-case tracks are registered in
 `config.json`, so adding one takes a config entry rather than a code change.
@@ -1192,6 +1194,7 @@ reports two numbers rather than their mean.
 | `nameset` | precision / recall / **F1** | 0–1 | how much of a list was recovered |
 | `label` | accuracy | 0–1 | share of classifications correct |
 | `faithfulness` | accuracy + **abstention rate** | 0–1 | does it refuse when unsupported |
+| `verdict` | accuracy, **grounded** | 0–1 | does it judge compliance off the right clause |
 
 Where a reply carries a JSON object naming `answer`, `answerable`, `verdict`,
 `value` or `evidence`, the field is graded rather than the whole string. That is
@@ -1252,6 +1255,26 @@ The halves are equal in number on purpose: a model that abstained on everything
 would score 100% on the swapped half alone. The abstention rate is reported next
 to accuracy for the same reason, so that behaviour is visible rather than
 inferred from a single figure.
+
+**`verdict` — the judgement and the clause it rests on, scored apart.** A
+threshold item states a limit; pairing it with a measured figure makes a
+compliance question whose answer follows from the qualifier, so the key is
+derived rather than written and `build_verdict.py` mines the track the same way
+the rest of the benchmark is mined. Items come in compliant and violating pairs,
+so answering the same way throughout scores 0.5.
+
+| Column | Reads as |
+|---|---|
+| `correct` | the verdict matched |
+| `evidence_hit` | it cited the clause the limit came from |
+| `grounded` | **both** — the judgement and its support |
+| `abstained` | it declined to judge |
+
+`grounded` is the one to report. A model that reaches the right verdict off the
+wrong clause has not read the regulation, and on a two-way judgement it gets
+half of them right by guessing; the split is what separates the two. Replies
+that name the verdict in prose are graded on `correct` alone, since an evidence
+list needs the structured field.
 
 **`mapping` — keys and values scored apart.** *"How many of each element
 type?"* is two questions: did it name the right types (key F1), and did it count
