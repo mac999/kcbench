@@ -1145,7 +1145,12 @@ Everything tunable lives in `config.json`, and every value there is overridden
 by the matching command-line flag. The parts worth knowing:
 
 - `corpus_dir`, `generated_dir`, `out_dir` — where documents are read and
-  artefacts are written.
+  artefacts are written. The `images` paths carried by `vlm` and `uc3` items are
+  relative to **`generated_dir`**, not `corpus_dir`: the renders and site photos
+  are produced alongside the chunked text, so a run whose `generated_dir` does
+  not hold them scores those tracks as unanswerable rather than failing loudly.
+  `benchmark/data/uc3_cross_image.jsonl` ships with the repository; the images it
+  names do not, for the same licensing reason the `dapt` chunks are withheld.
 - `holdout` — what fraction of chunks to withhold, per-document caps, and the
   seed. The seed is what makes a split reproducible.
 - `track2_sft`, `probe` — how many items to mine, per-document caps, and the
