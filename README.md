@@ -146,15 +146,24 @@ python cb.py webview                       # opens http://127.0.0.1:8799
 python cb.py webview --port 8800 --no-browser
 ```
 
-Four panels with draggable splitters: a command bar across the top that builds
-the argument line as you fill it in and shows the `cb.py` invocation it will
-run; the corpus and generated data on the left, with `config.json` editable in
-its own tab; whatever the benchmark has written on the right, including every
-run file; and the viewer in the middle, which picks its renderer from the file
-— text, paged records for a `.jsonl` item set, a canvas for a render or a site
-photo, and a metric dashboard for a run. The log panel underneath streams the
-running command's output live. Dark and light themes, Korean and English, both
-remembered per browser.
+The page is arranged the way the benchmark is used, not the way the disk is
+laid out. On the left is the benchmark itself: one card per item set with its
+count, answer types and how many items are training-side — the answer key,
+which is what a before/after comparison rests on. Open one and its items read
+with the expected answer on the same line as the question. The corpus and
+generated data sit behind a second tab, since scoring never reads them, and
+`config.json` is editable in a third. On the right are the checkpoints scored
+against those items, one card each; tick several and press Chart to draw them
+on identical items, which is the only comparison this benchmark treats as
+meaningful. The middle opens on the seven-step workflow from this README, each
+step loading its command into the bar above, and thereafter shows whatever was
+selected: paged records, a render or site photo on a canvas, a run file as bar
+charts with 95% intervals, a `compare` file as a delta chart with its
+significance. Selecting any folder that holds run files charts the folder. The
+command bar across the top builds the argument line as you fill it in and shows
+the `cb.py` invocation it will run; the log panel underneath streams the running
+command live. Draggable splitters between all of it, dark and light themes,
+Korean and English, all remembered per browser.
 
 It is a reader and a launcher, not a second implementation: every number it
 draws is read back out of a run file an ordinary command wrote, so the page
