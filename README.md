@@ -26,7 +26,7 @@ corpus it was built for, charts and score tables included.
 **Contents**
 
 - [Install](#install) — dependencies, and the inference server
-- [Use](#use) — the sixteen commands, and what each does
+- [Use](#use) — the seventeen commands, and what each does
 - [Evaluation design](#evaluation-design--held-out-and-contaminated-probe-sets) — the held-out and probe sets, and why one is contaminated on purpose
 - [Data-centric development loop](#data-centric-development-loop) — what to do with the numbers, and the line against Goodharting
 - [Workflow](#workflow) — build, baseline, train, register, score, compare — in order
@@ -46,6 +46,7 @@ Python 3.11 or newer.
 
 ```
 pip install requests                        # building and scoring
+pip install flask                           # the browser view, and only that
 pip install torch transformers              # dapt perplexity
 pip install torch transformers peft         # fine-tuning under training/
 ```
@@ -83,6 +84,7 @@ the names listed under [What each track contains](#track-reference--item-counts-
 | `triage` | pick the items a human should review |
 | `review` | apply review verdicts, kept across rebuilds |
 | `export` | package the built benchmark, with an lm-eval-harness config |
+| `webview` | browse and run the whole thing in a browser |
 
 Build the benchmark from a corpus. `build` runs the stages in order: split the
 holdout, mine the tracks, mine the probe, build the use-case tracks, write the
@@ -131,6 +133,36 @@ Two guards stop a dead inference server from being scored as a bad model: a run
 of failed calls aborts the track, and so does a run of blank replies, which is
 what a server that answers but no longer generates looks like. Neither writes a
 score file. The journal survives, so restarting picks up where it stopped.
+
+### The browser view
+
+`webview` serves a local page that runs these same commands and renders what
+they produced. It is useful when you are reading items rather than scripting a
+run — a mined question next to the passage it came from, a site photo beside the
+item that asks about it, a run file as a scored dashboard instead of raw JSON.
+
+```
+python cb.py webview                       # opens http://127.0.0.1:8799
+python cb.py webview --port 8800 --no-browser
+```
+
+Four panels with draggable splitters: a command bar across the top that builds
+the argument line as you fill it in and shows the `cb.py` invocation it will
+run; the corpus and generated data on the left, with `config.json` editable in
+its own tab; whatever the benchmark has written on the right, including every
+run file; and the viewer in the middle, which picks its renderer from the file
+— text, paged records for a `.jsonl` item set, a canvas for a render or a site
+photo, and a metric dashboard for a run. The log panel underneath streams the
+running command's output live. Dark and light themes, Korean and English, both
+remembered per browser.
+
+It is a reader and a launcher, not a second implementation: every number it
+draws is read back out of a run file an ordinary command wrote, so the page
+cannot disagree with what `cb.py` reports. It writes in two places only —
+starting a command, and saving `config.json`, which keeps a `.bak`. It binds to
+localhost, refuses paths outside the directories the config names, and runs one
+command at a time, because scoring loads a model and `ppl` loads a second copy
+locally: on a unified-memory box, two at once is what kills long runs.
 
 ## Evaluation design — held-out and contaminated probe sets
 
@@ -349,6 +381,10 @@ benchmark/
     triage_items.py      pick the items a human should look at
     apply_review.py      fold human review decisions back into the set
     export_dataset.py    package the built benchmark, with an lm-eval-harness config
+    rag_baseline.py      score with retrieved context instead of the gold clause
+    selfcheck.py         sampling-consistency hallucination signal, no answer key
+    webview.py           serve the browser view
+    webui/               the page it serves: index.html, app.js, style.css
     common.py            config resolution, paths, shared helpers
 training/
   dapt.py                stage 1, domain-adaptive pre-training

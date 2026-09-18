@@ -35,6 +35,8 @@ COMMANDS = {
     "ece":      ("kcbench.calibration", "calibration error: is its confidence worth anything"),
     "selfcheck": ("kcbench.selfcheck", "hallucination signal from sampling consistency, no answer key"),
     "matrix":   ("kcbench.run_matrix", "score several models and tabulate"),
+    # browse
+    "webview":  ("kcbench.webview", "browse and run the benchmark in a browser"),
     # review and packaging
     "triage":   ("kcbench.triage_items", "pick the items a human should look at"),
     "review":   ("kcbench.apply_review", "fold review decisions back into the set"),
