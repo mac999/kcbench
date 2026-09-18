@@ -312,9 +312,66 @@ def summarise_json(payload: Any, depth: int = 0) -> Any:
     return payload
 
 
-def run_summaries(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Every run file, flattened to what the dashboard plots."""
-    runs_dir = Path(cfg["out_dir"]) / "runs"
+_TRACK_CACHE: Dict[str, Any] = {}
+
+
+def track_summaries(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    The benchmark as the user thinks of it: one row per item set, with what a
+    run against it will be scored on. Counted from the files themselves so the
+    page cannot drift from what is on disk; cached on mtime because the sets
+    are a megabyte each and this is asked for on every page load.
+    """
+    out_dir = Path(cfg["out_dir"])
+    rows: List[Dict[str, Any]] = []
+    if not out_dir.is_dir():
+        return rows
+    for path in sorted(out_dir.glob("*.jsonl")):
+        key = str(path)
+        mtime = path.stat().st_mtime
+        cached = _TRACK_CACHE.get(key)
+        if cached and cached["mtime"] == mtime:
+            rows.append(cached["row"])
+            continue
+        n, kinds, splits, modes, track, usecase = 0, {}, {}, {}, None, None
+        with path.open(encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                # An item asks something. provenance.jsonl carries the same
+                # ids and eval types but no question, and is not a track.
+                if not any(k.startswith(("question", "instruction")) for k in rec):
+                    continue
+                n += 1
+                kinds[rec.get("eval_type", "?")] = kinds.get(rec.get("eval_type", "?"), 0) + 1
+                sp = rec.get("split", "holdout")
+                splits[sp] = splits.get(sp, 0) + 1
+                mo = rec.get("match_mode", "exact")
+                modes[mo] = modes.get(mo, 0) + 1
+                track = track or rec.get("track")
+                usecase = usecase or rec.get("usecase")
+        if n == 0:
+            continue
+        row = {"file": path.name, "size": path.stat().st_size, "n": n,
+               "track": track, "usecase": usecase, "eval_types": kinds,
+               "splits": splits, "match_modes": modes,
+               "contaminated": splits.get("train", 0)}
+        _TRACK_CACHE[key] = {"mtime": mtime, "row": row}
+        rows.append(row)
+    return rows
+
+
+def run_summaries(cfg: Dict[str, Any], folder: Path | None = None) -> List[Dict[str, Any]]:
+    """
+    Every run file in a folder, flattened to what the dashboard plots. The
+    default folder is where cb.py writes runs; any other directory under an
+    allowed root can be asked for, so selecting a folder of results draws them.
+    """
+    runs_dir = folder if folder is not None else Path(cfg["out_dir"]) / "runs"
     out: List[Dict[str, Any]] = []
     if not runs_dir.is_dir():
         return out
@@ -466,9 +523,21 @@ def create_app(cfg: Dict[str, Any], jobs: Jobs):
         mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
         return send_file(path, mimetype=mime)
 
+    @app.get("/api/tracks")
+    def tracks():
+        return jsonify({"tracks": track_summaries(cfg)})
+
     @app.get("/api/runs")
     def runs():
-        return jsonify({"runs": run_summaries(cfg)})
+        root, rel = request.args.get("root"), request.args.get("path", "")
+        if not root:
+            return jsonify({"runs": run_summaries(cfg), "folder": "runs"})
+        try:
+            folder = safe_path(cfg, root, rel)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify({"runs": run_summaries(cfg, folder),
+                        "folder": f"{root}/{rel}" if rel else root})
 
     @app.post("/api/run")
     def run_command():

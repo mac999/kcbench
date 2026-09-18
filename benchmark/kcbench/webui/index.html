@@ -33,14 +33,21 @@
 <div id="cmdline" class="cmdline"><code id="cmdpreview">python cb.py</code></div>
 
 <main id="workspace">
-  <!-- ─────────────── left: settings + input files ─────────────── -->
+  <!-- ─── left: the benchmark itself — frozen items, their sources, settings ─── -->
   <section class="panel" id="left">
     <div class="tabs" role="tablist">
-      <button class="tab active" data-tab="inputs" data-i18n="tab.inputs">Input</button>
+      <button class="tab active" data-tab="tracks" data-i18n="tab.tracks">Benchmark</button>
+      <button class="tab" data-tab="sources" data-i18n="tab.sources">Sources</button>
       <button class="tab" data-tab="settings" data-i18n="tab.settings">Settings</button>
     </div>
 
-    <div class="tabpane active" id="pane-inputs">
+    <div class="tabpane active" id="pane-tracks">
+      <p class="hint" data-i18n="tracks.hint"></p>
+      <div id="trackList" class="tracklist"></div>
+    </div>
+
+    <div class="tabpane" id="pane-sources">
+      <p class="hint" data-i18n="sources.hint"></p>
       <div id="inputTree" class="tree"></div>
     </div>
 
@@ -61,41 +68,34 @@
 
   <div class="splitter v" data-split="left"></div>
 
-  <!-- ─────────────── centre: viewer ─────────────── -->
+  <!-- ─── centre: the viewer ─── -->
   <section class="panel" id="centre">
     <div class="viewer-head">
-      <div class="crumbs" id="viewerName" data-i18n="viewer.empty">Nothing selected</div>
+      <div class="crumbs" id="viewerName" data-i18n="viewer.empty">Start here</div>
       <div class="viewer-actions" id="viewerActions"></div>
     </div>
-    <div id="viewer" class="viewer">
-      <div class="empty">
-        <p data-i18n="viewer.hintTitle"></p>
-        <ul>
-          <li data-i18n="viewer.hint1"></li>
-          <li data-i18n="viewer.hint2"></li>
-          <li data-i18n="viewer.hint3"></li>
-        </ul>
-      </div>
-    </div>
+    <div id="viewer" class="viewer"></div>
   </section>
 
   <div class="splitter v" data-split="right"></div>
 
-  <!-- ─────────────── right: results ─────────────── -->
+  <!-- ─── right: what scoring produced ─── -->
   <section class="panel" id="right">
     <div class="tabs" role="tablist">
-      <button class="tab active" data-tab="outputs" data-i18n="tab.outputs">Output</button>
-      <button class="tab" data-tab="runs" data-i18n="tab.runs">Runs</button>
+      <button class="tab active" data-tab="runs" data-i18n="tab.runs">Runs</button>
+      <button class="tab" data-tab="outputs" data-i18n="tab.files">Files</button>
     </div>
-    <div class="tabpane active" id="pane-outputs">
-      <div id="outputTree" class="tree"></div>
-    </div>
-    <div class="tabpane" id="pane-runs">
+    <div class="tabpane active" id="pane-runs">
       <div class="pane-head">
-        <button id="dashboard" class="primary small" data-i18n="runs.dashboard">Dashboard</button>
+        <button id="dashboard" class="primary small" data-i18n="runs.chart">Chart</button>
         <button id="refreshRuns" class="ghost small" data-i18n="runs.refresh">Refresh</button>
       </div>
+      <p class="hint" data-i18n="runs.hint"></p>
       <div id="runList" class="runlist"></div>
+    </div>
+    <div class="tabpane" id="pane-outputs">
+      <p class="hint" data-i18n="files.hint"></p>
+      <div id="outputTree" class="tree"></div>
     </div>
   </section>
 </main>
