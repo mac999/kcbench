@@ -13,6 +13,8 @@
 # benchmark: code, config and docs
 __pycache__/
 *.pyc
+# what the browser view leaves behind: the config it replaced on save
+benchmark/config.json.bak
 
 # benchmark data: evaluation sets only. The training split and the track 1
 # chunk file are derived from copyrighted source documents and are rebuilt

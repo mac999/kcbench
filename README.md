@@ -146,6 +146,20 @@ python cb.py webview                       # opens http://127.0.0.1:8799
 python cb.py webview --port 8800 --no-browser
 ```
 
+| Flag | Default | What it does |
+|---|---|---|
+| `--port N` | `8799` | port to serve on |
+| `--host ADDR` | `127.0.0.1` | interface to bind. Anything but localhost serves the corpus to the network and lets whoever reaches it start a command; the log says so when you do it |
+| `--no-browser` | off | do not open a browser window on start |
+| `--debug` | off | Flask's debug reloader, for working on the page itself |
+| `-c, --config FILE` | `./config.json` | the settings file the page reads, edits and runs commands against |
+| `-o, --out-dir DIR` | from config | where run files are read from and commands write to |
+
+It needs Flask, which nothing else in the benchmark does; `pip install flask`
+and the module says so if it is missing. It takes the same path flags as every
+other command (`-i`, `--corpus-dir`, `--metadata-dir`), so a page can be pointed
+at any dataset variant the way a command can.
+
 The page is arranged the way the benchmark is used, not the way the disk is
 laid out. On the left is the benchmark itself: one card per item set with its
 count, answer types and how many items are training-side — the answer key,
