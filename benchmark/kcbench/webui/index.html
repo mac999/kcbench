@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kcbench</title>
+<link rel="stylesheet" href="/ui/style.css">
+</head>
+<body>
+
+<header class="bar" id="topbar">
+  <div class="brand">
+    <span class="mark">kcbench</span>
+    <span class="sub" data-i18n="brand.sub">benchmark console</span>
+  </div>
+
+  <div class="runner">
+    <select id="cmd" aria-label="command"></select>
+    <div id="fields" class="fields"></div>
+    <input id="extra" type="text" spellcheck="false"
+           data-i18n-ph="run.extra" placeholder="extra flags">
+    <button id="run" class="primary" data-i18n="run.start">Run</button>
+    <button id="stop" class="danger" disabled data-i18n="run.stop">Stop</button>
+  </div>
+
+  <div class="tools">
+    <span id="status" class="status idle"></span>
+    <button id="lang" class="ghost" title="한국어 / English">EN</button>
+    <button id="theme" class="ghost" title="theme">◐</button>
+  </div>
+</header>
+
+<div id="cmdline" class="cmdline"><code id="cmdpreview">python cb.py</code></div>
+
+<main id="workspace">
+  <!-- ─────────────── left: settings + input files ─────────────── -->
+  <section class="panel" id="left">
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="inputs" data-i18n="tab.inputs">Input</button>
+      <button class="tab" data-tab="settings" data-i18n="tab.settings">Settings</button>
+    </div>
+
+    <div class="tabpane active" id="pane-inputs">
+      <div id="inputTree" class="tree"></div>
+    </div>
+
+    <div class="tabpane" id="pane-settings">
+      <div class="pane-head">
+        <span id="configPath" class="path mono"></span>
+        <button id="saveConfig" class="primary small" data-i18n="cfg.save">Save</button>
+      </div>
+      <p class="hint" data-i18n="cfg.hint"></p>
+      <textarea id="configText" spellcheck="false"></textarea>
+      <div id="configMsg" class="msg"></div>
+      <div class="pane-head" style="margin-top:14px">
+        <span class="label" data-i18n="cfg.roots">Resolved paths</span>
+      </div>
+      <dl id="roots" class="roots"></dl>
+    </div>
+  </section>
+
+  <div class="splitter v" data-split="left"></div>
+
+  <!-- ─────────────── centre: viewer ─────────────── -->
+  <section class="panel" id="centre">
+    <div class="viewer-head">
+      <div class="crumbs" id="viewerName" data-i18n="viewer.empty">Nothing selected</div>
+      <div class="viewer-actions" id="viewerActions"></div>
+    </div>
+    <div id="viewer" class="viewer">
+      <div class="empty">
+        <p data-i18n="viewer.hintTitle"></p>
+        <ul>
+          <li data-i18n="viewer.hint1"></li>
+          <li data-i18n="viewer.hint2"></li>
+          <li data-i18n="viewer.hint3"></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <div class="splitter v" data-split="right"></div>
+
+  <!-- ─────────────── right: results ─────────────── -->
+  <section class="panel" id="right">
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="outputs" data-i18n="tab.outputs">Output</button>
+      <button class="tab" data-tab="runs" data-i18n="tab.runs">Runs</button>
+    </div>
+    <div class="tabpane active" id="pane-outputs">
+      <div id="outputTree" class="tree"></div>
+    </div>
+    <div class="tabpane" id="pane-runs">
+      <div class="pane-head">
+        <button id="dashboard" class="primary small" data-i18n="runs.dashboard">Dashboard</button>
+        <button id="refreshRuns" class="ghost small" data-i18n="runs.refresh">Refresh</button>
+      </div>
+      <div id="runList" class="runlist"></div>
+    </div>
+  </section>
+</main>
+
+<div class="splitter h" data-split="log"></div>
+
+<section class="panel" id="logpanel">
+  <div class="tabs log-head">
+    <span class="label" data-i18n="log.title">Log</span>
+    <span id="logMeta" class="path mono"></span>
+    <span class="spacer"></span>
+    <label class="chk"><input type="checkbox" id="follow" checked>
+      <span data-i18n="log.follow">Follow</span></label>
+    <button id="clearLog" class="ghost small" data-i18n="log.clear">Clear</button>
+  </div>
+  <pre id="log" class="log"></pre>
+</section>
+
+<script src="/ui/app.js"></script>
+</body>
+</html>
