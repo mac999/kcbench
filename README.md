@@ -144,7 +144,16 @@ item that asks about it, a run file as a scored dashboard instead of raw JSON.
 ```
 python cb.py webview                       # opens http://127.0.0.1:8799
 python cb.py webview --port 8800 --no-browser
+webview.bat  --no-browser                  # the same, under a named environment
+./webview.sh --no-browser
 ```
+
+The two launchers exist because the page usually runs from a different
+interpreter than the one on `PATH`. Both pass every argument through to
+`cb.py webview`, check that Flask is installed before starting, and take the
+interpreter from `KCBENCH_PY` — the same variable `training/pipeline_sft.sh`
+uses — falling back to a venv named `venv_lmm`. `webview.sh` also accepts
+`KCBENCH_VENV` and finds either a Windows or a POSIX layout under it.
 
 | Flag | Default | What it does |
 |---|---|---|
@@ -386,6 +395,7 @@ benchmark/
   cb.py                  the only entry point: build, eval, ppl, compare, ...
   config.json            every tunable, overridden by command-line flags
   run_resumable.sh       supervisor: retry, resume, stop when stuck
+  webview.bat / .sh      start the browser view under the venv KCBENCH_PY names
   data/                  built artefacts; evaluation sets are tracked, the rest is rebuilt
   kcbench/
     build_holdout.py     choose the documents to withhold
