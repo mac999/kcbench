@@ -23,6 +23,21 @@ To use it, start at [Install](#install). To see what it produces and what it
 found, read the [worked example](#worked-example-a-korean-construction-corpus) — a full campaign on the
 corpus it was built for, charts and score tables included.
 
+Everything also runs from a browser. `cb.py webview` serves a local page laid
+out the way the benchmark is used: the frozen item sets and their answer keys on
+the left, the checkpoints scored against them on the right, and in the middle
+whatever you select — items, a render, or a run file drawn as charts. See
+[The browser view](#the-browser-view).
+
+![The kcbench console with the vlm track selected. The left panel lists each
+item set with its item count and answer types; the middle pages through mined
+items with the expected answer shown beside each question; the right lists the
+scored checkpoints.](doc/webview1.png)
+
+![The same console with the uc5 incident track open. Its card is badged
+fuzzy-match and training-side 96, and the item below shows the Korean list its
+answer key expects.](doc/webview2.png)
+
 **Contents**
 
 - [Install](#install) — dependencies, and the inference server
