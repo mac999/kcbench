@@ -384,6 +384,123 @@ def grade_mapping(reply: str, item: dict, tol: float) -> Dict[str, float]:
 
 # prompts
 
+# One entry per answer type: the grader, and whether it needs the raw reply
+# rather than the field reduce_reply() pulled out. Adding a type is adding a
+# row here — the scoring loop does not grow a branch for it.
+def _grade_numeric(reply, item, tol):
+    return {"correct": float(grade_numeric(reply, item, tol))}
+
+
+def _grade_nameset(reply, item, tol):
+    return grade_nameset(reply, item)
+
+
+def _grade_label(reply, item, tol):
+    return grade_label(reply, item)
+
+
+def _grade_verdict(reply, item, tol):
+    return grade_verdict(reply, item)
+
+
+def _grade_mapping(reply, item, tol):
+    return grade_mapping(reply, item, tol)
+
+
+def _cos(a, b) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    na = sum(x * x for x in a) ** 0.5
+    nb = sum(y * y for y in b) ** 0.5
+    return dot / (na * nb + 1e-12)
+
+
+def make_sentence_grader(cfg, panel: List[str], embed_model: str):
+    """
+    Grade a prose answer on three axes, none of which is a string comparison.
+
+    A clause-length answer cannot be matched as a set: the model will reword
+    it and still be right. What can be checked is whether it says the same
+    thing (`semantic`), whether it left anything out (`covered`), and whether
+    it added anything the source does not carry (`supported`). The last two
+    are the precision and recall of set matching, asked of a sentence.
+
+    `covered` and `supported` are voted by a panel that excludes the model's
+    own family, because a judge scoring its relatives was measured favouring
+    them by 0.27. `agreement` travels with the score so a 2-1 verdict is not
+    read as a 3-0 one. With no panel left the two collapse to 0 and only
+    `semantic` carries, which the run file shows through `n_judges`.
+    """
+    from kcbench.judges import PROMPTS, vote
+
+    def grade(reply: str, item: dict, tol: float) -> Dict[str, float]:
+        gold = item.get("answer_ko") or item.get("answer") or ""
+        if isinstance(gold, (list, tuple)):
+            gold = " / ".join(str(x) for x in gold)
+        gold, pred = str(gold).strip(), (reply or "").strip()
+        if not pred:
+            return {"semantic": 0.0, "covered": 0.0, "supported": 0.0,
+                    "grounded": 0.0, "agreement": 0.0, "n_judges": 0}
+
+        semantic = 0.0
+        try:
+            from kcbench.rag_baseline import embed
+            v = embed(cfg, embed_model, [gold, pred])
+            semantic = max(0.0, _cos(v[0], v[1]))
+        except Exception as exc:                       # an embedder that is not
+            LOG.warning("semantic score unavailable: %s", exc)   # pulled yet
+
+        votes = {}
+        for kind in ("covered", "supported"):
+            calls = []
+            for j in panel:
+                out = generate(cfg, j, PROMPTS[kind].format(gold=gold, pred=pred)) or ""
+                calls.append("yes" in out.lower()[:40])
+            votes[kind] = vote(calls)
+
+        cov, sup = votes["covered"], votes["supported"]
+        return {"semantic": round(semantic, 4),
+                "covered": cov["value"], "supported": sup["value"],
+                "grounded": float(cov["value"] > 0 and sup["value"] > 0),
+                "agreement": round((cov["agreement"] + sup["agreement"]) / 2, 4),
+                "n_judges": float(cov["n_judges"])}
+
+    return grade
+
+
+def graders_for(cfg, model: str) -> Dict[str, tuple]:
+    """
+    The registry for one run.
+
+    The static table holds the graders that need nothing but the reply. Types
+    that need a judge panel are bound here, because which judges are allowed
+    depends on the model being scored.
+    """
+    table = dict(GRADERS)
+    try:
+        from kcbench.judges import panel_for
+        installed = [m["name"] for m in
+                     requests.get(f"{cfg['eval']['ollama_base_url']}/api/tags",
+                                  timeout=30).json().get("models", [])]
+        panel = panel_for(model, available=installed)
+    except Exception as exc:
+        LOG.warning("could not build a judge panel: %s", exc)
+        panel = []
+    embed_model = cfg["eval"].get("embed_model", "bge-m3")
+    table["sentence"] = (make_sentence_grader(cfg, panel, embed_model), False)
+    return table
+
+
+GRADERS = {
+    "numeric":      (_grade_numeric, False),
+    "nameset":      (_grade_nameset, False),
+    "label":        (_grade_label, False),
+    "faithfulness": (grade_faithfulness, False),
+    # the evidence list is part of the answer, and reduce_reply keeps only the
+    # verdict field, so this one is graded on what the model actually wrote
+    "verdict":      (_grade_verdict, True),
+}
+
+
 def build_prompt(item: dict, lang: str, closed_book: bool = False) -> str:
     """
     The prompt as the model sees it.
@@ -423,14 +540,19 @@ def b64_image(path: Path) -> str:
 
 # run
 
-def run_meta(cfg) -> Dict[str, Any]:
+def run_meta(cfg, model: str | None = None) -> Dict[str, Any]:
     """
     What a score has to carry to be checkable later: the decoding settings that
     produced it, and the seed the item set was split with. A number without
     these is not a measurement, it is an anecdote.
+
+    Where a free-form answer was judged by other models, who they were belongs
+    here too — a `grounded` score is a claim about the panel as much as about
+    the answer, and a reader has to be able to see that no relative of the
+    model under test sat on it.
     """
     ev = cfg["eval"]
-    return {
+    meta = {
         "benchmark": BENCHMARK_NAME, "version": BENCHMARK_VERSION,
         "schema": SCHEMA_VERSION,
         "decoding": {k: ev[k] for k in
@@ -439,6 +561,21 @@ def run_meta(cfg) -> Dict[str, Any]:
         "holdout_seed": (cfg.get("holdout") or {}).get("seed"),
         "config_path": cfg.get("_config_path"),
     }
+    if model:
+        try:
+            from kcbench.judges import MIN_PANEL, family, panel_for
+            installed = [m["name"] for m in
+                         requests.get(f"{ev['ollama_base_url']}/api/tags",
+                                      timeout=30).json().get("models", [])]
+            panel = panel_for(model, available=installed)
+            meta["judges"] = {
+                "panel": panel, "excluded_family": family(model),
+                "embed_model": ev.get("embed_model", "bge-m3"),
+                "provisional": len(panel) < MIN_PANEL,
+            }
+        except Exception as exc:
+            LOG.warning("judge panel not recorded: %s", exc)
+    return meta
 
 
 def run_track1(cfg, model: str, rows: List[dict], limit: int | None) -> dict:
@@ -551,6 +688,7 @@ def run_qa(cfg, model: str, rows: List[dict], lang: str, repeats: int,
            closed_book: bool = False, ckpt: Checkpoint | None = None) -> dict:
     rows = rows[:limit] if limit else rows
     tol = cfg["eval"]["numeric_tolerance"]
+    table = graders_for(cfg, model)
     mix = cfg["eval"].get("lang_mix") or {"ko": 0.8, "en": 0.2}
     # A dead inference server fails every call, and the empty replies grade as
     # wrong: the track finishes and writes a score that is really the blank-reply
@@ -600,27 +738,15 @@ def run_qa(cfg, model: str, rows: List[dict], lang: str, repeats: int,
                 fails = 0
             replies.append(reply)
             graded = reduce_reply(reply) if structured else reply
-            kind = item["eval_type"]
-            if kind == "numeric":
-                scores.append({"correct": float(grade_numeric(graded, item, tol))})
-            elif kind == "nameset":
-                scores.append(grade_nameset(graded, item))
-            elif kind == "label":
-                scores.append(grade_label(graded, item))
-            elif kind == "faithfulness":
-                scores.append(grade_faithfulness(graded, item, tol))
-            elif kind == "verdict":
-                # Graded on the raw reply: the evidence list is part of the
-                # answer here, and reduce_reply keeps only the verdict field.
-                scores.append(grade_verdict(reply, item))
-            else:
-                scores.append(grade_mapping(graded, item, tol))
+            grader, on_raw = table.get(item["eval_type"], (_grade_mapping, False))
+            scores.append(grader(reply if on_raw else graded, item, tol))
 
         keys = scores[0].keys()
         # Subgroup keys travel with the score so the aggregate can split a
         # use-case track by what matters: contaminated vs held-out items,
         # swapped vs control contexts, and which label task was asked.
-        extra = {k: item[k] for k in ("split", "context_matches", "label_task", "usecase")
+        extra = {k: item[k] for k in ("split", "context_matches", "label_task",
+                                      "usecase", "volatility")
                  if k in item}
         rec = {
             "id": item["id"], "eval_type": item["eval_type"],
@@ -671,8 +797,12 @@ def _aggregate(per_item: List[dict]) -> dict:
         # The splits that decide what a number means. A faithfulness accuracy
         # without the swapped/control split hides an always-abstain model, and a
         # use-case score without the contamination split is not reportable.
+        # `volatility` splits recall from retrieval. A closed-book score over
+        # items whose answer the next amendment rewrites is not a knowledge
+        # measurement, and averaging the two kinds together reports neither.
         for field, prefix in (("split", "split"), ("context_matches", "context"),
-                              ("label_task", "task"), ("prompt_lang", "lang")):
+                              ("label_task", "task"), ("prompt_lang", "lang"),
+                              ("volatility", "volatility")):
             vals = sorted({str(p[field]) for p in group if field in p})
             if len(vals) > 1:
                 out[kind][f"by_{prefix}"] = {
@@ -788,7 +918,7 @@ def main() -> int:
             result["tracks"][t]["items_digest"] = items_digest(rows)
 
     result["elapsed_sec"] = round(time.time() - started, 1)
-    result["meta"] = run_meta(cfg)
+    result["meta"] = run_meta(cfg, args.model)
     result["headline"] = headline(result)
     out = write_json(runs_dir / f"{tag}.json", result)
     LOG.info("wrote %s", out)
