@@ -210,7 +210,7 @@ def main() -> int:
                     continue
                 try:
                     rec = check_item(cfg, args.model, item,
-                                     build_prompt(item, args.lang, args.closed_book),
+                                     build_prompt(cfg, item, args.lang, args.closed_book),
                                      sc["samples"], sc["temperature"], tol)
                 except Exception as exc:
                     LOG.warning("generate failed on %s (%s)", item["id"], exc)

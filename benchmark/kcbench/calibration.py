@@ -192,7 +192,7 @@ def score_track(cfg, model: str, rows: List[dict], args, ckpt: Checkpoint | None
     for i, item in enumerate(rows, 1):
         if ckpt and item["id"] in ckpt.done:
             continue
-        prompt = build_prompt(item, args.lang, args.closed_book)
+        prompt = build_prompt(cfg, item, args.lang, args.closed_book)
         try:
             if args.method == "verbalized":
                 conf, correct, reply, blank = confidence_by_asking(

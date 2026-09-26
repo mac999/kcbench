@@ -35,6 +35,7 @@ from kcbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, TRACKS_HELP,
                             add_common_args, describe, items_digest, log,
                             read_jsonl, resolve_config, resolve_tracks,
                             track_label, write_json)
+from kcbench.prompts import render
 from kcbench.evaluate import (_aggregate, answered, generate, grade_label,
                               graders_for, run_meta, track_files)
 
@@ -144,8 +145,8 @@ def main() -> int:
                 hits += 1
             q = item.get(f"question_{args.lang}") or item.get("question_ko", "")
             instr = item.get(f"instruction_{args.lang}") or item.get("instruction_ko", "")
-            prompt = (f"다음 조문을 읽고 질문에 답하시오.\n\n[조문]\n{passage}\n\n"
-                      f"[질문]\n{q}\n\n{instr}")
+            prompt = render(cfg, f"rag.{args.lang}",
+                             passage=passage, question=q, instruction=instr)
             try:
                 reply = generate(cfg, args.model, prompt)
             except Exception as exc:
