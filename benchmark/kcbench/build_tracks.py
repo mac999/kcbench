@@ -18,7 +18,7 @@ from typing import Any, Dict, List
 from kcbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, QUALIFIER_EN,
                             TRACKS_HELP, resolve_tracks,
                     SCHEMA_VERSION, UNIT_EN, add_common_args, describe,
-                    generated_documents, item_id, log, normalise,
+                    generated_documents, item_id, log, nameset_match_mode, normalise,
                     resolve_config, sha256_text, utc_now, write_json,
                     write_jsonl)
 
@@ -462,6 +462,7 @@ def build_track2(cfg, holdout, rej: Rejects) -> Path:
                 "question_ko": q_ko,
                 "question_en": q_en,
                 **_instr("nameset"),
+                "match_mode": nameset_match_mode(items),
                 "answer": items,
                 "answer_ko": items,
                 "answer_lang": "ko",
@@ -636,6 +637,7 @@ def build_track3(cfg, holdout, rej: Rejects) -> Path:
                 "question_en": "List every structural element type visible in this "
                                "construction site photo, using IFC class names.",
                 **_instr("nameset"),
+                "match_mode": nameset_match_mode(sorted(types)),
                 "answer": sorted(types),
                 "answer_lang": "neutral",
                 "verified_en": "element catalogue written from the IFC file during generation",
