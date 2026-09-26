@@ -19,9 +19,10 @@ building models — which is where the name comes from: **K**orean
 of prompt strings; see [Adapting it to another
 domain](#adapting-it-to-another-domain).
 
-To use it, start at [Install](#install). To see what it produces and what it
-found, read the [worked example](#worked-example-a-korean-construction-corpus) — a full campaign on the
-corpus it was built for, charts and score tables included.
+To use it, start at [Install](#install). To see what it produces, read the
+[worked example](#worked-example-a-korean-construction-corpus): a two-stage
+DAPT and SFT campaign on the corpus it was built for, reported stage by stage
+against the metric each stage is supposed to move.
 
 Everything also runs from a browser. `cb.py webview` serves a local page laid
 out the way the benchmark is used: the frozen item sets and their answer keys on
@@ -41,16 +42,16 @@ answer key expects.](doc/webview2.png)
 **Contents**
 
 - [Install](#install) — dependencies, and the inference server
-- [Use](#use) — the seventeen commands, and what each does
+- [Use](#use) — the nineteen commands, and what each does
 - [Evaluation design](#evaluation-design--held-out-and-contaminated-probe-sets) — the held-out and probe sets, and why one is contaminated on purpose
-- [Data-centric development loop](#data-centric-development-loop) — what to do with the numbers, and the line against Goodharting
-- [Workflow](#workflow) — build, baseline, train, register, score, compare — in order
-- [Layout](#layout) — what each file in the repository does
-- [Worked example](#worked-example-a-korean-construction-corpus) — Qwen3-8B on Korean construction regulation: the headline results
 - [Track reference](#track-reference--item-counts-and-answer-types) — the nine item sets, their sizes and answer types
+- [Workflow](#workflow) — build, baseline, train, register, score, compare — in order
+- [Data-centric development loop](#data-centric-development-loop) — what to do with the numbers, and the line against Goodharting
+- [Worked example](#worked-example-a-korean-construction-corpus) — DAPT and SFT on Korean construction regulation: what each stage moved, and why closed-book recall did not
 - [Retrieval ablation and item validity](#retrieval-ablation-and-item-validity) — where the detail lives
 - [System design implications](#system-design-implications) — what the findings imply for the system that motivated them
 - [Adapting it to another domain](#adapting-it-to-another-domain) — what to change when the corpus is not construction
+- [Layout](#layout) — what each file in the repository does
 - [Metric reference](#metric-reference) — every number in a run file, defined and sourced
 - [Limits](#limits) — what this benchmark cannot decide
 
@@ -99,6 +100,8 @@ the names listed under [What each track contains](#track-reference--item-counts-
 | `ece` | expected calibration error — is the model's confidence justified |
 | `compare` | compare two runs, with a significance test |
 | `rag` | score with retrieved context instead of the gold clause |
+| `selfcheck` | hallucination signal from sampling consistency, no answer key |
+| `volatility` | classify items by whether a revision changes the answer |
 | `matrix` | score several models and tabulate |
 | `triage` | pick the items a human should review |
 | `review` | apply review verdicts, kept across rebuilds |
@@ -244,64 +247,44 @@ Those percentages are measured, not assumed: `build_probe.py` checks each item's
 subject and answer against the training rows and reports the share that are
 jointly present.
 
-## Data-centric development loop
+## Track reference — item counts and answer types
 
-A benchmark like this is one half of a cycle; the other half is what you do
-about the numbers. The intended loop is the standard data-centric one:
+A track is one self-contained set of items with its own answer type and its own
+score — the sense the word carries in TREC. Each answers a different question, so
+they are read separately, never averaged into a single figure. Tracks are named
+for what they test:
 
-```
-measure -> diagnose which capability is missing -> fix the TRAINING DATA
-        -> retrain -> measure again, same frozen items
-```
+| Track | Items | Answer type | What it measures |
+|---|---:|---|---|
+| `dapt` | 5,381 chunks | perplexity | fit to held-out text — did pre-training take |
+| `sft` | 395 | numeric 320, nameset 75 | held-out QA — does it generalise to unseen regulation |
+| `vlm` | 10 | nameset 6, mapping 4 | vision: element types from renders, model-to-photo mapping |
+| `probe` | 400 | numeric 320, nameset 80 | training-side QA — did it acquire what it was taught. Diagnostic only |
+| `uc1_safety` | 157 | numeric 85, nameset 72 | safety regulation lookup |
+| `uc2_rebar_spec` | 150 | numeric 150 | specification limits and tolerances |
+| `uc3_bim_site` | 39 | label 39 | render and site photo judged together |
+| `uc4_faithfulness` | 160 | faithfulness 160 | abstention when the passage does not support an answer |
+| `uc5_incident` | 118 | nameset 118 | causes and controls from incident reports |
+| `uc6_verdict` | 810 | verdict 810 | compliance judgement against a stated threshold |
 
-The instrument never changes inside the loop. What changes is the training set,
-because that is where the diagnosis almost always points: in the worked example
-below, closed-book recall stayed flat not because the model lacked capacity but
-because 95% of the instruction pairs carried the source clause in the prompt —
-the training taught extraction and the benchmark asked for recall. That is a
-dataset design gap, and no amount of hyperparameter tuning fixes a task that
-was never trained.
+`--tracks uc` runs every use-case track. Use-case tracks are registered in
+`config.json`, so adding one takes a config entry rather than a code change.
 
-Editing training data in response to benchmark findings is legitimate practice
-— FLAN and T0 mix zero-context and reading-comprehension formats deliberately,
-and the knowledge-injection literature prescribes paraphrase diversity for
-facts — but only on one side of a line:
+`dapt`, `sft` and `vlm` were originally numbered 1, 2 and 3, for the training
+stage each diagnoses. The numbers are still accepted — `--tracks 2` is `--tracks
+sft` — and run files still key on them, so scores from older runs stay
+comparable. Nothing else needs them.
 
-| Legitimate | Goodharting |
-|---|---|
-| add the missing *format* or *capability* to the training data | plant the held-out answers in the training data |
-| iterate against `probe` (intentionally contaminated, diagnostic) | iterate against the held-out tracks until they look good |
-| re-measure on the same frozen items | change the items when the score disappoints |
+Six answer types are graded: `numeric`, `nameset`, `label`, `faithfulness`,
+`verdict` and `sentence`. The first five are extractive; `sentence` scores a
+prose answer on semantic similarity, whether anything required was omitted, and
+whether anything unsupported was added, the last two voted by a panel of judge
+models drawn from families other than the one under test.
 
-kcbench enforces the line mechanically: the training split excludes held-out
-text by content digest, `cb.py verify` re-proves it after any data change, and
-the probe/holdout pair exists so that iteration pressure lands on the
-deliberately contaminated set rather than the one that decides the result.
-
-`training/augment_sft.py` is the tool this loop drives: it rewrites the
-training pairs toward whatever the last measurement showed missing —
-closed-book variants, full-enumeration pairs, LLM-generated paraphrases,
-refusal targets. Every ratio and cap is a flag, because the right mixture is an
-empirical question the next measurement answers; the flag table is in
-[training/README.md](training/README.md), and the three measured turns it
-produced are reported in [doc/worked-example.md](doc/worked-example.md#per-recipe-results).
-
-A turn returns one of three things — a fix validated, a fix refuted, a tradeoff
-surfaced — and all three are worth having. The worked example ran four turns,
-augmenting the training pairs a different way each time, and got all three.
-
-### Scope and known weaknesses
-
-Good at: before/after deltas on frozen items; telling acquisition from
-generalisation (probe vs holdout); catching harness faults (three were found by
-its own runs: a serving-template mismatch, a reasoning-parse mismatch, and a
-grader format bias); calibration and abstention, which scores alone miss.
-
-Not good at: absolute rankings against public leaderboards (items are
-rule-mined, not expert-written); judging free-form prose (extractive answer
-types only — `selfcheck` is the reference-free aid there, and its own
-validation showed consistency is no hallucination signal on a model that
-hallucinates stably); vision beyond a smoke test (`vlm` is 10 items).
+Every type has precedent in a published benchmark — the mapping is in
+[benchmark/README.md](benchmark/README.md#precedent-for-each-grading-type).
+What each type scores, and what the rest of the numbers in a run file mean, is
+set out in [doc/metrics.md](doc/metrics.md).
 
 ## Workflow
 
@@ -407,6 +390,263 @@ being wrong and sure. `selfcheck` asks the same question without an answer key,
 by sampling the model and seeing whether it tells the same story twice, so it
 also works on the free-form answers no track can grade.
 
+## Data-centric development loop
+
+A benchmark like this is one half of a cycle; the other half is what you do
+about the numbers. The intended loop is the standard data-centric one:
+
+```
+measure -> diagnose which capability is missing -> fix the TRAINING DATA
+        -> retrain -> measure again, same frozen items
+```
+
+The instrument never changes inside the loop. What changes is the training set,
+because that is where the diagnosis almost always points: in the worked example
+below, closed-book recall stayed flat not because the model lacked capacity but
+because 95% of the instruction pairs carried the source clause in the prompt —
+the training taught extraction and the benchmark asked for recall. That is a
+dataset design gap, and no amount of hyperparameter tuning fixes a task that
+was never trained.
+
+Editing training data in response to benchmark findings is legitimate practice
+— FLAN and T0 mix zero-context and reading-comprehension formats deliberately,
+and the knowledge-injection literature prescribes paraphrase diversity for
+facts — but only on one side of a line:
+
+| Legitimate | Goodharting |
+|---|---|
+| add the missing *format* or *capability* to the training data | plant the held-out answers in the training data |
+| iterate against `probe` (intentionally contaminated, diagnostic) | iterate against the held-out tracks until they look good |
+| re-measure on the same frozen items | change the items when the score disappoints |
+
+kcbench enforces the line mechanically: the training split excludes held-out
+text by content digest, `cb.py verify` re-proves it after any data change, and
+the probe/holdout pair exists so that iteration pressure lands on the
+deliberately contaminated set rather than the one that decides the result.
+
+`training/augment_sft.py` is the tool this loop drives: it rewrites the
+training pairs toward whatever the last measurement showed missing —
+closed-book variants, full-enumeration pairs, LLM-generated paraphrases,
+refusal targets. Every ratio and cap is a flag, because the right mixture is an
+empirical question the next measurement answers; the flag table is in
+[training/README.md](training/README.md), and the three measured turns it
+produced are reported in [doc/worked-example.md](doc/worked-example.md#per-recipe-results).
+
+A turn returns one of three things — a fix validated, a fix refuted, a tradeoff
+surfaced — and all three are worth having. The worked example ran four turns,
+augmenting the training pairs a different way each time, and got all three.
+
+### Scope and known weaknesses
+
+Good at: before/after deltas on frozen items; telling acquisition from
+generalisation (probe vs holdout); catching harness faults (three were found by
+its own runs: a serving-template mismatch, a reasoning-parse mismatch, and a
+grader format bias); calibration and abstention, which scores alone miss.
+
+Not good at: absolute rankings against public leaderboards (items are
+rule-mined, not expert-written); judging free-form prose (extractive answer
+types only — `selfcheck` is the reference-free aid there, and its own
+validation showed consistency is no hallucination signal on a model that
+hallucinates stably); vision beyond a smoke test (`vlm` is 10 items).
+
+## Worked example: a Korean construction corpus
+
+Qwen3-8B adapted to ~1 GB of Korean construction regulation in two stages —
+domain-adaptive pretraining (DAPT) on 26,767 chunks, then supervised
+fine-tuning (SFT) on 15,666 instruction pairs — and scored on every track. The
+headlines are below; the full write-up, with all charts, per-recipe results and
+score tables, is in [doc/worked-example.md](doc/worked-example.md).
+
+**What it was for.** The metrics were not chosen as the right way to judge DAPT
+or SFT. They were run to find out *which metrics register a difference at all*
+when the training data changes — an experiment on the instrument as much as on
+the model.
+
+### Each stage moved the metric it should
+
+| Stage | Objective | Metric | Result |
+|---|---|---|---|
+| **DAPT** | next-token prediction over raw clauses | `dapt` perplexity | **7.589 → 4.553, −40%**, all 13 categories |
+| **SFT** | instruction following on mined pairs | grounded use of a supplied clause | **0.875 → 0.988** |
+| **SFT** | — | `uc5` enumeration F1, open book | **0.468 → 0.565**, +0.10 [+0.03, +0.17] |
+| **SFT** | — | expected calibration error (ECE) | **0.641 → 0.281** |
+| **SFT** | — | blank replies | **43% → 0%** |
+| SFT | — | closed-book factual recall | +0.009, not distinguishable from noise |
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="doc/dapt-perplexity-dark.png">
+  <img alt="Perplexity by document category, base versus after DAPT. Every one of the thirteen categories fell, the overall figure from 7.589 to 4.553." src="doc/dapt-perplexity-light.png">
+</picture>
+
+DAPT lowered perplexity in every category, furthest on the text least like
+ordinary prose — specifications (KCS) 10.24 → 6.02 — which is the signature of
+a model acquiring clause structure and domain terminology. SFT then improved
+instruction following, calibration and grounded use of context supplied at
+inference.
+
+The single metric that did not move was closed-book factual recall. The rest of
+this section is about why, because the reason is a property of the training
+data rather than of fine-tuning.
+
+### Why closed-book recall stayed flat
+
+The SFT pairs were mined from Korean ministerial notices and technical
+standards, and that corpus is dominated by clauses under active amendment.
+Classifying the scored items by exposure to revision (`cb.py volatility`):
+
+| Class | Items | Share |
+|---|---:|---:|
+| **volatile** — the answer changes when the instrument is reissued | 1,321 | 60.3% |
+| **stable** — definitions, principles, calculation methods | 50 | 2.3% |
+| unknown — no revision marker on the source document | 819 | 37.4% |
+
+**60.3% of the closed-book measurement is taken on figures a future amendment
+will invalidate.** Committing those to model weights is a design error whether
+or not the optimisation succeeds: the resulting parameters are correct until
+the next notice and silently wrong after it, and the model has no way to signal
+which state it is in. The flat recall is therefore not evidence that SFT cannot
+add knowledge — it is evidence that this particular content class was the wrong
+thing to train, and the benchmark was measuring the wrong thing by scoring it
+closed book.
+
+An audit of the pairs against the items they are scored on found the same thing
+from a second direction:
+
+| Fault | Measured | Consequence |
+|---|---|---|
+| **Format mismatch** | 82% of training answers are prose; 81% of scored items ask for a bare figure | the model was never shown the task it is graded on. **More data does not fix this** |
+| **Distribution mismatch** | equipment and services is 3.2% of training against 17.0% of the evaluation | the categories weighted most at scoring time are the thinnest in training |
+| **Scale** | 3.7M tokens, one pass, LoRA rank 64 | roughly three orders of magnitude below the budgets at which DAPT is reported to add knowledge |
+
+Across a 3,000-pair sample **no training instruction asks for a bare number at
+all**, so a model holding the fact can still score zero for expressing it the
+way it was taught to. Duplication, verbatim copying and question-type collapse
+were all checked and found healthy, so they are not candidate explanations.
+
+### Retrieval is the right mechanism for the volatile class
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="doc/rag-dark.png">
+  <img alt="Numeric accuracy for the untrained base model under six retrieval conditions: closed book 0.147, RAG with an English-centred embedder 0.144, RAG bge-m3 top-3 0.397, bge-m3 top-10 0.481, arctic-embed2 top-10 0.478, open book 0.944." src="doc/rag-light.png">
+</picture>
+
+| Condition | recall@k | numeric accuracy |
+|---|---:|---:|
+| closed book, no retrieval | — | 0.147 |
+| RAG, English-centred embedder, top-10 | 0.041 | 0.144 |
+| RAG, `bge-m3` (multilingual), top-10 | 0.400 | **0.481** |
+| open book (oracle retrieval) | 1.000 | 0.944 |
+
+On the same items, changing the embedder moved accuracy 0.334 where four SFT
+recipes moved it 0.009. That comparison is fair only for this content class,
+and the reason it is so lopsided is the same reason the SFT result was flat:
+for text that is written down and periodically revised, retrieval keeps the
+answer current at the cost of a re-index, while training bakes in a value that
+goes stale. It says nothing about tasks where the target is a behaviour rather
+than a fact.
+
+An embedder that cannot search the corpus language buys nothing and fails
+silently — it returns passages, the model answers, and only the score reveals
+the passages were unrelated. Verify recall@k against a held-out set before
+trusting anything downstream.
+
+### Stage selection by target metric
+
+| If the metric that matters is… | Stage | Evidence here |
+|---|---|---|
+| perplexity on domain text | **DAPT** | −40%, the largest single move in the campaign |
+| closed-book recall of volatile figures | **RAG** | +0.334 against +0.009 over four SFT recipes |
+| grounded use of supplied context | **SFT** | 0.875 → 0.988 |
+| output format, instruction following | **SFT** | blank replies 43% → 0% |
+| confidence calibration | **SFT** | ECE 0.641 → 0.281 |
+| abstention when unsupported | **none — preserve it** | the untrained base scored highest of five checkpoints |
+
+The last row cost the most to learn: abstention degraded monotonically the more
+directly it was trained.
+
+> **Size your own run against this before generalising from it.** The negative
+> result is specific to a 3.7M-token corpus, a rank-64 adapter, and an
+> evaluation set that is 60.3% amendment-exposed. What transfers is the method
+> — classify your items by revision exposure before deciding what to train, and
+> score the volatile class on retrieval rather than on memory.
+
+Full detail — scoring protocol, the four-recipe ablation, per-recipe results,
+complete score tables, and the dataset's known limits — is in
+[doc/worked-example.md](doc/worked-example.md). The retrieval sweep and the
+item-validity audit are in
+[doc/retrieval-and-validity.md](doc/retrieval-and-validity.md).
+
+## Retrieval ablation and item validity
+
+How much of a score the retriever decides rather than the model, and how much
+of the item set is measurable without an expert reviewer:
+[doc/retrieval-and-validity.md](doc/retrieval-and-validity.md). The headline —
+a better embedder bought 0.334 accuracy where four training recipes bought
+0.009 — is in the worked example above.
+
+## System design implications
+
+Three findings from the campaign above constrain how the agent that motivated it
+should be built. DAPT and SFT moved the metrics they target — domain perplexity,
+instruction following, calibration, grounded use of supplied context — while
+closed-book recall of amendment-exposed figures stayed flat, so the content
+class matters more than the training recipe. On that class retrieval quality is
+worth more than any recipe tried: a good embedder bought roughly 0.33 accuracy
+where four data recipes bought none. And every attempt to train refusal made
+refusal worse, at every dose.
+
+[solution.md](solution.md) works those through into design decisions: why the
+generating and the verifying roles are better separated than trained into one
+set of weights, and four ways to implement that split in ascending order of cost
+— starting with detaching the adapter, since the un-adapted base model is
+already the best abstainer measured here. It covers what the abstention collapse
+is best explained by and the one grader check that should precede believing it,
+why the retrieval budget comes first and what recall target is worth chasing,
+the latency arithmetic for the machine these runs were made on (an NVIDIA DGX
+Spark, GB10 Grace Blackwell), and a list of what to validate before committing
+to any of it.
+
+Those are that project's conclusions rather than the benchmark's — the
+benchmark only supplies the numbers, and the document opens by saying what they
+are conditioned on: a 3.7M-token corpus of synthetic pairs mined largely from
+regulation under active amendment, a rank-64 adapter, 128 GB of GPU memory, and
+one base model. Change any of those and the answers
+may change. The reasoning transfers further than the figures do.
+
+## Adapting it to another domain
+
+Everything tunable lives in `config.json`, and every value there is overridden
+by the matching command-line flag. The parts worth knowing:
+
+- `corpus_dir`, `generated_dir`, `out_dir` — where documents are read and
+  artefacts are written. The `images` paths carried by `vlm` and `uc3` items are
+  relative to **`generated_dir`**, not `corpus_dir`: the renders and site photos
+  are produced alongside the chunked text, so a run whose `generated_dir` does
+  not hold them scores those tracks as unanswerable rather than failing loudly.
+  `benchmark/data/uc3_cross_image.jsonl` ships with the repository; the images it
+  names do not, for the same licensing reason the `dapt` chunks are withheld.
+- `holdout` — what fraction of chunks to withhold, per-document caps, and the
+  seed. The seed is what makes a split reproducible.
+- `track2_sft`, `probe` — how many items to mine, per-document caps, and the
+  filters that decide whether a mined fact is answerable: numeric uniqueness,
+  subject length bounds, minimum set size for nameset items.
+- `usecases` — a registry. Adding a use-case track is a config entry plus a
+  track file; `cb.py eval --tracks uc` picks up whatever is enabled without a
+  code change.
+- `eval` — endpoint, context and prediction lengths, temperature, repeats,
+  numeric tolerance, and the two dead-server guards.
+
+What is domain-specific and would need editing: the prompt strings for the
+vision tracks in `kcbench/build_tracks.py` and `build_usecases.py`, which name IFC
+classes and construction site photos, and the IFC reader itself. The text
+tracks make no assumption about subject matter beyond the corpus being chunked
+prose with numbers and named lists in it.
+
+Prompts default to Korean because the reference corpus is Korean regulation and
+translating the terms changes the question. Every item carries an English
+prompt as well (`question_en`, and `answer_en` for numeric units), so
+`--lang en` scores the same answer key in English.
+
 ## Layout
 
 ```
@@ -446,197 +686,6 @@ training/
 
 `training/` is kept separate from `benchmark/` deliberately: an instrument that
 shares code with the thing it measures stops being one.
-
-## Worked example: a Korean construction corpus
-
-Qwen3-8B fine-tuned in two stages over ~1 GB of Korean construction regulation
-— domain-adaptive pre-training on 26,767 chunks, then SFT on 15,666 instruction
-pairs — and scored on every track. The headlines are below; the full write-up,
-with all charts, per-recipe results and score tables, is in
-[doc/worked-example.md](doc/worked-example.md).
-
-**What it was for.** The metrics were not chosen as the right way to judge DAPT
-or SFT. They were run to find out *which metrics register a difference at all*
-when the training data changes — an experiment on the instrument as much as on
-the model. Several turned out not to move.
-
-### Retrieval beat fine-tuning, and not by a little
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="doc/rag-dark.png">
-  <img alt="Numeric accuracy for the untrained base model under six retrieval conditions: closed book 0.147, RAG with an English-centred embedder 0.144, RAG bge-m3 top-3 0.397, bge-m3 top-10 0.481, arctic-embed2 top-10 0.478, open book 0.944." src="doc/rag-light.png">
-</picture>
-
-| Condition | recall@k | numeric |
-|---|---:|---:|
-| closed book, no retrieval | — | 0.147 |
-| RAG, English-centred embedder, top-10 | 0.041 | 0.144 |
-| RAG, `bge-m3`, top-10 | 0.400 | **0.481** |
-| open book (perfect retrieval) | 1.000 | 0.944 |
-
-Swapping the embedder moved accuracy 0.334. Four rounds of fine-tuning moved it
-0.009. An embedder that cannot search the language buys nothing at all and
-fails silently — it returns passages, the model answers, and only the score
-shows the passages were unrelated.
-
-Read task by task: anything *written down somewhere and revised periodically* —
-clause text, dimensional thresholds, specification limits — is better looked up
-than memorised, and a revised standard costs a re-index rather than a retrain.
-Fine-tuning earned its place on the other kind of task, about *how* the model
-answers rather than *what* it knows: output format, calibration, use of a
-clause once supplied. Anyone reading these numbers as a verdict on fine-tuning
-should first ask which kind their own task is.
-
-### What the training data could and could not explain
-
-An audit of the instruction pairs against the items they are scored on found
-three faults, of which only the first is about size:
-
-| Fault | Measured | Why it matters |
-|---|---|---|
-| **Scale** | 3.7M tokens, one pass, LoRA rank 64 | too few exposures per fact for recall to form |
-| **Format mismatch** | 82% of training answers are prose; 81% of scored items ask for a bare figure | the model was never shown the task it is graded on. **More data does not fix this** |
-| **Distribution mismatch** | equipment and services is 3.2% of training against 17.0% of the evaluation | the categories weighted most at scoring time are the thinnest in training |
-
-The format mismatch is the sharpest. Across a 3,000-pair sample **no training
-instruction asks for a bare number at all**, so a model holding the fact can
-still score zero for expressing it the way it was taught to. That is a
-data-design fault, not a capacity one, and it is repairable with the corpus
-already in hand.
-
-Three things the same audit found healthy, so they are not candidate
-explanations: duplication is low, answers are reconstructed rather than copied
-out of the clause, and question types do not collapse onto one form.
-
-### The two-stage result
-
-Scored with identical decoding for both models (`--think off`, temperature 0):
-
-| Metric | Base | After DAPT+SFT | Significance |
-|---|---:|---:|---|
-| `sft` numeric, closed book | 0.147 | 0.156 | p = 0.78, noise |
-| `sft` numeric, open book | 0.944 | 0.959 | p = 0.18, noise |
-| `sft` nameset F1, open book | 0.587 | 0.379 | **−0.21, significant** |
-| `sft` ECE, closed book | 0.641 | **0.320** | calibration improved |
-| uc5 incident F1, open book | 0.468 | 0.564 | **+0.10, significant** |
-
-Stage 2 repaired the answer format stage 1 had damaged and added no measurable
-closed-book knowledge. Closed-book recall was flat across all four recipes.
-
-> **Size your own run against this before reading it as a verdict.** The
-> central negative result is a statement about *this corpus at this scale and
-> this adapter size*, roughly three orders of magnitude below the token budgets
-> at which continued pre-training is normally reported to add knowledge. If
-> your corpus is this size, the honest expectation is what was measured here:
-> better handling of text you supply at inference, and no new knowledge in the
-> weights. Useful for a RAG system, poor if you needed answers from memory.
-
-Full detail — scoring protocol, the four-recipe ablation, per-recipe results,
-complete score tables, and the dataset's known limits — is in
-[doc/worked-example.md](doc/worked-example.md). The retrieval sweep and the
-item-validity audit are in
-[doc/retrieval-and-validity.md](doc/retrieval-and-validity.md).
-
-## Track reference — item counts and answer types
-
-A track is one self-contained set of items with its own answer type and its own
-score — the sense the word carries in TREC. Each answers a different question, so
-they are read separately, never averaged into a single figure. Tracks are named
-for what they test:
-
-| Track | Items | Answer type | What it measures |
-|---|---:|---|---|
-| `dapt` | 5,381 chunks | perplexity | fit to held-out text — did pre-training take |
-| `sft` | 395 | numeric 320, nameset 75 | held-out QA — does it generalise to unseen regulation |
-| `vlm` | 10 | nameset 6, mapping 4 | vision: element types from renders, model-to-photo mapping |
-| `probe` | 400 | numeric 320, nameset 80 | training-side QA — did it acquire what it was taught. Diagnostic only |
-| `uc1_safety` | 157 | numeric 85, nameset 72 | safety regulation lookup |
-| `uc2_rebar_spec` | 150 | numeric 150 | specification limits and tolerances |
-| `uc3_bim_site` | 39 | label 39 | render and site photo judged together |
-| `uc4_faithfulness` | 160 | faithfulness 160 | abstention when the passage does not support an answer |
-| `uc5_incident` | 118 | nameset 118 | causes and controls from incident reports |
-| `uc6_verdict` | 810 | verdict 810 | compliance judgement against a stated threshold |
-
-`--tracks uc` runs every use-case track. Use-case tracks are registered in
-`config.json`, so adding one takes a config entry rather than a code change.
-
-`dapt`, `sft` and `vlm` were originally numbered 1, 2 and 3, for the training
-stage each diagnoses. The numbers are still accepted — `--tracks 2` is `--tracks
-sft` — and run files still key on them, so scores from older runs stay
-comparable. Nothing else needs them.
-
-Grading is by answer type, and every type has precedent in a published
-benchmark — the mapping is in
-[benchmark/README.md](benchmark/README.md#precedent-for-each-grading-type).
-What each type scores, and what the rest of the numbers in a run file mean, is
-set out in [doc/metrics.md](doc/metrics.md).
-
-## Retrieval ablation and item validity
-
-How much of a score the retriever decides rather than the model, and how much
-of the item set is measurable without an expert reviewer:
-[doc/retrieval-and-validity.md](doc/retrieval-and-validity.md). The headline —
-a better embedder bought 0.334 accuracy where four training recipes bought
-0.009 — is in the worked example above.
-
-## System design implications
-
-Three findings from the campaign above constrain how the agent that motivated it
-should be built. Fine-tuning moved output quality and never moved knowledge.
-Retrieval quality is worth more than any training recipe tried — a good embedder
-bought roughly 0.35 accuracy, four data recipes bought none. And every attempt to
-train refusal made refusal worse, at every dose.
-
-[solution.md](solution.md) works those through into design decisions: why the
-generating and the verifying roles are better separated than trained into one
-set of weights, and four ways to implement that split in ascending order of cost
-— starting with detaching the adapter, since the un-adapted base model is
-already the best abstainer measured here. It covers what the abstention collapse
-is best explained by and the one grader check that should precede believing it,
-why the retrieval budget comes first and what recall target is worth chasing,
-the latency arithmetic for the machine these runs were made on (an NVIDIA DGX
-Spark, GB10 Grace Blackwell), and a list of what to validate before committing
-to any of it.
-
-Those are that project's conclusions rather than the benchmark's — the
-benchmark only supplies the numbers, and the document opens by saying what they
-are conditioned on: a 3.7M-token corpus of synthetic pairs, a rank-64 adapter,
-128 GB of GPU memory, and one base model. Change any of those and the answers
-may change. The reasoning transfers further than the figures do.
-
-## Adapting it to another domain
-
-Everything tunable lives in `config.json`, and every value there is overridden
-by the matching command-line flag. The parts worth knowing:
-
-- `corpus_dir`, `generated_dir`, `out_dir` — where documents are read and
-  artefacts are written. The `images` paths carried by `vlm` and `uc3` items are
-  relative to **`generated_dir`**, not `corpus_dir`: the renders and site photos
-  are produced alongside the chunked text, so a run whose `generated_dir` does
-  not hold them scores those tracks as unanswerable rather than failing loudly.
-  `benchmark/data/uc3_cross_image.jsonl` ships with the repository; the images it
-  names do not, for the same licensing reason the `dapt` chunks are withheld.
-- `holdout` — what fraction of chunks to withhold, per-document caps, and the
-  seed. The seed is what makes a split reproducible.
-- `track2_sft`, `probe` — how many items to mine, per-document caps, and the
-  filters that decide whether a mined fact is answerable: numeric uniqueness,
-  subject length bounds, minimum set size for nameset items.
-- `usecases` — a registry. Adding a use-case track is a config entry plus a
-  track file; `cb.py eval --tracks uc` picks up whatever is enabled without a
-  code change.
-- `eval` — endpoint, context and prediction lengths, temperature, repeats,
-  numeric tolerance, and the two dead-server guards.
-
-What is domain-specific and would need editing: the prompt strings for the
-vision tracks in `kcbench/build_tracks.py` and `build_usecases.py`, which name IFC
-classes and construction site photos, and the IFC reader itself. The text
-tracks make no assumption about subject matter beyond the corpus being chunked
-prose with numbers and named lists in it.
-
-Prompts default to Korean because the reference corpus is Korean regulation and
-translating the terms changes the question. Every item carries an English
-prompt as well (`question_en`, and `answer_en` for numeric units), so
-`--lang en` scores the same answer key in English.
 
 ## Metric reference
 
