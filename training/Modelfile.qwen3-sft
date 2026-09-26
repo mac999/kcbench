@@ -1,4 +1,4 @@
-FROM /home/tom/project/construction_ai_dataset/training/out/qwen3-sft-q4km.gguf
+FROM /home/tom/project/kcbench/training/out/qwen3-sft-q4km.gguf
 TEMPLATE """
 {{- $lastUserIdx := -1 -}}
 {{- range $idx, $msg := .Messages -}}
