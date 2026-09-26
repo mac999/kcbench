@@ -21,7 +21,9 @@ from kcbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, TRACKS_HELP,
 
 LOG = log("provenance")
 
-TRACK_FILES = {"1": "track1_dapt.jsonl", "2": "track2_sft.jsonl", "3": "track3_vlm.jsonl"}
+# Track names resolve through evaluate.track_files so a use-case track is
+# checked like any other. Keeping a private copy here is how uc1-uc6 went
+# unverified while the README said every item was traced to its source.
 TRAIN_FILES = ("train_dapt.jsonl", "train_sft.jsonl", "train_vlm.jsonl")
 
 
@@ -52,8 +54,13 @@ def train_digests(train_dir: Path) -> tuple[set[str], int]:
     return seen, rows
 
 
-def source_row(cfg, prov: Dict[str, Any]) -> tuple[bool, bool, str]:
-    """(file exists, row still hashes as recorded, the text found there)."""
+def source_row(cfg, prov: Dict[str, Any]):
+    """
+    (file exists, row still hashes as recorded, the text found there).
+
+    The middle value is None when no digest was recorded, which is not the same
+    as a digest that disagrees.
+    """
     rel = prov.get("dataset_file")
     if not rel:
         return False, False, ""
@@ -68,7 +75,15 @@ def source_row(cfg, prov: Dict[str, Any]) -> tuple[bool, bool, str]:
             for n, line in enumerate(fh):
                 if n == idx:
                     text = json.loads(line).get("text", "")
-                    return True, sha256_text(text) == prov.get("chunk_sha256"), text
+                    want = prov.get("chunk_sha256")
+                    # No digest was recorded for this item — the vlm rows carry
+                    # instruction and images rather than a text chunk, so the
+                    # builder had nothing to hash. That is a weaker provenance
+                    # than the other tracks have, and reporting it as a failed
+                    # comparison hides which of the two it is.
+                    if not want:
+                        return True, None, text
+                    return True, sha256_text(text) == want, text
     except Exception as exc:
         LOG.warning("unreadable source %s (%s)", path, exc)
         return True, False, ""
@@ -83,7 +98,7 @@ def main() -> int:
     ap.add_argument("--holdout", metavar="FILE", help="holdout.json (default <out-dir>/holdout.json)")
     ap.add_argument("--train-dir", metavar="DIR", help="training split to check against "
                                                        "(default <out-dir>/train)")
-    ap.add_argument("--tracks", default="1,2,3", metavar="LIST",
+    ap.add_argument("--tracks", default="1,2,3,uc", metavar="LIST",
                     help=f"tracks to verify. {TRACKS_HELP}")
     ap.add_argument("--strict", action="store_true",
                     help="exit non-zero if any check fails")
@@ -114,8 +129,13 @@ def main() -> int:
     failures: collections.Counter = collections.Counter()
     by_track: Dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
 
-    for t in resolve_tracks(args.tracks):
-        path = cfg["out_dir"] / TRACK_FILES[t]
+    from kcbench.evaluate import track_files
+    files = track_files(cfg)
+    wanted = resolve_tracks(args.tracks)
+    if "uc" in wanted:
+        wanted = [x for x in wanted if x != "uc"] + [k for k in files if k.startswith("uc")]
+    for t in wanted:
+        path = cfg["out_dir"] / files.get(t, f"{t}.jsonl")
         if not path.exists():
             LOG.warning("track %s not built - skipping", t)
             continue
@@ -127,8 +147,16 @@ def main() -> int:
             digest = prov.get("chunk_sha256") or (sha256_text(text) if text else None)
             absent = None if not digests else (digest not in digests if digest else True)
 
+            # A use-case track is mined from both sides of the split on
+            # purpose: its train-side items are the contaminated probe for that
+            # use case, and they are supposed to be in the training data.
+            # Holding them to the held-out checks reports the design as a
+            # failure and buries any real contamination in the noise.
+            trained_side = item.get("split") == "train"
             checks = {"source_exists": exists, "source_matches": matches,
-                      "in_holdout": in_holdout, "absent_from_train": absent}
+                      "in_holdout": None if trained_side else in_holdout,
+                      "absent_from_train": None if trained_side else absent,
+                      "in_train": absent is False if trained_side else None}
             for name, ok in checks.items():
                 if ok is False:
                     failures[name] += 1
@@ -151,10 +179,20 @@ def main() -> int:
 
     verified = sum(1 for r in rows if r["verified"])
     LOG.info("%d item(s) checked, %d fully verified", len(rows), verified)
-    for name in ("source_exists", "source_matches", "in_holdout", "absent_from_train"):
+    for name in ("source_exists", "source_matches", "in_holdout",
+                 "absent_from_train", "in_train"):
         n = failures[name]
-        (LOG.error if n else LOG.info)("  %-18s %s", name,
-                                       f"{len(rows) - n}/{len(rows)} pass" if rows else "no items")
+        # A check that did not apply is neither a pass nor a failure, and
+        # folding it into the denominator would report an unverifiable item as
+        # a verified one.
+        na = sum(1 for r in rows if (r.get("checks") or {}).get(name) is None)
+        applied = len(rows) - na
+        if not applied:
+            continue
+        line = f"{applied - n}/{applied} pass"
+        if na:
+            line += f", {na} not applicable"
+        (LOG.error if n else LOG.info)("  %-18s %s", name, line)
 
     out = write_jsonl(cfg["out_dir"] / "provenance.jsonl", rows)
     LOG.info("wrote %s", out)

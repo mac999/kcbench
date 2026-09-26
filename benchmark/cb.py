@@ -24,6 +24,8 @@ COMMANDS = {
     "holdout":  ("kcbench.build_holdout", "choose the documents to withhold"),
     "tracks":   ("kcbench.build_tracks", "mine tracks 1-3 from held-out documents"),
     "probe":    ("kcbench.build_probe", "mine the probe set from trained-on documents"),
+    "requirement": ("kcbench.build_requirement",
+                    "mine a requirement-sentence track from threshold items"),
     "usecases": ("kcbench.build_usecases", "build the use-case tracks"),
     "split":    ("kcbench.make_train_split", "write the training split, holdout excluded"),
     "verify":   ("kcbench.verify_provenance", "trace every item to its source"),
