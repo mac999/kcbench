@@ -29,6 +29,8 @@ benchmark/data/*
 !benchmark/data/uc3_cross_image.jsonl
 !benchmark/data/uc4_faithfulness.jsonl
 !benchmark/data/uc5_incident.jsonl
+!benchmark/data/uc6_verdict.jsonl
+!benchmark/data/uc7_requirement.jsonl
 # runs/ holds scoring output, not the benchmark. Baseline numbers live in
 # README.md and benchmark/CHANGELOG.md.
 
