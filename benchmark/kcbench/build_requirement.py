@@ -178,6 +178,17 @@ def build(rows: List[Dict[str, Any]]) -> tuple[List[dict], collections.Counter]:
         if not subject:
             why["no subject"] += 1
             continue
+        # The question names a document and a subject. If another admissible
+        # sentence in the same passage also states a requirement about that
+        # subject, the question has two right answers and the key only records
+        # one — measured at 6 of 134 before this check.
+        rivals = [t[0] for t in sentences(src.get("context") or "")
+                  if rejection(t[0]) is None
+                  and _squash(t[0]) != _squash(sentence)
+                  and _squash(subject) in _squash(t[0])]
+        if rivals:
+            why["subject not unique"] += 1
+            continue
         seen.add(_squash(sentence))
 
         doc, clause = src.get("doc"), src.get("clause")
