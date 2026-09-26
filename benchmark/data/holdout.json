@@ -5,7 +5,7 @@
   "purpose_ko": "벤치마크 평가 전용. 학습에 사용하면 안 됩니다. make_train_split.py 로 이 문서들을 제외한 학습셋을 만드십시오.",
   "split_rule": "~20% of chunks per category, documents of at most 50 chunks preferred, seed 20260814",
   "ifc_split_rule": "50% of eligible models; categories ['06_reference_and_test'] excluded, at least 2 element type(s) required",
-  "generated_dir": "/home/tom/project/construction_ai_dataset/ai_ready_full",
+  "generated_dir": "/home/tom/project/kcbench/ai_ready_full",
   "totals": {
     "pdf_documents": 865,
     "pdf_chunks": 5381,
