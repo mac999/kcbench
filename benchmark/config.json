@@ -115,6 +115,11 @@
       ],
       "holdout_only": true,
       "_comment": "Compliance judgement mined from threshold items by build_verdict.py. Answers follow the m1_model output contract so one label schema serves both the training data and this track."
+    },
+    "uc7_requirement": {
+      "enabled": true,
+      "track_file": "uc7_requirement.jsonl",
+      "comment": "Requirement sentences lifted from the clause a threshold item was mined from. Graded with the sentence type, so a judge panel is involved; read it open book."
     }
   },
   "eval": {
