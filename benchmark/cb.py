@@ -39,6 +39,8 @@ COMMANDS = {
                    "split items by whether a revision will change the answer"),
     # browse
     "webview":  ("kcbench.webview", "browse and run the benchmark in a browser"),
+    "sample":   ("kcbench.label_sample",
+                 "draw a hand-labelling sample, or score a classifier against one"),
     # review and packaging
     "triage":   ("kcbench.triage_items", "pick the items a human should look at"),
     "review":   ("kcbench.apply_review", "fold review decisions back into the set"),
