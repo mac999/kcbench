@@ -343,6 +343,29 @@ def normalise(text: str) -> str:
     return s.casefold()
 
 
+# A set answer is graded exactly or by token coverage, and which one is right
+# is a property of the answer, not of the track that produced it. Deciding it
+# here means every builder gets the same call and a new track cannot forget it.
+NAMESET_PROSE_CHARS = 12
+
+
+def nameset_match_mode(items) -> str:
+    """
+    "exact" for short names, "fuzzy" for clause-length prose.
+
+    A regulation's 각 호 is a sentence, and a model will legitimately abbreviate
+    or renumber it; comparing those as strings measures transcription. A render's
+    element names are two or three words with one right spelling, and loosening
+    them would let a near-miss pass. Measured over the built sets the two are
+    far apart — 7 characters for vlm names against 25-32 for clause text — so
+    the boundary is not a close call.
+    """
+    lens = [len(str(x)) for x in (items or []) if str(x).strip()]
+    if not lens:
+        return "exact"
+    return "fuzzy" if (sum(lens) / len(lens)) >= NAMESET_PROSE_CHARS else "exact"
+
+
 # Units as they are written in Korean regulation, and the symbol an English
 UNIT_EN = {
     "mm": "mm", "cm": "cm", "m": "m", "㎡": "m2", "㎥": "m3", "kg": "kg",

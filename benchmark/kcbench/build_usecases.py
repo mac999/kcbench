@@ -32,7 +32,7 @@ from kcbench.build_tracks import (CLAUSE_RE, Rejects, _base, _instr,
                           josa, load_reviews, reviewed_out)
 from kcbench.common import (QUALIFIER_EN, UNIT_EN, add_common_args, describe,
                     generated_documents, item_id, log, resolve_config, utc_now,
-                    write_json, write_jsonl)
+                    write_json, write_jsonl, nameset_match_mode)
 
 LOG = log("usecases")
 
@@ -203,6 +203,7 @@ def build_doc_filtered_qa(cfg, holdout, key: str, uc: dict, rej: Rejects) -> Lis
                 "question_ko": q_ko,
                 "question_en": q_en,
                 **_instr("nameset"),
+                "match_mode": nameset_match_mode(items),
                 "answer": items,
                 "answer_ko": items,
                 "answer_lang": "ko",
@@ -448,7 +449,7 @@ def build_missing_measures(cfg, holdout, key: str, uc: dict, rej: Rejects) -> Li
                                   "나열하시오. 다른 설명은 쓰지 마시오.",
                 "instruction_en": "List each missing measure on its own line, using the "
                                   "clause's wording. Nothing else.",
-                "match_mode": "fuzzy",
+                "match_mode": nameset_match_mode(removed),
                 "answer": removed,
                 "answer_ko": removed,
                 "answer_lang": "ko",
