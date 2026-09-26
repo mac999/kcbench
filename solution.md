@@ -566,4 +566,4 @@ design tradeoffs to make deliberately, not surprises to discover in production.
 - [*Data Quality over Capacity: Internalizing Documents into LoRA Adapters for Closed-Book QA*](https://arxiv.org/html/2607.21861v1) — rank-64 capacity saturation, restored at rank 128
 - [*How Much is Too Much? Exploring LoRA Rank Trade-offs*](https://aclanthology.org/2025.findings-ijcnlp.58.pdf) — why raising rank without the learning rate regresses
 - [*Mitigating Unintended Memorization with LoRA*](https://arxiv.org/pdf/2502.05087) — higher rank increases memorisation without guaranteeing accuracy
-- All benchmark figures: [README.md](README.md#worked-example-a-korean-construction-corpus)
+- All benchmark figures: [doc/worked-example.md](doc/worked-example.md)
