@@ -35,9 +35,8 @@ from kcbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, TRACKS_HELP,
                             add_common_args, describe, items_digest, log,
                             read_jsonl, resolve_config, resolve_tracks,
                             track_label, write_json)
-from kcbench.evaluate import (TRACK_FILES, Checkpoint, _aggregate, answered,
-                              generate, grade_label, grade_nameset,
-                              grade_numeric, run_meta)
+from kcbench.evaluate import (_aggregate, answered, generate, grade_label,
+                              graders_for, run_meta, track_files)
 
 LOG = log("rag")
 
@@ -97,6 +96,7 @@ def main() -> int:
     runs_dir = Path(args.runs_dir) if args.runs_dir else cfg["out_dir"] / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
     tol = cfg["eval"]["numeric_tolerance"]
+    table = graders_for(cfg, args.model)
 
     # the corpus a deployment would search: the held-out chunks
     corpus_rows = read_jsonl(cfg["out_dir"] / "track1_dapt.jsonl")
@@ -113,8 +113,13 @@ def main() -> int:
               "think": cfg["eval"].get("think"), "tracks": {}}
 
     started = time.time()
-    for t in resolve_tracks(args.tracks):
-        path = cfg["out_dir"] / TRACK_FILES.get(t, f"{t}.jsonl")
+    files = track_files(cfg)
+    wanted = resolve_tracks(args.tracks)
+    if "uc" in wanted:
+        wanted = [x for x in wanted if x != "uc"] + [
+            k for k in files if k.startswith("uc")]
+    for t in wanted:
+        path = cfg["out_dir"] / files.get(t, f"{t}.jsonl")
         if not path.exists():
             LOG.warning("track %s not built - skipping", track_label(t))
             continue
@@ -147,14 +152,16 @@ def main() -> int:
                 LOG.warning("generate failed on %s (%s)", item["id"], exc)
                 reply = ""
             kind = item["eval_type"]
-            if kind == "numeric":
-                sc = {"correct": float(grade_numeric(reply, item, tol))}
-            elif kind == "nameset":
-                sc = grade_nameset(reply, item)
-            else:
-                sc = grade_label(reply, item)
+            grader, on_raw = table.get(kind, (None, False))
+            sc = grader(reply, item, tol) if grader else grade_label(reply, item)
+            # the same subgroup fields the open/closed runs carry, so a rag score
+            # can be read against them without a second convention. volatility
+            # matters most here: retrieval is the mechanism for the volatile
+            # class, so its subtotal is the point of the run.
+            extra = {k: item[k] for k in ("split", "usecase", "volatility") if k in item}
             per_item.append({"id": item["id"], "eval_type": kind,
                              "category": item.get("category"), "prompt_lang": args.lang,
+                             **extra,
                              "score": {k: round(v, 4) for k, v in sc.items()},
                              "no_answer": round(float(not answered(reply)), 4),
                              "retrieved": idx, "sample_reply": reply[:400]})
@@ -167,7 +174,7 @@ def main() -> int:
                                "items_digest": items_digest(rows), "detail": per_item}
 
     result["elapsed_sec"] = round(time.time() - started, 1)
-    result["meta"] = run_meta(cfg)
+    result["meta"] = run_meta(cfg, args.model)
     result["headline"] = {f"{track_label(t)}_rag_score":
                           round(sum(m.get("correct", m.get("f1", 0.0))
                                     for m in v["by_type"].values()) / max(len(v["by_type"]), 1), 4)
