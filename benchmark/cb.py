@@ -35,6 +35,8 @@ COMMANDS = {
     "ece":      ("kcbench.calibration", "calibration error: is its confidence worth anything"),
     "selfcheck": ("kcbench.selfcheck", "hallucination signal from sampling consistency, no answer key"),
     "matrix":   ("kcbench.run_matrix", "score several models and tabulate"),
+    "volatility": ("kcbench.volatility",
+                   "split items by whether a revision will change the answer"),
     # browse
     "webview":  ("kcbench.webview", "browse and run the benchmark in a browser"),
     # review and packaging
