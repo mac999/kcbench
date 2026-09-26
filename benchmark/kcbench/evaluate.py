@@ -432,6 +432,9 @@ def _cos(a, b) -> float:
     return dot / (na * nb + 1e-12)
 
 
+_NUM_RE = re.compile(r"\d+(?:\.\d+)?")
+
+
 def make_sentence_grader(cfg, panel: List[str], embed_model: str):
     """
     Grade a prose answer on three axes, none of which is a string comparison.
@@ -477,11 +480,29 @@ def make_sentence_grader(cfg, panel: List[str], embed_model: str):
             votes[kind] = vote(calls)
 
         cov, sup = votes["covered"], votes["supported"]
-        return {"semantic": round(semantic, 4),
-                "covered": cov["value"], "supported": sup["value"],
-                "grounded": float(cov["value"] > 0 and sup["value"] > 0),
-                "agreement": round((cov["agreement"] + sup["agreement"]) / 2, 4),
-                "n_judges": float(cov["n_judges"])}
+
+        # The judges do catch an altered limit — 0.9 of the time for the two
+        # that qualified. In a corpus whose content is numeric thresholds that
+        # is the one thing worth being certain about, and certainty is cheap
+        # here: the key records the value, so the figure is compared rather
+        # than asked about. The panel keeps the part only it can do, the prose.
+        figure = None
+        want = item.get("answer_value")
+        if want is not None:
+            nums = [float(x) for x in _NUM_RE.findall(pred.replace(",", ""))]
+            tol = abs(float(want)) * (tol or 0.0)
+            figure = float(any(abs(n - float(want)) <= tol + 1e-9 for n in nums))
+
+        out = {"semantic": round(semantic, 4),
+               "covered": cov["value"], "supported": sup["value"],
+               "grounded": float(cov["value"] > 0 and sup["value"] > 0),
+               "agreement": round((cov["agreement"] + sup["agreement"]) / 2, 4),
+               "n_judges": float(cov["n_judges"])}
+        if figure is not None:
+            out["figure"] = figure
+            # grounded now means the prose is right and the number is right
+            out["grounded"] = float(out["grounded"] > 0 and figure > 0)
+        return out
 
     return grade
 
