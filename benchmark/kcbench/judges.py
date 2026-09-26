@@ -102,20 +102,18 @@ def panel_for(target: str, available: Sequence[str] | None = None,
     return keep
 
 
-# Asked in the negative ("is anything added?") every judge answered yes to
-# everything, valid paraphrases included — 0.00 across all three conditions.
-# Asked in the positive the same models separate a paraphrase from a padded
-# answer (glm4:9b +0.50, qwen3:14b +0.79). The wording is fixed here so a
-# caller cannot reintroduce the polarity that breaks it.
-PROMPTS = {
-    "covered": ("[기준]\n{gold}\n\n[답변]\n{pred}\n\n"
-                "답변이 기준의 내용을 빠짐없이 담고 있습니까? "
-                "yes 또는 no 한 단어로만 답하시오."),
-    "supported": ("[근거]\n{gold}\n\n[문장]\n{pred}\n\n"
-                  "문장에 담긴 내용이 모두 근거만으로 뒷받침됩니까? "
-                  "근거에 없는 내용이 하나라도 있으면 no, 전부 뒷받침되면 yes. "
-                  "한 단어로만 답하시오."),
-}
+def prompt_for(cfg, kind: str, lang: str = "ko") -> str:
+    """
+    The judge template, from the config when it overrides one.
+
+    Asked in the negative ("is anything added?") every judge tested rejected
+    everything, valid paraphrases included — 0.00 separation across all three
+    conditions. Positive framing separates. A local rewording is legitimate,
+    which is why this reads the registry, but it should be re-measured against
+    the same conditions before its scores are believed.
+    """
+    from kcbench.prompts import render, template
+    return template(cfg, f"judge.{kind}.{lang}")
 
 
 def vote(answers: Sequence[bool]) -> Dict[str, float]:

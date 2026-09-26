@@ -172,5 +172,19 @@
     "samples": 5,
     "temperature": 0.7,
     "threshold": 0.5
+  },
+  "prompts": {
+    "_comment": "Templates sent to a model, by key. Anything here replaces the built-in default in kcbench/prompts.py; delete a key to go back to it. Keep the {fields} the default declares. Overrides are recorded in the run file, because a reworded judge prompt moved this benchmark's own separation from 0.00 to 0.62 — larger than most effects it measures.",
+    "qa.open.ko": "다음 조문을 읽고 질문에 답하시오.\n\n[조문]\n{passage}\n\n[질문]\n{question}\n\n{instruction}",
+    "qa.open.en": "Read the passage and answer the question.\n\n[Passage]\n{passage}\n\n[Question]\n{question}\n\n{instruction}",
+    "qa.closed.ko": "다음 질문에 답하시오.\n\n[질문]\n{question}\n\n{instruction}",
+    "qa.closed.en": "Answer the question.\n\n[Question]\n{question}\n\n{instruction}",
+    "rag.ko": "다음 조문을 읽고 질문에 답하시오.\n\n[조문]\n{passage}\n\n[질문]\n{question}\n\n{instruction}",
+    "rag.en": "Read the passage and answer the question.\n\n[Passage]\n{passage}\n\n[Question]\n{question}\n\n{instruction}",
+    "judge.covered.ko": "[기준]\n{gold}\n\n[답변]\n{pred}\n\n답변이 기준의 내용을 빠짐없이 담고 있습니까? yes 또는 no 한 단어로만 답하시오.",
+    "judge.supported.ko": "[근거]\n{gold}\n\n[문장]\n{pred}\n\n문장에 담긴 내용이 모두 근거만으로 뒷받침됩니까? 근거에 없는 내용이 하나라도 있으면 no, 전부 뒷받침되면 yes. 한 단어로만 답하시오.",
+    "judge.covered.en": "[Reference]\n{gold}\n\n[Answer]\n{pred}\n\nDoes the answer contain everything the reference states? Reply with one word, yes or no.",
+    "judge.supported.en": "[Evidence]\n{gold}\n\n[Statement]\n{pred}\n\nIs everything the statement claims supported by the evidence alone? If anything is not in the evidence, no; otherwise yes. Reply with one word.",
+    "volatility.adjudicate.ko": "[조문]\n{context}\n\n[질문]\n{question}\n\n[정답]\n{answer}\n\n이 정답은 소관 고시·기준이 개정되면 달라집니까? 수치 한도·기간·비율처럼 개정으로 바뀌는 값이면 volatile, 정의·원리·계산방법처럼 개정돼도 유지되는 내용이면 stable. 한 단어로만 답하시오."
   }
 }

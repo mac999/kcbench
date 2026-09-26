@@ -21,6 +21,7 @@ from typing import Any, Dict, List
 
 import requests
 
+from kcbench.prompts import render
 from kcbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, SCHEMA_VERSION,
                             TRACKS_HELP, add_common_args, describe, items_digest,
                             log, normalise, read_jsonl, resolve_tracks,
@@ -447,7 +448,7 @@ def make_sentence_grader(cfg, panel: List[str], embed_model: str):
     read as a 3-0 one. With no panel left the two collapse to 0 and only
     `semantic` carries, which the run file shows through `n_judges`.
     """
-    from kcbench.judges import PROMPTS, vote
+    from kcbench.judges import prompt_for, vote
 
     def grade(reply: str, item: dict, tol: float) -> Dict[str, float]:
         gold = item.get("answer_ko") or item.get("answer") or ""
@@ -470,7 +471,8 @@ def make_sentence_grader(cfg, panel: List[str], embed_model: str):
         for kind in ("covered", "supported"):
             calls = []
             for j in panel:
-                out = generate(cfg, j, PROMPTS[kind].format(gold=gold, pred=pred)) or ""
+                out = generate(cfg, j,
+                               prompt_for(cfg, kind).format(gold=gold, pred=pred)) or ""
                 calls.append("yes" in out.lower()[:40])
             votes[kind] = vote(calls)
 
@@ -518,7 +520,7 @@ GRADERS = {
 }
 
 
-def build_prompt(item: dict, lang: str, closed_book: bool = False) -> str:
+def build_prompt(cfg, item: dict, lang: str, closed_book: bool = False) -> str:
     """
     The prompt as the model sees it.
 
@@ -537,9 +539,9 @@ def build_prompt(item: dict, lang: str, closed_book: bool = False) -> str:
     scenario = item.get("scenario_ko")
     if scenario:
         q = f"{scenario}\n\n{q}"
-    head = "다음 조문을 읽고 질문에 답하시오." if lang == "ko" else "Read the passage and answer the question."
     if ctx:
-        return f"{head}\n\n[{'조문' if lang == 'ko' else 'Passage'}]\n{ctx}\n\n[{'질문' if lang == 'ko' else 'Question'}]\n{q}\n\n{instr}"
+        return render(cfg, f"qa.open.{lang}",
+                      passage=ctx, question=q, instruction=instr)
 
     # Without the passage the question needs to say which document it is about,
     doc, clause = item.get("doc"), item.get("clause")
@@ -547,7 +549,7 @@ def build_prompt(item: dict, lang: str, closed_book: bool = False) -> str:
         where = f"「{doc}」" + (f" {clause}" if clause else "")
         q = (f"{where}에 따르면, {q}" if lang == "ko"
              else f"According to {where}: {q}")
-    return f"{q}\n\n{instr}"
+    return render(cfg, f"qa.closed.{lang}", question=q, instruction=instr)
 
 
 def b64_image(path: Path) -> str:
@@ -578,6 +580,13 @@ def run_meta(cfg, model: str | None = None) -> Dict[str, Any]:
         "holdout_seed": (cfg.get("holdout") or {}).get("seed"),
         "config_path": cfg.get("_config_path"),
     }
+    # Which prompts this run did not use the shipped wording for. A score under
+    # a reworded prompt is not comparable with one under the default, and the
+    # run file is the only place a later reader can find that out.
+    from kcbench.prompts import overrides
+    changed = overrides(cfg)
+    if changed:
+        meta["prompt_overrides"] = sorted(changed)
     if model:
         try:
             from kcbench.judges import MIN_PANEL, family, panel_for
@@ -742,7 +751,7 @@ def run_qa(cfg, model: str, rows: List[dict], lang: str, repeats: int,
         scores, replies = [], []
         for _ in range(repeats):
             try:
-                reply = generate(cfg, model, build_prompt(item, asked, closed_book), images)
+                reply = generate(cfg, model, build_prompt(cfg, item, asked, closed_book), images)
             except Exception as exc:
                 LOG.warning("generate failed on %s (%s)", item["id"], exc)
                 reply = ""
