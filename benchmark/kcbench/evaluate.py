@@ -32,6 +32,23 @@ LOG = log("eval")
 NUM_RE = re.compile(r"-?[0-9][0-9,]*(?:\.[0-9]+)?")
 TRACK_FILES = {"1": "track1_dapt.jsonl", "2": "track2_sft.jsonl",
                "3": "track3_vlm.jsonl", "probe": "probe_trained.jsonl"}
+
+
+def track_files(cfg) -> Dict[str, str]:
+    """
+    Every track name the tools accept, mapped to its item file.
+
+    The fixed tracks plus whatever use cases the config registers, so adding a
+    use case stays a config entry. Shared rather than rebuilt per command:
+    rag went a release resolving only the fixed four and skipping every
+    use-case track it was asked for.
+    """
+    files = dict(TRACK_FILES)
+    for k, v in (cfg.get("usecases") or {}).items():
+        if k.startswith("_") or not isinstance(v, dict) or not v.get("enabled", True):
+            continue
+        files[k] = v.get("track_file", f"{k}.jsonl")
+    return files
 IFC_RE = re.compile(r"\bIfc[A-Za-z]+\b")
 
 
@@ -867,13 +884,10 @@ def main() -> int:
     runs_dir = Path(args.runs_dir) if args.runs_dir else cfg["out_dir"] / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
 
-    files = dict(TRACK_FILES)
-    # Use-case tracks come from the config registry, so evaluate.py needs no
-    # change when a use case is added: --tracks uc1_safety, or "uc" for all.
+    # --tracks uc1_safety, or "uc" for all; the registry lives in the config
+    files = track_files(cfg)
     usecases = {k: v for k, v in (cfg.get("usecases") or {}).items()
                 if not k.startswith("_") and isinstance(v, dict) and v.get("enabled", True)}
-    for k, v in usecases.items():
-        files[k] = v.get("track_file", f"{k}.jsonl")
     wanted = resolve_tracks(args.tracks)
     if "uc" in wanted:
         wanted = [t for t in wanted if t != "uc"] + list(usecases)
