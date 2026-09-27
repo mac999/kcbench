@@ -119,7 +119,8 @@
     "uc7_requirement": {
       "enabled": true,
       "track_file": "uc7_requirement.jsonl",
-      "comment": "Requirement sentences lifted from the clause a threshold item was mined from. Graded with the sentence type, so a judge panel is involved; read it open book."
+      "comment": "Requirement sentences lifted from the clause a threshold item was mined from. Graded with the sentence type, so a judge panel is involved; read it open book.",
+      "builder": "requirement_from_thresholds"
     }
   },
   "eval": {

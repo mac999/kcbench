@@ -18,10 +18,21 @@ from kcbench.common import (add_common_args, describe, log, resolve_config, sha2
 
 LOG = log("split")
 
+# Everything the generator writes that someone could train on. star, dpo and
+# rlvr are derived from the SFT samples of the same run, so a held-out
+# document reaches them by the same route it reaches SFT — leaving them out of
+# the split does not make them safe, it makes the leak invisible.
+#
+# rag_corpus.jsonl is deliberately absent: it is a retrieval index, and the
+# documents in it are there precisely because the generator decided they
+# should not be trained on. Splitting it would be splitting the wrong thing.
 KINDS = {
     "sft": "sllm_training_data.jsonl",
     "dapt": "dapt_training_data.jsonl",
     "vlm": "vlm_training_data.jsonl",
+    "star": "star_training_data.jsonl",
+    "dpo": "dpo_training_data.jsonl",
+    "rlvr": "rlvr_training_data.jsonl",
 }
 
 

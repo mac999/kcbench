@@ -113,6 +113,12 @@ def main() -> int:
         LOG.info("stage 4/7: use-case tracks")
         if _run("kcbench.build_usecases", shared) != 0:
             return 1
+        # uc6 is mined from the threshold items stage 4 just wrote, so it has
+        # to follow them. It was registered in the config but never run here,
+        # which left `cb.py build` producing every track except that one.
+        for mod in ("kcbench.build_verdict", "kcbench.build_requirement"):
+            if _run(mod, shared) != 0:
+                return 1
 
     if args.skip_split:
         LOG.info("stage 5/7: training split - skipped")

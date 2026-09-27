@@ -421,6 +421,13 @@ def rel(cfg: Dict[str, Any], path: Path | str) -> str:
 
 
 DAPT_FILE = "dapt_training_data.jsonl"
+# From v0.5.2 the generator routes a document it judges amendment-exposed to a
+# retrieval corpus instead of the training writers, so that document has no
+# DAPT file at all. Reading only the DAPT file made a quarter of the corpus
+# invisible to the benchmark — and the quarter that matters most, since those
+# are the documents the retrieval tracks exist to score.
+RAG_FILE = "rag_corpus.jsonl"
+CHUNK_FILES = (DAPT_FILE, RAG_FILE)
 SFT_FILE = "sllm_training_data.jsonl"
 
 
@@ -434,7 +441,15 @@ def generated_documents(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
     a model was trained on, rather than a second extraction that might differ.
     """
     docs: List[Dict[str, Any]] = []
-    for path in sorted(cfg["generated_dir"].rglob(DAPT_FILE)):
+    # One record per document folder. A document routed to `both` has two chunk
+    # files holding the same text; the DAPT one wins so an item's provenance
+    # keeps naming the file the model was trained from.
+    by_folder: Dict[Path, Path] = {}
+    for name in CHUNK_FILES:
+        for path in sorted(cfg["generated_dir"].rglob(name)):
+            by_folder.setdefault(path.parent, path)
+
+    for folder, path in sorted(by_folder.items()):
         try:
             rows = [json.loads(l) for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
         except Exception as exc:
@@ -445,7 +460,6 @@ def generated_documents(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
                       for i, r in enumerate(rows) if r.get("text")]
         if not chunk_rows:
             continue
-        folder = path.parent
         docs.append({
             "stem": folder.name,
             "category": folder.relative_to(cfg["generated_dir"]).parts[0],
@@ -454,6 +468,10 @@ def generated_documents(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
             "source_date": str(rows[0].get("source_date", "")),
             "generated_dir": str(folder.relative_to(cfg["generated_dir"])),
             "dataset_file": str(path.relative_to(cfg["generated_dir"])),
+            # train | both | retrieve, as the generator decided. An item mined
+            # from a retrieved document is scored on retrieval, not on recall.
+            "routing": (rows[0].get("routing") or {}).get("route")
+                       if path.name == RAG_FILE else "train",
             "chunks": [c["text"] for c in chunk_rows],
             "chunk_rows": chunk_rows,
         })
