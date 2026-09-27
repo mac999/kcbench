@@ -464,6 +464,15 @@ def build_missing_measures(cfg, holdout, key: str, uc: dict, rej: Rejects) -> Li
     return rows
 
 
+# Use cases some other module builds. uc6 is derived from threshold items that
+# this stage has just written, so it runs after rather than inside it; naming
+# it here stops the registry treating a deliberate arrangement as a typo.
+EXTERNAL_BUILDERS = {
+    "verdict_from_thresholds": "kcbench.build_verdict",
+    "requirement_from_thresholds": "kcbench.build_requirement",
+}
+
+
 BUILDERS = {
     "doc_filtered_qa": build_doc_filtered_qa,
     "vlm_labels": build_vlm_labels,
@@ -511,10 +520,14 @@ def main(argv: List[str] | None = None) -> int:
         if not uc.get("enabled", True):
             LOG.info("%s: disabled, skipping", key)
             continue
-        builder = BUILDERS.get(uc.get("builder", ""))
+        name = uc.get("builder", "")
+        builder = BUILDERS.get(name)
         if builder is None:
+            if name in EXTERNAL_BUILDERS:
+                LOG.info("%s: built by %s, not here", key, EXTERNAL_BUILDERS[name])
+                continue
             LOG.error("%s: unknown builder %r - choose from %s",
-                      key, uc.get("builder"), ", ".join(BUILDERS))
+                      key, name, ", ".join(BUILDERS))
             return 1
         rej = Rejects()
         rows = builder(cfg, holdout, key, uc, rej)
