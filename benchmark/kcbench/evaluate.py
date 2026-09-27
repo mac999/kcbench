@@ -131,16 +131,45 @@ def perplexity(cfg, model: str, text: str) -> float | None:
 # grading
 
 def grade_numeric(reply: str, item: dict, tol: float) -> bool:
-    """First number in the reply, compared with relative tolerance."""
+    """
+    The figure the item asks for, compared with relative tolerance.
+
+    Taking the first number in the reply reads whatever happens to come
+    first, and in a clause that is the list marker: answering
+    "(5) ... 최소차압의 70% 미만" to a question keyed on 70% scored 5 and
+    failed. Measured against the clause sentences the items were mined from,
+    55% of answers that stated the requirement correctly were marked wrong
+    that way — the grader was scoring layout, not knowledge.
+
+    So the unit locates the figure. Every numeric item carries one. A number
+    written against the expected unit is the answer; if the reply never uses
+    the unit, the first number stands as before, which keeps a bare "70"
+    correct.
+    """
+    want = item["answer_value"]
+
+    def close(x: float) -> bool:
+        return abs(x - want) <= abs(want) * tol + 1e-9
+
+    unit = str(item.get("answer_unit") or "").strip()
+    if unit:
+        pat = re.compile(NUM_RE.pattern + r"\s*" + re.escape(unit))
+        cands = []
+        for m in pat.finditer(reply):
+            try:
+                cands.append(float(NUM_RE.search(m.group(0)).group(0).replace(",", "")))
+            except (ValueError, AttributeError):
+                continue
+        if cands:
+            return any(close(c) for c in cands)
+
     m = NUM_RE.search(reply)
     if not m:
         return False
     try:
-        got = float(m.group(0).replace(",", ""))
+        return close(float(m.group(0).replace(",", "")))
     except ValueError:
         return False
-    want = item["answer_value"]
-    return abs(got - want) <= abs(want) * tol + 1e-9
 
 
 THINK_RE = re.compile(r"<think>.*?</think>", re.S)
