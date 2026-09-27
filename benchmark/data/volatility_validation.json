@@ -1,0 +1,36 @@
+{
+  "validated_against": "silver:llama3.3:70b",
+  "competence_gate": {
+    "model": "llama3.3:70b",
+    "n": 8,
+    "score": 0.975,
+    "by_case": {
+      "identity": 1.0,
+      "spacing": 1.0,
+      "truncation": 1.0,
+      "figure": 0.88
+    },
+    "passed": true,
+    "threshold": 0.8,
+    "self_consistency": 1.0
+  },
+  "sample": 200,
+  "decided": 130,
+  "coverage": 0.65,
+  "agreement": 0.785,
+  "kappa": 0.515,
+  "per_class": {
+    "stable": {
+      "n": 46,
+      "precision": 0.725,
+      "recall": 0.63
+    },
+    "volatile": {
+      "n": 84,
+      "precision": 0.811,
+      "recall": 0.869
+    }
+  },
+  "caveat_en": "Agreement is against another model's labels, not a person's. Moderate on the Landis-Koch scale; treat a by_volatility subtotal as indicative, not as ground truth.",
+  "caveat_ko": "사람이 아니라 다른 모델의 라벨과 비교한 값입니다. Landis-Koch 기준 moderate이므로 by_volatility 소계는 참고치로 읽어야 합니다."
+}

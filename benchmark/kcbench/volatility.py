@@ -58,6 +58,17 @@ REGULATED_UNITS = {
 # rather than how much of it is required, and survives the next amendment.
 DEFINITION_CUE = re.compile(r"이란|이라\s*함은|란\s*[^\n]{0,20}말한다|정의|용어의\s*뜻")
 
+# An answer written as something that must be done or supplied. A 각 호 list of
+# submissions ("설계도 1부") is as exposed to an amendment as a numeric limit.
+OBLIGATION = re.compile(r"할 것|하여야|해야|이상|이하|미만|초과|이내|\d+\s*부(?:\s|$|,)")
+
+
+def _answer_text(item: Dict[str, Any]) -> str:
+    a = item.get("answer_ko") or item.get("answer")
+    if isinstance(a, (list, tuple)):
+        return " ".join(str(x) for x in a)
+    return str(a or "")
+
 
 def signals(item: Dict[str, Any]) -> Dict[str, bool]:
     """Every rule's verdict on one item, kept separate so a call can be audited."""
@@ -75,6 +86,7 @@ def signals(item: Dict[str, Any]) -> Dict[str, bool]:
         # a list of required measures and a compliance judgement are as exposed
         # to an amendment as a figure is: reissuing the clause rewrites both
         "requirement_text": item.get("eval_type") in ("nameset", "verdict"),
+        "obligation_answer": bool(OBLIGATION.search(_answer_text(item))),
         "definitional": bool(DEFINITION_CUE.search(context[:400])),
     }
 
@@ -95,8 +107,14 @@ def classify(item: Dict[str, Any]) -> Tuple[str, str, List[str]]:
     quantified = (s["regulated_figure"] or s["has_qualifier"]
                   or s["requirement_text"])
 
-    if s["definitional"] and not s["regulated_figure"]:
-        # a definition in an amended instrument is still a definition
+    if s["definitional"] and not s["regulated_figure"] and not s["obligation_answer"]:
+        # A definition in an amended instrument is still a definition. The cue
+        # is read off the surrounding passage though, and a 각 호 list of
+        # required documents sits under definitional phrasing often enough
+        # that this branch was claiming them — 17 of 30 disagreements with an
+        # independent labeller were that shape. So the answer decides: one
+        # written as an obligation is a requirement whatever the passage above
+        # it reads like.
         return "stable", "parametric", fired
     if quantified and amendable:
         return "volatile", "rag", fired
@@ -128,7 +146,7 @@ def report(tagged: List[Dict[str, Any]]) -> Dict[str, Any]:
             "rules_fired": dict(by_rule), "n": len(tagged)}
 
 
-def _print(rep: Dict[str, Any]) -> None:
+def _print(rep: Dict[str, Any], data: Path | None = None) -> None:
     n = rep["n"] or 1
     print(f"items {rep['n']}")
     for k in ("volatile", "stable", "unknown"):
@@ -142,6 +160,17 @@ def _print(rep: Dict[str, Any]) -> None:
     print("\nrules fired")
     for k, c in sorted(rep["rules_fired"].items(), key=lambda kv: -kv[1]):
         print(f"  {k:18s} {c:5d}")
+    # A classification nobody has checked is a hypothesis. Print how far it has
+    # been checked next to the counts, so the two are never read apart.
+    val = (data or Path(".")) / "volatility_validation.json"
+    if val.is_file():
+        import json as _json
+        v = _json.loads(val.read_text(encoding="utf-8"))
+        print(f"\nvalidation  kappa {v['kappa']} against {v['validated_against']}, "
+              f"n={v['sample']}, coverage {v['coverage']}")
+        print(f"  {v['caveat_en']}")
+    else:
+        print("\nvalidation  none — run cb.py sample to check this against labels")
 
 
 def main(argv=None) -> int:
@@ -176,7 +205,7 @@ def main(argv=None) -> int:
         tagged_all.extend(tagged)
 
     rep = report(tagged_all)
-    _print(rep)
+    _print(rep, data)
 
     if args.write:
         for p, tagged in per_file.items():

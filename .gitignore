@@ -31,6 +31,7 @@ benchmark/data/*
 !benchmark/data/uc5_incident.jsonl
 !benchmark/data/uc6_verdict.jsonl
 !benchmark/data/uc7_requirement.jsonl
+!benchmark/data/volatility_validation.json
 # runs/ holds scoring output, not the benchmark. Baseline numbers live in
 # README.md and benchmark/CHANGELOG.md.
 
