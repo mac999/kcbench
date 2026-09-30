@@ -28,12 +28,14 @@ from __future__ import annotations
 
 import argparse
 import collections
+import functools
 import json
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-from kcbench.common import add_common_args, describe, log, resolve_config
+from kcbench.common import (add_common_args, describe, log, resolve_config,
+                            track_files)
 
 LOG = log("volatility")
 
@@ -63,6 +65,50 @@ DEFINITION_CUE = re.compile(r"이란|이라\s*함은|란\s*[^\n]{0,20}말한다|
 OBLIGATION = re.compile(r"할 것|하여야|해야|이상|이하|미만|초과|이내|\d+\s*부(?:\s|$|,)")
 
 
+# The patterns above are the Korean-regulation defaults. Every one of them is
+# a property of the corpus, not of the method, so `config.json` replaces any
+# of them under "volatility.rules" -- a different jurisdiction announces its
+# amendments with different words, and a different domain measures in
+# different units.
+RULE_DEFAULTS: Dict[str, Any] = {
+    "revised_title": REVISED_TITLE.pattern,
+    "notice_number": NOTICE_NUMBER.pattern,
+    "table_clause": TABLE_CLAUSE.pattern,
+    "definition_cue": DEFINITION_CUE.pattern,
+    "obligation": OBLIGATION.pattern,
+    "regulated_units": sorted(REGULATED_UNITS),
+    "requirement_eval_types": ["nameset", "verdict"],
+    "definition_scan_chars": 400,
+}
+
+
+@functools.lru_cache(maxsize=8)
+def _rules(frozen: Tuple[Tuple[str, Any], ...]) -> Dict[str, Any]:
+    over = dict(frozen)
+    out: Dict[str, Any] = {}
+    for k, default in RULE_DEFAULTS.items():
+        v = over.get(k, default)
+        if isinstance(default, str):
+            try:
+                out[k] = re.compile(v)
+            except re.error as exc:
+                LOG.error("volatility.rules.%s is not a valid regex (%s); "
+                          "using the default", k, exc)
+                out[k] = re.compile(default)
+        elif k == "regulated_units":
+            out[k] = set(v)
+        else:
+            out[k] = v
+    return out
+
+
+def rules(cfg: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    """The compiled rule set, with any config override applied."""
+    over = ((cfg or {}).get("volatility") or {}).get("rules") or {}
+    return _rules(tuple(sorted(
+        (k, tuple(v) if isinstance(v, list) else v) for k, v in over.items())))
+
+
 def _answer_text(item: Dict[str, Any]) -> str:
     a = item.get("answer_ko") or item.get("answer")
     if isinstance(a, (list, tuple)):
@@ -70,28 +116,32 @@ def _answer_text(item: Dict[str, Any]) -> str:
     return str(a or "")
 
 
-def signals(item: Dict[str, Any]) -> Dict[str, bool]:
+def signals(item: Dict[str, Any], cfg: Dict[str, Any] | None = None) -> Dict[str, bool]:
     """Every rule's verdict on one item, kept separate so a call can be audited."""
+    r = rules(cfg)
     doc = str(item.get("doc") or item.get("source_name") or "")
     clause = str(item.get("clause") or "")
     context = str(item.get("context") or "")
     unit = str(item.get("answer_unit") or "")
     return {
-        "revised_title": bool(REVISED_TITLE.search(doc)),
-        "notice_number": bool(NOTICE_NUMBER.search(doc)),
-        "table_clause": bool(TABLE_CLAUSE.search(clause) or TABLE_CLAUSE.search(doc)),
+        "revised_title": bool(r["revised_title"].search(doc)),
+        "notice_number": bool(r["notice_number"].search(doc)),
+        "table_clause": bool(r["table_clause"].search(clause)
+                             or r["table_clause"].search(doc)),
         "regulated_figure": bool(item.get("answer_value") is not None
-                                 or unit in REGULATED_UNITS),
+                                 or unit in r["regulated_units"]),
         "has_qualifier": bool(item.get("qualifier")),
         # a list of required measures and a compliance judgement are as exposed
         # to an amendment as a figure is: reissuing the clause rewrites both
-        "requirement_text": item.get("eval_type") in ("nameset", "verdict"),
-        "obligation_answer": bool(OBLIGATION.search(_answer_text(item))),
-        "definitional": bool(DEFINITION_CUE.search(context[:400])),
+        "requirement_text": item.get("eval_type") in r["requirement_eval_types"],
+        "obligation_answer": bool(r["obligation"].search(_answer_text(item))),
+        "definitional": bool(r["definition_cue"].search(
+            context[:r["definition_scan_chars"]])),
     }
 
 
-def classify(item: Dict[str, Any]) -> Tuple[str, str, List[str]]:
+def classify(item: Dict[str, Any],
+             cfg: Dict[str, Any] | None = None) -> Tuple[str, str, List[str]]:
     """
     Returns (volatility, routing, the rules that fired).
 
@@ -100,7 +150,7 @@ def classify(item: Dict[str, Any]) -> Tuple[str, str, List[str]]:
     offers. A definition with no figure is the clear case the other way. The
     band between them is left alone.
     """
-    s = signals(item)
+    s = signals(item, cfg)
     fired = [k for k, v in s.items() if v]
 
     amendable = s["revised_title"] or s["notice_number"] or s["table_clause"]
@@ -125,10 +175,11 @@ def classify(item: Dict[str, Any]) -> Tuple[str, str, List[str]]:
     return "unknown", "parametric", fired
 
 
-def classify_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def classify_rows(rows: List[Dict[str, Any]],
+                  cfg: Dict[str, Any] | None = None) -> List[Dict[str, Any]]:
     out = []
     for r in rows:
-        vol, route, fired = classify(r)
+        vol, route, fired = classify(r, cfg)
         out.append({**r, "volatility": vol, "routing": route,
                     "volatility_basis": "rule", "volatility_rules": fired})
     return out
@@ -178,8 +229,9 @@ def main(argv=None) -> int:
         description="classify items by whether a revision will change the answer",
         formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     add_common_args(ap)
-    ap.add_argument("--tracks", default="uc1,uc2,uc4,uc5,uc6,sft,probe",
-                    help="comma-separated item sets to classify")
+    ap.add_argument("--tracks", default=None,
+                    help="comma-separated item sets to classify, or all "
+                         "(default: volatility.tracks in the config)")
     ap.add_argument("--write", action="store_true",
                     help="stamp volatility onto the item files")
     ap.add_argument("--out", metavar="FILE", help="write the report as JSON")
@@ -188,10 +240,24 @@ def main(argv=None) -> int:
     describe(cfg)
 
     data = Path(cfg["out_dir"])
-    files = {p.stem.split("_")[0]: p for p in data.glob("*.jsonl")}
+    # The registered tracks, not a glob over the output directory. Only tracks
+    # whose answer is text can be classified -- dapt is scored by perplexity
+    # and vlm is keyed on an image -- and which those are is a property of the
+    # track set, so it is configurable rather than a literal here.
+    vcfg = cfg.get("volatility") or {}
+    drop = set(vcfg.get("exclude_tracks", ["1", "3"]))
+    known = {k: v for k, v in track_files(cfg).items() if k not in drop}
+    if "2" in known:
+        known["sft"] = known.pop("2")
+    spec = args.tracks or vcfg.get("tracks", "all")
+    wanted = [x.strip() for x in str(spec).split(",") if x.strip()] \
+        if isinstance(spec, str) else list(spec)
+    if wanted == ["all"]:
+        wanted = sorted(known)
     picked = []
-    for t in [x.strip() for x in args.tracks.split(",") if x.strip()]:
-        hit = [p for k, p in files.items() if k.startswith(t) or t in p.stem]
+    for t in wanted:
+        hit = [data / known[k] for k in known if k == t or k.startswith(t)]
+        hit = [p for p in hit if p.is_file()]
         if not hit:
             LOG.warning("no item file matches %r", t)
         picked.extend(hit)
@@ -200,7 +266,7 @@ def main(argv=None) -> int:
     for p in sorted(set(picked)):
         rows = [json.loads(l) for l in p.read_text(encoding="utf-8").splitlines() if l.strip()]
         rows = [r for r in rows if r.get("eval_type")]
-        tagged = classify_rows(rows)
+        tagged = classify_rows(rows, cfg)
         per_file[p] = tagged
         tagged_all.extend(tagged)
 

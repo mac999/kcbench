@@ -50,6 +50,28 @@ TRACK_ALIASES: Dict[str, str] = {
 TRACKS_HELP = ("comma-separated names: dapt, sft, vlm. The numbers 1, 2 and 3 "
                "still work for them")
 
+TRACK_FILES = {"1": "track1_dapt.jsonl", "2": "track2_sft.jsonl",
+               "3": "track3_vlm.jsonl", "probe": "probe_trained.jsonl"}
+
+
+def track_files(cfg) -> Dict[str, str]:
+    """
+    Every track name the tools accept, mapped to its item file.
+
+    The fixed tracks plus whatever use cases the config registers, so adding a
+    use case stays a config entry. Lives here rather than in a command because
+    three commands have now been shipped with a private copy of this list and
+    each one silently skipped the tracks its copy predated -- rag resolved only
+    the fixed four, verify checked three of ten, volatility left uc7 out of the
+    default set.
+    """
+    files = dict(TRACK_FILES)
+    for k, v in (cfg.get("usecases") or {}).items():
+        if k.startswith("_") or not isinstance(v, dict) or not v.get("enabled", True):
+            continue
+        files[k] = v.get("track_file", f"{k}.jsonl")
+    return files
+
 
 
 def wilson(k: int, n: int, z: float = 1.96) -> Tuple[float, float]:
