@@ -590,6 +590,46 @@ and tables are in [doc/worked-example-2.md](doc/worked-example-2.md).
 was whether the benchmark can see that change, and what it says about the
 benchmark when it cannot.
 
+### Against worked example-1: what moved, and why
+
+The items are the same, so every score movement between the two examples is a
+**measurement correction, not a model or data improvement**. Same model
+(qwen3:8b), same decoding, same open-book condition:
+
+| Track / type | example-1 | example-2 | Change | Cause |
+|---|---:|---:|---:|---|
+| uc1 safety, nameset | 0.4726 | 0.6764 | **+0.2038** | match mode derived from the key |
+| sft, nameset | 0.5869 | 0.7330 | **+0.1461** | match mode derived from the key |
+| uc5 incident, nameset | 0.4683 | 0.4572 | −0.0111 | already fuzzy; control |
+| uc2 threshold, numeric | 0.9667 | 0.9667 | 0.0000 | control |
+| uc1 safety, numeric | 0.9412 | 0.9294 | −0.0118 | control |
+| sft, numeric | 0.9437 | 0.9500 | +0.0063 | control |
+| uc4 faithfulness | 0.9125 | 0.9062 | −0.0063 | control |
+| track1 perplexity | 7.5887 | 7.5677 | −0.021 | control |
+
+The two nameset gains are the v3.8 match-mode correction measured on the full
+sets — uc1 and track2 keyed prose answers but were graded with exact match.
+Everything that correction does not touch moves by less than 0.012, which is
+what says the +0.15/+0.20 is grading and not drift. Example-1's headline
+findings survive re-measurement unchanged: open book still clears 0.90 on the
+keyed tracks, closed book still collapses, and perplexity is where it was.
+
+### New in example-2: what is measured that example-1 could not
+
+| Measurement | What it adds |
+|---|---|
+| Sentence answers (uc7) | five axes — semantic, figure, covered, supported, grounded — under a 3-judge panel with agreement recorded; example-1 had no way to grade a prose requirement |
+| Verdict decomposition (uc6) | `abstained` and `off_vocab` split a decline from a misjudgement; `evidence_hit` carries its own denominator instead of averaging unmeasurable items as zero |
+| Routing axis | every item carries the route (train / both / retrieve) of its source document, joined from the generator by chunk digest |
+| Volatility axis | the rule classification is stamped on the item files and reported per level |
+| Retrieval coverage | `gold_in_corpus` and `recall_given_present` beside `recall_at_k`, so a retriever miss is not confused with a corpus that never held the answer |
+| Classification baseline | verdict tracks are reported against the majority-class constant, not against zero |
+| Judge provenance | the run file records the panel, the excluded family and whether the run is provisional |
+
+The repaired verdict track (`uc6_verdict_v2`) is also new — the original scored
+below its constant-answer baseline for both an 8B and a 70B model, and the
+repair moves both above it without leaking the key.
+
 ### Routing rewrote the training split and left the questions alone
 
 Every item in uc1, uc2, uc4, uc5, uc6 and uc7 carries the same id in both
