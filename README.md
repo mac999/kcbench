@@ -20,7 +20,7 @@ of prompt strings; see [Adapting it to another
 domain](#adapting-it-to-another-domain).
 
 To use it, start at [Install](#install). To see what it produces, read the
-[worked example](#worked-example-a-korean-construction-corpus): a two-stage
+[worked example](#worked-example-1-korean-construction-corpus-basic): a two-stage
 DAPT and SFT campaign on the corpus it was built for, reported stage by stage
 against the metric each stage is supposed to move.
 
