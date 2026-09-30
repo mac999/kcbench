@@ -21,7 +21,7 @@ asking "is all of this supported" separates — measured, not assumed.
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Sequence
+from typing import Any, Dict, List, Sequence
 
 from kcbench.common import log
 
@@ -39,6 +39,11 @@ FAMILY_ALIASES = {
     "qwen": "qwen", "phi": "phi", "deepseek": "deepseek",
 }
 
+# Defaults. Every one of these is a deployment choice, not a property of the
+# benchmark -- which models are pulled, how many a site can afford to run per
+# item, whether same-family judging is a concern for the model under test --
+# so `config.json` overrides them under "judges" and these are the fallback.
+
 # Judges in preference order. Korean-native first: the corpus is Korean
 # regulation and a judge that reads it natively disagrees with the answer key
 # for fewer uninteresting reasons.
@@ -53,6 +58,25 @@ PREFERRED_PANEL = 3
 # ends up here says so rather than reporting a clean number.
 MIN_PANEL = 2
 
+# Excluding the target's own lineage is on by default. It is a setting because
+# the measured effect is corpus-specific: here a qwen judge passed a qwen
+# answer 0.27 more often than an independent one did, which is larger than
+# most differences this benchmark reports.
+EXCLUDE_SAME_FAMILY = True
+
+
+def settings(cfg: Dict[str, Any] | None) -> Dict[str, Any]:
+    """The judge panel configuration, with the built-in defaults filled in."""
+    over = ((cfg or {}).get("judges") or {})
+    return {
+        "candidates": list(over.get("candidates") or CANDIDATES),
+        "min_panel": int(over.get("min_panel", MIN_PANEL)),
+        "preferred_panel": int(over.get("preferred_panel", PREFERRED_PANEL)),
+        "exclude_same_family": bool(over.get("exclude_same_family",
+                                             EXCLUDE_SAME_FAMILY)),
+        "family_aliases": {**FAMILY_ALIASES, **(over.get("family_aliases") or {})},
+    }
+
 
 def family(model: str) -> str:
     """The lineage a model name implies, lowercased."""
@@ -63,18 +87,27 @@ def family(model: str) -> str:
 
 
 def panel_for(target: str, available: Sequence[str] | None = None,
-              candidates: Sequence[str] | None = None) -> List[str]:
+              candidates: Sequence[str] | None = None,
+              cfg: Dict[str, Any] | None = None) -> List[str]:
     """
     The judges that may score `target`, in preference order.
 
     Anything sharing the target's family is excluded. What is left is filtered
     against what the server actually has, because a panel that names a model
     nobody pulled is a panel of one pretending to be three.
+
+    `candidates` overrides the configured pool; `cfg` supplies it and the panel
+    sizes when it does not.
     """
+    st = settings(cfg)
+    min_panel, preferred = st["min_panel"], st["preferred_panel"]
     banned = family(target)
-    pool = list(candidates if candidates is not None else CANDIDATES)
-    keep = [m for m in pool if family(m) != banned]
-    dropped = [m for m in pool if family(m) == banned]
+    pool = list(candidates if candidates is not None else st["candidates"])
+    if st["exclude_same_family"]:
+        keep = [m for m in pool if family(m) != banned]
+        dropped = [m for m in pool if family(m) == banned]
+    else:
+        keep, dropped = list(pool), []
     for m in dropped:
         LOG.warning("judge %s shares family %r with %s; dropped", m, banned, target)
     if available is not None:
@@ -90,15 +123,25 @@ def panel_for(target: str, available: Sequence[str] | None = None,
         for m in missing:
             LOG.warning("judge %s is not installed; not in the panel", m)
         keep = present
-    if len(keep) < MIN_PANEL:
+    # Capped, not just warned about. The panel size is the decision rule --
+    # three judges carry 2 of 3, four carry 3 of 4 and break ties against the
+    # answer -- so pulling one more model from the registry would silently
+    # restate every sentence score. Extras stay in the config as replacements
+    # for a judge that is unavailable, not as additional votes.
+    if len(keep) > preferred:
+        LOG.info("panel capped at %d for %s; %s held in reserve",
+                 preferred, target, keep[preferred:])
+        keep = keep[:preferred]
+    if len(keep) < min_panel:
         LOG.warning("panel of %d judge(s) for %s: below the %d needed to outvote "
                     "a single judge, so report it as provisional",
-                    len(keep), target, MIN_PANEL)
-    elif len(keep) < PREFERRED_PANEL:
+                    len(keep), target, min_panel)
+    elif len(keep) < preferred:
         LOG.warning("panel of %d judge(s) for %s: a majority here is unanimity, "
-                    "so the pass rate tracks the strictest judge. Pull one more "
-                    "family from %s", len(keep), target,
-                    [m for m in CANDIDATES if family(m) != banned and m not in keep])
+                    "so the pass rate tracks the strictest judge. Add one more "
+                    "family to judges.candidates, e.g. %s", len(keep), target,
+                    [m for m in st["candidates"]
+                     if family(m) != banned and m not in keep] or "another vendor")
     return keep
 
 
