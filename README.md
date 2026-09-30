@@ -54,6 +54,7 @@ answer key expects.](doc/webview2.png)
 - [Adapting it to another domain](#adapting-it-to-another-domain) — what to change when the corpus is not construction
 - [Layout](#layout) — what each file in the repository does
 - [Metric reference](#metric-reference) — every number in a run file, defined and sourced
+- [Revision history](#revision-history) — major revisions and the measurements behind them
 - [Limits](#limits) — what this benchmark cannot decide
 
 The three longest sections live in their own files so this one stays readable:
@@ -841,6 +842,22 @@ Every metric this benchmark reports — what it is, how it is graded, and where
 the definition comes from — is in [doc/metrics.md](doc/metrics.md): answer
 types and grading rules, reliability checks, calibration and consistency,
 significance testing, and the two axes every score is read on.
+
+## Revision history
+
+Major revisions only, most recent first. Every change that moved a score is
+recorded with the measurement that justified it; the numbers quoted throughout
+this README come from the runs listed in the worked examples.
+
+| Rev | Date | What changed |
+|---|---|---|
+| v3.9 | 2026-09-28 | Corpus regenerated with generator v0.5.2 (document routing, DPO/STaR/RLVR formats) and everything re-scored — worked example-2. Verdict scoring decomposed into `correct` / `abstained` / `off_vocab`; uc6 shown non-discriminating and repaired as `uc6_verdict_v2` (+0.26 for an 8B, +0.09 for a 70B, both above the constant-answer baseline). Retrieval reports coverage beside recall. Image tracks guarded against text-only models. Judge panel capped at its preferred size. Corpus-specific rules (volatility, uc7 mining, judge pool) moved into `config.json`. |
+| v3.8 | 2026-09-26 | Grader registry; nameset match mode derived from the answer key (+0.20 uc1, +0.15 sft on the full sets — the largest measurement correction to date). Volatility classifier (`cb.py volatility`). Sentence grader under a 3-judge panel with same-family judges excluded (a qwen judge passed qwen answers +0.27 more often). uc7 requirement track mined from threshold items. |
+| v3.7 | 2026-09-13 | uc6 verdict track: 810 compliance judgements, balanced entail/contradict, structured-answer grading. |
+| v3.3–3.6 | 2026-08-20 ~ 25 | Four turns of the data-centric loop scored: SFT v1–v3 and a hard-negative abstention recipe (refuted). Thinking-mode control; nameset format-bias fix; per-track ECE and selfcheck baselines. |
+| v3.2 | 2026-08-18 | Code published. Resumable runs, abort on consecutive generation failures, `repeats` 3 → 1 after greedy decoding proved deterministic. |
+| v3 / v3.1 | 2026-08-16 | Use-case tracks (uc1–uc5) with baselines; item-set corrections (uc3 unknown labels dropped, uc1/uc5 enlarged). |
+| v2 | 2026-08-15 | First complete harness: content-digest holdout, contamination verification, open-book / closed-book split, Wilson intervals and paired significance tests, deliberately contaminated probe set. |
 
 ## Limits
 
