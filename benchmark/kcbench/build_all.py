@@ -14,7 +14,7 @@ import sys
 
 from kcbench import build_holdout
 from kcbench import build_tracks
-from kcbench.common import add_common_args, log
+from kcbench.common import resolve_config, add_common_args, log
 
 LOG = log("build")
 
@@ -79,6 +79,7 @@ def main() -> int:
                     help="fail the build if any contamination check fails")
     args = ap.parse_args()
 
+    cfg = resolve_config(args)
     shared = _shared(args)
 
     if args.skip_holdout:
@@ -116,9 +117,17 @@ def main() -> int:
         # uc6 is mined from the threshold items stage 4 just wrote, so it has
         # to follow them. It was registered in the config but never run here,
         # which left `cb.py build` producing every track except that one.
-        for mod in ("kcbench.build_verdict", "kcbench.build_requirement"):
-            if _run(mod, shared) != 0:
+        # every registered variant of the verdict track, each under its own
+        # settings -- the original stays reproducible next to the repaired one
+        for key, uc in (cfg.get("usecases") or {}).items():
+            if key.startswith("_") or not isinstance(uc, dict):
+                continue
+            if uc.get("builder") != "verdict_from_thresholds" or not uc.get("enabled", True):
+                continue
+            if _run("kcbench.build_verdict", [*shared, "--usecase", key]) != 0:
                 return 1
+        if _run("kcbench.build_requirement", shared) != 0:
+            return 1
 
     if args.skip_split:
         LOG.info("stage 5/7: training split - skipped")

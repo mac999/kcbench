@@ -120,7 +120,16 @@
         "entail",
         "contradict"
       ],
-      "evidence_scoring": "auto"
+      "evidence_scoring": "auto",
+      "_comment_schema": "Pinned to the schema the published scores were made under, so a rebuild reproduces this track rather than silently becoming the repaired one. The repair lives in uc6_verdict_v2.",
+      "name_subject": false,
+      "verdicts_offered": [
+        "entail",
+        "contradict",
+        "neutral"
+      ],
+      "offer_null": true,
+      "ask_evidence": "always"
     },
     "uc7_requirement": {
       "enabled": true,

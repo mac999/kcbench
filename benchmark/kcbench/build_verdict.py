@@ -35,12 +35,13 @@ LOG = log("verdict")
 DEFAULTS = {
     "name_subject": True,
     "verdicts_offered": ["entail", "contradict"],
+    "offer_null": False,               # append |null to the schema's verdict field
     "ask_evidence": "when_keyed",      # when_keyed | always | never
 }
 
 
-def settings(cfg):
-    uc = (((cfg or {}).get("usecases") or {}).get("uc6_verdict") or {})
+def settings(cfg, usecase: str = "uc6_verdict"):
+    uc = (((cfg or {}).get("usecases") or {}).get(usecase) or {})
     return {k: uc.get(k, v) for k, v in DEFAULTS.items()}
 
 # Which side of the limit satisfies it. margin is applied to build the measured
@@ -94,6 +95,8 @@ def _particle(word: str, with_batchim: str, without: str) -> str:
 def _instruction(st, evidence_keyed: bool, lang: str) -> str:
     """The reply contract, offering only verdicts the answer key uses."""
     verdicts = "|".join(f'"{v}"' for v in st["verdicts_offered"])
+    if st.get("offer_null"):
+        verdicts += "|null"
     ev = (st["ask_evidence"] == "always"
           or (st["ask_evidence"] == "when_keyed" and evidence_keyed))
     if lang == "ko":
@@ -102,13 +105,13 @@ def _instruction(st, evidence_keyed: bool, lang: str) -> str:
         fields += ',"evidence":["조문 id"]}' if ev else "}"
         return "주어진 조문만 근거로 판정하시오. 아래 JSON 객체 하나만 반환한다. " + fields
     fields = '{"answer","answerable","verdict","value"'
-    fields += ',"evidence"}' if ev else "}"
+    fields += ',"evidence"}.' if ev else "}."
     return ("Judge using only the clause supplied. Return one JSON object: "
             + fields)
 
 
 def build_item(src: dict, want_pass: bool, rng: random.Random,
-               st: dict | None = None) -> dict | None:
+               st: dict | None = None, usecase: str = "uc6_verdict") -> dict | None:
     st = st or dict(DEFAULTS)
     qualifier = src.get("qualifier")
     limit = src.get("answer_value")
@@ -126,20 +129,27 @@ def build_item(src: dict, want_pass: bool, rng: random.Random,
     item_id = "verdict-" + hashlib.sha1(key.encode("utf-8")).hexdigest()[:12]
     # Only a clause id is both keyable and producible from the passage. The
     # document title is neither -- the model is shown the clause text alone --
-    # so where there is no clause the item does not ask for evidence.
-    evidence = f"{src.get('doc', '')}#{clause}" if clause else ""
+    # so where there is no clause the item does not ask for evidence. Under
+    # ask_evidence "always" the legacy fallback to the title is kept, which is
+    # what pins the original track's shape.
+    if clause:
+        evidence = f"{src.get('doc', '')}#{clause}"
+    elif st["ask_evidence"] == "always":
+        evidence = src.get("doc", "")
+    else:
+        evidence = ""
 
     # Name what was measured. Without it a passage holding several figures in
     # the same unit does not say which limit the question is about.
     asked = subject_of(subject) if st["name_subject"] else None
-    about = f"{asked}{_particle(asked, '이', '가')} " if asked else ""
+    about = f"{asked}{_particle(asked, '이', '가')} " if asked else "측정값이 "
 
     return {
         "benchmark": "kcbench",
         "benchmark_version": src.get("benchmark_version", "v2"),
         "schema": "kcbench-item-v2",
         "track": "usecase",
-        "usecase": "uc6_verdict",
+        "usecase": usecase,
         "eval_type": "verdict",
         "cognitive_level": "application",
         "id": item_id,
@@ -178,7 +188,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--sources", nargs="+",
                     default=["track2_sft.jsonl", "uc1_safety_qa.jsonl"],
                     help="item files to mine thresholds from, under the output directory")
-    ap.add_argument("--out", default="uc6_verdict.jsonl", help="output file name")
+    ap.add_argument("--usecase", default="uc6_verdict",
+                    help="which usecases.<name> entry supplies the settings; "
+                         "also the default output file and the name items carry")
+    ap.add_argument("--out", default=None, help="output file name")
     ap.add_argument("--holdout-only", action="store_true",
                     help="skip items whose split is train")
     args = ap.parse_args(argv)
@@ -186,7 +199,9 @@ def main(argv: list[str] | None = None) -> int:
     cfg = resolve_config(args)
     out_dir = Path(cfg["out_dir"])
     rng = random.Random(cfg.get("holdout", {}).get("seed", 0))
-    st = settings(cfg)
+    st = settings(cfg, args.usecase)
+    out_name = args.out or ((cfg.get("usecases") or {}).get(args.usecase) or {}).get(
+        "track_file", f"{args.usecase}.jsonl")
 
     items, skipped = [], 0
     for name in args.sources:
@@ -202,7 +217,7 @@ def main(argv: list[str] | None = None) -> int:
             # One compliant and one violating item per threshold, so a model that
             # always answers the same way scores 0.5 rather than looking capable.
             for want_pass in (True, False):
-                item = build_item(row, want_pass, rng, st)
+                item = build_item(row, want_pass, rng, st, args.usecase)
                 if item is None:
                     skipped += 1
                     continue
@@ -211,10 +226,10 @@ def main(argv: list[str] | None = None) -> int:
         LOG.info("%s: %d source row(s) -> %d item(s)", name, len(rows), made)
 
     rng.shuffle(items)
-    write_jsonl(out_dir / args.out, items)
+    write_jsonl(out_dir / out_name, items)
     entail = sum(1 for i in items if i["answer_verdict"] == ENTAIL)
     LOG.info("%d item(s) -> %s (entail %d / contradict %d), %d source row(s) unusable",
-             len(items), out_dir / args.out, entail, len(items) - entail, skipped // 2)
+             len(items), out_dir / out_name, entail, len(items) - entail, skipped // 2)
     return 0
 
 
