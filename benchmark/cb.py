@@ -74,6 +74,11 @@ def main() -> int:
     try:
         runpy.run_module(module, run_name="__main__")
     except SystemExit as exc:
+        # SystemExit("some message") is the documented way to abort with a
+        # reason; int() on it raises and buries the reason under a ValueError.
+        if isinstance(exc.code, str):
+            print(exc.code, file=sys.stderr)
+            return 2
         return int(exc.code or 0)
     return 0
 

@@ -25,35 +25,41 @@ from kcbench.prompts import render
 from kcbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, SCHEMA_VERSION,
                             TRACKS_HELP, add_common_args, describe, items_digest,
                             log, normalise, read_jsonl, resolve_tracks,
-                            track_label, wilson,
+                            track_label, track_files, TRACK_FILES, wilson,
                     resolve_config, write_json)
 
 LOG = log("eval")
 
 NUM_RE = re.compile(r"-?[0-9][0-9,]*(?:\.[0-9]+)?")
-TRACK_FILES = {"1": "track1_dapt.jsonl", "2": "track2_sft.jsonl",
-               "3": "track3_vlm.jsonl", "probe": "probe_trained.jsonl"}
-
-
-def track_files(cfg) -> Dict[str, str]:
-    """
-    Every track name the tools accept, mapped to its item file.
-
-    The fixed tracks plus whatever use cases the config registers, so adding a
-    use case stays a config entry. Shared rather than rebuilt per command:
-    rag went a release resolving only the fixed four and skipping every
-    use-case track it was asked for.
-    """
-    files = dict(TRACK_FILES)
-    for k, v in (cfg.get("usecases") or {}).items():
-        if k.startswith("_") or not isinstance(v, dict) or not v.get("enabled", True):
-            continue
-        files[k] = v.get("track_file", f"{k}.jsonl")
-    return files
 IFC_RE = re.compile(r"\bIfc[A-Za-z]+\b")
 
 
 # model access
+
+def capabilities(cfg, model: str) -> set:
+    """
+    What the server says this model can do, empty if it will not say.
+
+    Asked before an image track runs. Sending a picture to a text-only model
+    returns 400 per item: twenty in a row abort the whole run, and a track
+    shorter than that -- vlm is ten items -- stays under the threshold and
+    scores a clean zero that looks like a result.
+
+    The capability name and what to do when it is absent are settings: another
+    server may spell it differently, and a site that knows its model is
+    multimodal despite a thin /api/show can set eval.on_missing_capability to
+    "ignore" rather than patch this.
+    """
+    try:
+        r = requests.post(f"{cfg['eval']['ollama_base_url']}/api/show",
+                          json={"model": model},
+                          timeout=cfg["eval"].get("capability_timeout", 30))
+        r.raise_for_status()
+        return set(r.json().get("capabilities") or [])
+    except Exception as exc:                                  # noqa: BLE001
+        LOG.debug("capability probe failed for %s: %s", model, exc)
+        return set()
+
 
 def generate(cfg, model: str, prompt: str, images: List[str] | None = None,
              temperature: float | None = None) -> str:
@@ -370,7 +376,17 @@ def grade_faithfulness(reply: str, item: dict, tol: float) -> Dict[str, float]:
 VERDICTS = ("entail", "contradict", "neutral")
 
 
-def grade_verdict(reply: str, item: dict) -> Dict[str, float]:
+def verdict_settings(cfg: Dict[str, Any] | None, usecase: str) -> Dict[str, Any]:
+    """Label set and evidence policy for a verdict track."""
+    uc = (((cfg or {}).get("usecases") or {}).get(usecase) or {})
+    return {
+        "keyed_verdicts": list(uc.get("keyed_verdicts") or VERDICTS),
+        "evidence_scoring": uc.get("evidence_scoring", "auto"),
+    }
+
+
+def grade_verdict(reply: str, item: dict,
+                  st: Dict[str, Any] | None = None) -> Dict[str, float]:
     """Compliance judgement, scored apart from the evidence it cites.
 
     Accuracy alone hides the failure that matters here: a model that reaches the
@@ -378,6 +394,7 @@ def grade_verdict(reply: str, item: dict) -> Dict[str, float]:
     abstains on an answerable item is wrong in a different way from one that
     judges it backwards. Each is its own column.
     """
+    st = st or {"keyed_verdicts": list(VERDICTS), "evidence_scoring": "auto"}
     obj = parse_structured(reply)
     want = item["answer_verdict"]
     if obj is None:
@@ -402,14 +419,29 @@ def grade_verdict(reply: str, item: dict) -> Dict[str, float]:
 
     want_ev = {normalise(e) for e in item.get("answer_evidence") or []}
     got_ev = {normalise(str(e)) for e in cited}
-    hit = float(bool(want_ev & got_ev)) if want_ev else 0.0
 
-    return {
+    out: Dict[str, float] = {
         "correct": float(got == want),
         "abstained": float(abstained),
-        "evidence_hit": hit,
-        "grounded": float(got == want and hit > 0),
+        # A verdict the answer key never uses -- this track keys only entail
+        # and contradict while the reply schema offers neutral and null -- is a
+        # decline, not a wrong judgement. Scored the same either way, but
+        # counted apart so the two failures can be told apart afterwards.
+        "off_vocab": float(got is not None and got not in st["keyed_verdicts"]),
     }
+
+    # The gold evidence is the document title. The model is shown the clause
+    # text and nothing else, so it cannot produce that string and the column
+    # reads 0.0000 on every item -- a metric that cannot be non-zero is not a
+    # measurement. Scored only when the key is reachable from the passage.
+    policy = st["evidence_scoring"]
+    context = normalise(item.get("context") or "")
+    reachable = bool(want_ev) and any(e and e in context for e in want_ev)
+    if policy == "always" or (policy == "auto" and reachable):
+        hit = float(bool(want_ev & got_ev))
+        out["evidence_hit"] = hit
+        out["grounded"] = float(got == want and hit > 0)
+    return out
 
 
 def grade_mapping(reply: str, item: dict, tol: float) -> Dict[str, float]:
@@ -448,6 +480,19 @@ def _grade_label(reply, item, tol):
 
 def _grade_verdict(reply, item, tol):
     return grade_verdict(reply, item)
+
+
+def make_verdict_grader(cfg):
+    """Settings are per use case, and one run may score several, so they are
+    looked up from the item rather than bound to the track."""
+    cache: Dict[str, Dict[str, Any]] = {}
+
+    def grade(reply, item, tol):
+        uc = item.get("usecase") or ""
+        if uc not in cache:
+            cache[uc] = verdict_settings(cfg, uc)
+        return grade_verdict(reply, item, cache[uc])
+    return grade
 
 
 def _grade_mapping(reply, item, tol):
@@ -550,12 +595,13 @@ def graders_for(cfg, model: str) -> Dict[str, tuple]:
         installed = [m["name"] for m in
                      requests.get(f"{cfg['eval']['ollama_base_url']}/api/tags",
                                   timeout=30).json().get("models", [])]
-        panel = panel_for(model, available=installed)
+        panel = panel_for(model, available=installed, cfg=cfg)
     except Exception as exc:
         LOG.warning("could not build a judge panel: %s", exc)
         panel = []
     embed_model = cfg["eval"].get("embed_model", "bge-m3")
     table["sentence"] = (make_sentence_grader(cfg, panel, embed_model), False)
+    table["verdict"] = (make_verdict_grader(cfg), True)
     return table
 
 
@@ -639,15 +685,19 @@ def run_meta(cfg, model: str | None = None) -> Dict[str, Any]:
         meta["prompt_overrides"] = sorted(changed)
     if model:
         try:
-            from kcbench.judges import MIN_PANEL, family, panel_for
+            from kcbench.judges import family, panel_for, settings
             installed = [m["name"] for m in
                          requests.get(f"{ev['ollama_base_url']}/api/tags",
                                       timeout=30).json().get("models", [])]
-            panel = panel_for(model, available=installed)
+            st = settings(cfg)
+            panel = panel_for(model, available=installed, cfg=cfg)
             meta["judges"] = {
-                "panel": panel, "excluded_family": family(model),
+                "panel": panel,
+                "excluded_family": family(model) if st["exclude_same_family"] else None,
                 "embed_model": ev.get("embed_model", "bge-m3"),
-                "provisional": len(panel) < MIN_PANEL,
+                "provisional": len(panel) < st["min_panel"],
+                "min_panel": st["min_panel"],
+                "candidates": st["candidates"],
             }
         except Exception as exc:
             LOG.warning("judge panel not recorded: %s", exc)
@@ -854,8 +904,16 @@ def _mean_scores(group: List[dict]) -> dict:
     metrics = sorted({k for p in group for k in p["score"]})
     out: Dict[str, Any] = {"n": len(group)}
     for m in metrics:
-        vals = [p["score"].get(m, 0.0) for p in group]
+        # Only over the items that carry it. Defaulting a missing metric to 0
+        # turned "not measurable on this item" into "scored zero", which is how
+        # uc6 reported evidence_hit 0.0000 on all 810 items for a key the model
+        # was never shown.
+        vals = [p["score"][m] for p in group if m in p["score"]]
+        if not vals:
+            continue
         out[m] = round(statistics.fmean(vals), 4)
+        if len(vals) != len(group):
+            out[f"{m}_n"] = len(vals)
         # A 39-item track and a 320-item track report the same number very
         # differently. The interval says which one you are looking at.
         if all(v in (0.0, 1.0) for v in vals):
@@ -957,7 +1015,17 @@ def main() -> int:
               "think": cfg["eval"].get("think"),
               "benchmark_dir": str(cfg["out_dir"]), "tracks": {}}
 
+    # Checked before the first request, not on the iteration that reaches it:
+    # a mistyped track name used to surface as a KeyError after the tracks
+    # ahead of it had already been scored, and the run file is written at the
+    # end, so that work was lost.
+    unknown = [t for t in wanted if t not in files]
+    if unknown:
+        LOG.error("unknown track(s) %s; known: %s", unknown, sorted(files))
+        return 2
+
     started = time.time()
+    skipped: List[str] = []
     for t in wanted:
         path = cfg["out_dir"] / files[t]
         if not path.exists():
@@ -969,6 +1037,21 @@ def main() -> int:
             result["tracks"]["1"] = run_track1(cfg, args.model, rows, args.limit)
         else:
             has_images = any(r.get("image") or r.get("images") for r in rows)
+            on_missing = cfg["eval"].get("on_missing_capability", "skip")
+            if has_images and on_missing != "ignore":
+                need = cfg["eval"].get("image_capability", "vision")
+                caps = capabilities(cfg, args.model)
+                if caps and need not in caps:
+                    msg = (f"track {track_label(t)} sends images and "
+                           f"{args.model} reports no {need!r} capability")
+                    if on_missing == "fail":
+                        LOG.error("%s; aborting", msg)
+                        return 2
+                    LOG.warning("%s - skipping. Score it with a vision model "
+                                "in its own run, or set "
+                                "eval.on_missing_capability.", msg)
+                    skipped.append(t)
+                    continue
             ckpt = Checkpoint(runs_dir / ".ckpt" / f"{tag}-{t}.jsonl",
                               {"model": args.model, "lang": args.lang,
                                "repeats": cfg["eval"]["repeats"], "limit": args.limit,
@@ -990,6 +1073,12 @@ def main() -> int:
             ckpt.path.unlink(missing_ok=True)
             result["tracks"][t]["items_digest"] = items_digest(rows)
 
+    if skipped:
+        # in the run file, so a reader does not read the absence of a track as
+        # a track that scored nothing
+        need = cfg["eval"].get("image_capability", "vision")
+        result["skipped_tracks"] = {t: f"model reports no {need!r} capability"
+                                    for t in skipped}
     result["elapsed_sec"] = round(time.time() - started, 1)
     result["meta"] = run_meta(cfg, args.model)
     result["headline"] = headline(result)
