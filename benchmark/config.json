@@ -114,13 +114,52 @@
         "uc1_safety_qa.jsonl"
       ],
       "holdout_only": true,
-      "_comment": "Compliance judgement mined from threshold items by build_verdict.py. Answers follow the m1_model output contract so one label schema serves both the training data and this track."
+      "_comment": "Compliance judgement mined from threshold items by build_verdict.py. Answers follow the m1_model output contract so one label schema serves both the training data and this track.",
+      "_comment_grading": "keyed_verdicts are the labels the answer key actually uses. The reply schema offers neutral and null as well, so a model may return a verdict that can never be right; those are scored wrong either way but counted as off_vocab so a decline can be told from a misjudgement. evidence_scoring is auto, always or never: auto scores the cited evidence only when the keyed evidence appears in the passage the model was shown. As built, the key is the document title and the model sees only the clause text, so the column is not measurable and auto omits it rather than reporting 0.0000 on every item.",
+      "keyed_verdicts": [
+        "entail",
+        "contradict"
+      ],
+      "evidence_scoring": "auto"
     },
     "uc7_requirement": {
       "enabled": true,
       "track_file": "uc7_requirement.jsonl",
       "comment": "Requirement sentences lifted from the clause a threshold item was mined from. Graded with the sentence type, so a judge panel is involved; read it open book.",
-      "builder": "requirement_from_thresholds"
+      "builder": "requirement_from_thresholds",
+      "_comment_mining": "How a requirement sentence is recognised and admitted. sentence_end splits the clause, requirement_ending is what makes a sentence a requirement rather than a definition, extraction_noise and clause_heading reject damage from the PDF text layer, and asks_pattern strips the interrogative to leave the subject. Replace all of it for a corpus that is not Korean regulation.",
+      "sentence_end": "(?<=다)\\.|(?<=것)\\.|(?<=다)(?=\\s*\\n)|(?<=할 것)(?=\\s|$)|[.。](?=\\s)",
+      "requirement_ending": "(한다|할 것|하여야 한다|이어야 한다|되어야 한다|아니된다|아니 된다|아니하여야 한다|하여야 함|해야 한다)[.」)]?$",
+      "extraction_noise": "\\s\\d+\\.\\d+\\s|\\s\\(\\d+\\)\\s.{0,6}\\s\\(\\d+\\)|[│┃|]{2,}|\\.{4,}|\\s{4,}",
+      "clause_heading": "^제\\d+조\\s*\\(",
+      "asks_pattern": "(은|는|이|가)?\\s*(몇|얼마).*$",
+      "min_chars": 20,
+      "max_chars": 180,
+      "max_commas": 6,
+      "min_subject_chars": 2,
+      "max_subject_chars": 60,
+      "sources": [
+        "uc2_spec_threshold.jsonl",
+        "uc1_safety_qa.jsonl",
+        "track2_sft.jsonl"
+      ]
+    },
+    "uc6_verdict_v2": {
+      "enabled": true,
+      "track_file": "uc6_verdict_v2.jsonl",
+      "comment": "uc6 rebuilt after v3.9 measured three defects in the original: the question named no subject, so 58% of items sat in a passage holding two or more figures in the item's unit; the reply schema offered neutral and null, which the key never uses and which drew 33% of answers; and evidence was keyed on the document title, which the model is never shown. Kept beside uc6_verdict rather than replacing it so the effect of the repair is measurable.",
+      "builder": "verdict_from_thresholds",
+      "name_subject": true,
+      "verdicts_offered": [
+        "entail",
+        "contradict"
+      ],
+      "ask_evidence": "when_keyed",
+      "keyed_verdicts": [
+        "entail",
+        "contradict"
+      ],
+      "evidence_scoring": "auto"
     }
   },
   "eval": {
@@ -139,7 +178,71 @@
       "ko": 0.8,
       "en": 0.2
     },
-    "max_consecutive_empty": 25
+    "max_consecutive_empty": 25,
+    "_comment_images": "A track whose items carry a render is sent to the model as images. A text-only model answers every one of them with HTTP 400: twenty in a row abort the run, and a track shorter than that - vlm is ten items - stays under the threshold and records a clean zero that reads like a score. So the capability is checked first. image_capability is the name the server reports (ollama says 'vision'); on_missing_capability is skip, fail or ignore - ignore restores the old behaviour for a server whose /api/show does not list capabilities.",
+    "image_capability": "vision",
+    "on_missing_capability": "skip",
+    "capability_timeout": 30
+  },
+  "judges": {
+    "_comment": "The panel that grades a prose answer. candidates is in preference order, filtered against what the server actually has and then capped at preferred_panel -- the size is the decision rule, so entries past the cap are replacements for an unavailable judge, not extra votes. Three is the smallest panel where a majority is not unanimity; at two, one judge's refusal sinks an item. exclude_same_family drops any judge sharing the target model's lineage: measured at +0.27 pass rate for a qwen judge on a qwen answer, larger than most effects this benchmark reports. family_aliases extends the name-to-lineage table. The default order puts the largest installed judge first; drop it for a faster panel.",
+    "candidates": [
+      "llama3.3:70b",
+      "exaone3.5:7.8b",
+      "glm4:9b",
+      "gemma2:9b",
+      "mistral-nemo:12b"
+    ],
+    "min_panel": 2,
+    "preferred_panel": 3,
+    "exclude_same_family": true,
+    "family_aliases": {}
+  },
+  "volatility": {
+    "_comment": "Which item sets cb.py volatility classifies. Only tracks whose answer is text can be classified: dapt is scored by perplexity and vlm is keyed on an image, so both are excluded by default. tracks is 'all' or a comma-separated list of registered track names.",
+    "tracks": "all",
+    "exclude_tracks": [
+      "1",
+      "3"
+    ],
+    "rules": {
+      "_comment": "The Korean-regulation rule set. Each pattern is a property of the corpus, not of the method: another jurisdiction announces its amendments with different words and measures in different units. An invalid regex is reported and the built-in default used, so a typo here does not silently reclassify the benchmark.",
+      "revised_title": "개정|고시|제정|시행|공고|훈령|예규",
+      "notice_number": "제\\s*\\d{2,4}\\s*-?\\s*\\d*\\s*호",
+      "table_clause": "별표|별지|부표|서식",
+      "definition_cue": "이란|이라\\s*함은|란\\s*[^\\n]{0,20}말한다|정의|용어의\\s*뜻",
+      "obligation": "할 것|하여야|해야|이상|이하|미만|초과|이내|\\d+\\s*부(?:\\s|$|,)",
+      "regulated_units": [
+        "%",
+        "MPa",
+        "cm",
+        "kN",
+        "kg",
+        "m",
+        "m2",
+        "m3",
+        "mm",
+        "t",
+        "㎡",
+        "㎥",
+        "개월",
+        "년",
+        "명",
+        "배",
+        "분",
+        "시간",
+        "원",
+        "일",
+        "층",
+        "톤",
+        "회"
+      ],
+      "requirement_eval_types": [
+        "nameset",
+        "verdict"
+      ],
+      "definition_scan_chars": 400
+    }
   },
   "perplexity": {
     "_comment": "Track 1 runs the weights through transformers, so these decide whether it fits in memory and how long it takes. Lower max_length or switch dtype to float16 on a smaller card.",
