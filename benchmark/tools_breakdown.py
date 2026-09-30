@@ -4,6 +4,7 @@ Score a run along the two axes v0.5.2 made available, separately.
 
     python benchmark/tools_breakdown.py data-v052/runs/v052-open.json
     python benchmark/tools_breakdown.py v052-open.json v052-open-uc6.json
+    python benchmark/tools_breakdown.py run.json --generated-dir ../ai_ready_v052
 
 A second run file overrides the first track by track, which is how a single
 track re-scored after a grader fix is read together with the run it belongs
@@ -25,6 +26,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# where the generator wrote rag_corpus.jsonl files; --generated-dir overrides
 GEN = ROOT / "ai_ready_v052"
 
 
@@ -93,6 +95,13 @@ def cut(rows, key, order):
 
 
 def main(argv) -> int:
+    global GEN
+    args = list(argv[1:])
+    if "--generated-dir" in args:
+        i = args.index("--generated-dir")
+        GEN = Path(args[i + 1])
+        del args[i:i + 2]
+    argv = [argv[0], *args]
     if len(argv) < 2:
         print(__doc__)
         return 2
