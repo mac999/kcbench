@@ -57,23 +57,69 @@ _HEADING = re.compile(r"^제\d+조\s*\(")
 MIN_CHARS, MAX_CHARS = 20, 180
 MAX_COMMAS = 6
 
+# Everything above is the Korean-regulation default. A requirement sentence in
+# another jurisdiction ends differently, a different text layer damages
+# differently, and a sentence length that reads as an enumeration here may be
+# ordinary elsewhere -- so `config.json` replaces any of it under
+# usecases.uc7_requirement.
+_ASKS = re.compile(r"(은|는|이|가)?\s*(몇|얼마).*$")
+
+# The source question often opens with the clause's own list marker -- "(3-1)",
+# "1.", "가." -- which is part of the document's numbering, not of the subject.
+_LEAD = re.compile(r"^\s*(?:\(\s*[0-9가-힣]+(?:[-.][0-9]+)*\s*\)|"
+                   r"[0-9]+(?:[-.][0-9]+)*\s*[.)]|[가-힣]\s*[.)])\s*")
+
+MINING_DEFAULTS: Dict[str, Any] = {
+    "sentence_end": _END.pattern,
+    "requirement_ending": _REQUIRES.pattern,
+    "extraction_noise": _NOISE.pattern,
+    "clause_heading": _HEADING.pattern,
+    "asks_pattern": _ASKS.pattern,
+    "min_chars": MIN_CHARS,
+    "max_chars": MAX_CHARS,
+    "max_commas": MAX_COMMAS,
+    "min_subject_chars": 2,
+    "max_subject_chars": 60,
+    "sources": list(DEFAULT_SOURCES),
+}
+
+
+def mining(cfg: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    """The mining parameters, with any config override compiled in."""
+    over = (((cfg or {}).get("usecases") or {}).get("uc7_requirement") or {})
+    out: Dict[str, Any] = {}
+    for k, default in MINING_DEFAULTS.items():
+        v = over.get(k, default)
+        if isinstance(default, str) and k.endswith(("_end", "_ending", "_noise",
+                                                    "_heading", "_pattern")):
+            try:
+                out[k] = re.compile(v)
+            except re.error as exc:
+                LOG.error("uc7_requirement.%s is not a valid regex (%s); "
+                          "using the default", k, exc)
+                out[k] = re.compile(default)
+        else:
+            out[k] = v
+    return out
+
 # "표준설계응답스펙트럼은 몇 % 이상이어야 하는가?" names what the clause is about;
 # without it a question that says only which document it comes from has many
 # right answers and is not an item.
-_ASKS = re.compile(r"(은|는|이|가)?\s*(몇|얼마).*$")
 
 
 def _squash(s: str) -> str:
     return re.sub(r"\s+", "", s or "")
 
 
-def subject_of(question: str) -> Optional[str]:
+def subject_of(question: str, m: Dict[str, Any] | None = None) -> Optional[str]:
     """What the source item was asking about, with the interrogative stripped."""
-    s = _ASKS.sub("", question or "").strip().rstrip("은는이가").strip()
-    return s if 2 <= len(s) <= 60 else None
+    m = m or mining()
+    s = _LEAD.sub("", question or "")
+    s = m["asks_pattern"].sub("", s).strip().rstrip("은는이가").strip()
+    return s if m["min_subject_chars"] <= len(s) <= m["max_subject_chars"] else None
 
 
-def sentences(text: str) -> List[tuple[str, int, int]]:
+def sentences(text: str, m: Dict[str, Any] | None = None) -> List[tuple[str, int, int]]:
     """
     Each sentence as (verbatim slice, start, end).
 
@@ -81,9 +127,10 @@ def sentences(text: str) -> List[tuple[str, int, int]]:
     key that says it was lifted from the clause has to be findable in the clause,
     and normalising it for readability quietly breaks that.
     """
+    m = m or mining()
     spans, last = [], 0
-    for m in _END.finditer(text or ""):
-        a, b = last, m.end()
+    for hit in m["sentence_end"].finditer(text or ""):
+        a, b = last, hit.end()
         last = b
         if (text[a:b]).strip():
             spans.append((a, b))
@@ -98,22 +145,23 @@ def sentences(text: str) -> List[tuple[str, int, int]]:
     return out
 
 
-def rejection(s: str) -> Optional[str]:
+def rejection(s: str, m: Dict[str, Any] | None = None) -> Optional[str]:
     """Why this sentence cannot serve as an answer key, or None if it can."""
-    if not MIN_CHARS <= len(s) <= MAX_CHARS:
+    m = m or mining()
+    if not m["min_chars"] <= len(s) <= m["max_chars"]:
         return "length"
-    if not _REQUIRES.search(s):
+    if not m["requirement_ending"].search(s):
         return "not a requirement"
-    if _NOISE.search(s):
+    if m["extraction_noise"].search(s):
         return "extraction noise"
-    if _HEADING.match(s):
+    if m["clause_heading"].match(s):
         return "clause heading"
-    if s.count(",") >= MAX_COMMAS:
+    if s.count(",") >= m["max_commas"]:
         return "enumeration"
     return None
 
 
-def find_requirement(item: Dict[str, Any]):
+def find_requirement(item: Dict[str, Any], m: Dict[str, Any] | None = None):
     """
     The one sentence in the item's own context that states its threshold.
 
@@ -123,13 +171,15 @@ def find_requirement(item: Dict[str, Any]):
     first: two sentences carrying the same limit mean the item does not
     identify one of them.
     """
+    m = m or mining()
     value, unit = item.get("answer_value"), item.get("answer_unit")
     if value is None or not unit:
         return None, "no figure"
     num = str(int(value)) if float(value) == int(value) else str(value)
     key = _squash(num + str(unit))
 
-    found = [t for t in sentences(item.get("context") or "") if key in _squash(t[0])]
+    found = [t for t in sentences(item.get("context") or "", m)
+             if key in _squash(t[0])]
     qual = item.get("qualifier")
     if qual:
         narrowed = [t for t in found if _squash(qual) in _squash(t[0])]
@@ -137,9 +187,9 @@ def find_requirement(item: Dict[str, Any]):
     if not found:
         return None, "figure not in a sentence"
 
-    admitted = [t for t in found if rejection(t[0]) is None]
+    admitted = [t for t in found if rejection(t[0], m) is None]
     if not admitted:
-        return None, rejection(found[0][0]) or "rejected"
+        return None, rejection(found[0][0], m) or "rejected"
     if len(admitted) > 1:
         return None, "ambiguous"
     return admitted[0], "ok"
@@ -159,11 +209,13 @@ def _split_of(src: Dict[str, Any]) -> Optional[str]:
     return "holdout" if src.get("track") == "sft" else None
 
 
-def build(rows: List[Dict[str, Any]]) -> tuple[List[dict], collections.Counter]:
+def build(rows: List[Dict[str, Any]],
+          cfg: Dict[str, Any] | None = None) -> tuple[List[dict], collections.Counter]:
+    m = mining(cfg)
     out, why = [], collections.Counter()
     seen = set()
     for src in rows:
-        hit, reason = find_requirement(src)
+        hit, reason = find_requirement(src, m)
         why[reason] += 1
         if not hit:
             continue
@@ -174,7 +226,7 @@ def build(rows: List[Dict[str, Any]]) -> tuple[List[dict], collections.Counter]:
 
         # Without a subject the question names only a document, and a document
         # sets many requirements — the item would have several right answers.
-        subject = subject_of(src.get("question_ko") or "")
+        subject = subject_of(src.get("question_ko") or "", m)
         if not subject:
             why["no subject"] += 1
             continue
@@ -182,8 +234,8 @@ def build(rows: List[Dict[str, Any]]) -> tuple[List[dict], collections.Counter]:
         # sentence in the same passage also states a requirement about that
         # subject, the question has two right answers and the key only records
         # one — measured at 6 of 134 before this check.
-        rivals = [t[0] for t in sentences(src.get("context") or "")
-                  if rejection(t[0]) is None
+        rivals = [t[0] for t in sentences(src.get("context") or "", m)
+                  if rejection(t[0], m) is None
                   and _squash(t[0]) != _squash(sentence)
                   and _squash(subject) in _squash(t[0])]
         if rivals:
@@ -243,8 +295,9 @@ def main(argv=None) -> int:
         description="mine a requirement-sentence track from threshold items",
         formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     add_common_args(ap)
-    ap.add_argument("--sources", default=",".join(DEFAULT_SOURCES),
-                    help="comma-separated item files to derive from")
+    ap.add_argument("--sources", default=None,
+                    help="comma-separated item files to derive from "
+                         "(default: usecases.uc7_requirement.sources)")
     ap.add_argument("--out", default="uc7_requirement.jsonl")
     ap.add_argument("--dry-run", action="store_true",
                     help="report what would be mined and write nothing")
@@ -254,7 +307,9 @@ def main(argv=None) -> int:
 
     data = Path(cfg["out_dir"])
     rows: List[dict] = []
-    for name in [x.strip() for x in args.sources.split(",") if x.strip()]:
+    names = ([x.strip() for x in args.sources.split(",") if x.strip()]
+             if args.sources else list(mining(cfg)["sources"]))
+    for name in names:
         p = data / name
         if not p.is_file():
             LOG.warning("no such source: %s", p.name)
@@ -264,7 +319,7 @@ def main(argv=None) -> int:
         LOG.error("no source items")
         return 1
 
-    items, why = build(rows)
+    items, why = build(rows, cfg)
     print(f"from {len(rows)} source item(s):")
     for reason, n in why.most_common():
         print(f"  {reason:24s} {n:5d}")
