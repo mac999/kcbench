@@ -47,7 +47,8 @@ answer key expects.](doc/webview2.png)
 - [Track reference](#track-reference--item-counts-and-answer-types) — the nine item sets, their sizes and answer types
 - [Workflow](#workflow) — build, baseline, train, register, score, compare — in order
 - [Data-centric development loop](#data-centric-development-loop) — what to do with the numbers, and the line against Goodharting
-- [Worked example](#worked-example-a-korean-construction-corpus) — DAPT and SFT on Korean construction regulation: what each stage moved, and why closed-book recall did not
+- [Worked example-1](#worked-example-1-korean-construction-corpus-basic) — DAPT and SFT on Korean construction regulation: what each stage moved, and why closed-book recall did not
+- [Worked example-2](#worked-example-2-korean-construction-corpus-advanced) — document routing, preference and verifier tracks, and what a second generator release changed
 - [Retrieval ablation and item validity](#retrieval-ablation-and-item-validity) — where the detail lives
 - [System design implications](#system-design-implications) — what the findings imply for the system that motivated them
 - [Adapting it to another domain](#adapting-it-to-another-domain) — what to change when the corpus is not construction
@@ -449,7 +450,7 @@ types only — `selfcheck` is the reference-free aid there, and its own
 validation showed consistency is no hallucination signal on a model that
 hallucinates stably); vision beyond a smoke test (`vlm` is 10 items).
 
-## Worked example: a Korean construction corpus
+## Worked example-1: Korean construction corpus (basic)
 
 Qwen3-8B adapted to ~1 GB of Korean construction regulation in two stages —
 domain-adaptive pretraining (DAPT) on 26,767 chunks, then supervised
@@ -575,6 +576,113 @@ complete score tables, and the dataset's known limits — is in
 [doc/worked-example.md](doc/worked-example.md). The retrieval sweep and the
 item-validity audit are in
 [doc/retrieval-and-validity.md](doc/retrieval-and-validity.md).
+
+## Worked example-2: Korean construction corpus (advanced)
+
+The same corpus and the same held-out item set, regenerated with
+[gen_aec_syn_data](https://github.com/mac999/gen_aec_syn_data) v0.5.2. That
+release routes each source document to training, to a retrieval corpus, or to
+both, and emits preference (DPO), self-taught (STaR) and verifier-reward (RLVR)
+formats. Generation took 12 h 15 min over 1,957 documents. Full detail, charts
+and tables are in [doc/worked-example-2.md](doc/worked-example-2.md).
+
+**What it was for.** Routing changes what a model is trained on. The question
+was whether the benchmark can see that change, and what it says about the
+benchmark when it cannot.
+
+### Routing rewrote the training split and left the questions alone
+
+Every item in uc1, uc2, uc4, uc5, uc6 and uc7 carries the same id in both
+builds, because the holdout was reused. So v0.5.2 changes the training side
+only, and a score comparison across the two would measure nothing.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="doc/split-composition-dark.png">
+  <img alt="Training split rows by track, v0.4 against v0.5.2. DAPT falls from 26,767 to 8,928 and SFT from 15,666 to 5,386; STaR, DPO and RLVR are new at 2,103, 2,490 and 5,386." src="doc/split-composition-light.png">
+</picture>
+
+Documents the generator judged amendment-exposed no longer produce training
+rows; they go to a retrieval corpus of 22,347 chunks that did not exist before.
+File counts match the routing exactly, and `cb.py verify` passes 5,724 items on
+all four contamination checks.
+
+### One track was not measuring what it claimed
+
+Re-scored with corrected graders, withholding the clause costs every track
+between 0.45 and 0.87 — except one.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="doc/open-vs-closed-v052-dark.png">
+  <img alt="Open-book against closed-book score by track. Every track falls sharply when the clause is withheld except uc6 verdict, which moves 0.015 and stays below the 0.500 a constant answer scores." src="doc/open-vs-closed-v052-light.png">
+</picture>
+
+uc6 moves 0.0148 (McNemar p = 0.560) and both conditions sit below the 0.500 a
+constant answer scores on its balanced two-label key. uc6 is 810 of 2,317
+scored text items, and only the open-against-closed contrast exposes this.
+
+Three defects in how the item was written, each measured: the question named no
+subject, so 58% of items sat in a passage holding two or more figures in the
+item's unit; the reply schema offered two verdicts the key never uses, and the
+model took one on 33% of items; and evidence was keyed on the document title,
+which the model is never shown, leaving that column measurable on 12 of 810.
+
+None of that is in what the item asks, so it is repairable. `uc6_verdict_v2`
+rebuilds the same thresholds with the subject named, the schema restricted to
+the keyed verdicts, and evidence asked for only where a clause id exists.
+
+| Items | qwen3:8b | llama3.3:70b |
+|---|---:|---:|
+| Original | 0.3960 | 0.5320 |
+| Repaired | **0.6600** | **0.6200** |
+| Change | **+0.264** (p < 0.0001) | **+0.088** (p = 0.016) |
+
+The original track was defective rather than difficult — a 70B model scored
+0.5320 on it, the constant answer plus noise — and what it measured was not
+competence. On the original items the two models differ significantly
+(p = 0.0017); on the repaired items they do not (p = 0.337). The gap was
+abstention, not reasoning. Naming the subject does not leak the answer: the
+limit appears in 6 of 810 subjects and the qualifier in none.
+
+### A sentence key needs a judge panel, not similarity
+
+| | semantic | covered | supported | grounded | judge agreement |
+|---|---:|---:|---:|---:|---:|
+| Open book | 0.832 | 0.797 | 0.781 | 0.711 | 0.918 |
+| Closed book | 0.654 | 0.070 | 0.055 | 0.023 | 0.974 |
+
+Closed book, embedding similarity reports 0.654 where the proportion of answers
+that actually state the requirement is 0.023 — a factor of 28. The model writes
+sentences about the right subject that do not state the requirement, which is
+the failure a keyword or embedding score cannot see.
+
+### Retrieval measures the corpus, not the retriever
+
+`cb.py rag` averages 0.1915 over the five text tracks it covers — barely above
+closed book. Read as a retrieval result that is wrong. The baseline searches the
+held-out chunks, and items are mined from both sides of the contamination line,
+so **for half of them the chunk the answer came from is not in the corpus at
+all**. Conditioned on it being present, the retriever finds it 29–45% of the
+time at k=10; the raw recall column hides that behind a ceiling.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="doc/rag-coverage-dark.png">
+  <img alt="Closed book, retrieved and open book score for five tracks ordered by how much of their gold evidence is in the searched corpus. Retrieval recovers a third of the open-book gap at full coverage and nothing at five percent coverage." src="doc/rag-coverage-light.png">
+</picture>
+
+Where the answer is in the corpus, retrieval recovers a fifth to a third of the
+distance between closed and open book. Where it is not, it adds nothing and
+slightly hurts. The run now reports `gold_in_corpus` and `recall_given_present`
+beside `recall_at_k` so the two failures are not read as one.
+
+### Report the axes separately, and inside an answer type
+
+The generator routes a document by its title and metadata; `cb.py volatility`
+classifies an item by its answer. Joined on chunk digest they agree on 89.4% of
+items with Cohen's kappa **0.016** — the agreement is base rate, and neither
+validates the other. Both axes are also confounded with answer type: read
+marginally, `train` leads `retrieve` 0.740 to 0.688, but within answer type
+`retrieve` is higher in three of five, because `train` holds more of the easiest
+type and `retrieve` more of the hardest.
 
 ## Retrieval ablation and item validity
 
