@@ -76,6 +76,11 @@ signals explain why they are not interchangeable:
 | Generator | document title and metadata — amendment, issue number, form, notice, effective date | document |
 | Benchmark | item content — regulated figure, qualifier, requirement phrasing, table clause | item |
 
+Two terms are used on purpose: **amendment-exposed** is the generator's
+document-level label, **volatile** is the benchmark's item-level label. They
+are kept distinct precisely because the kappa above says they are not the same
+property.
+
 They are separate cuts, so scores are reported against each axis separately
 rather than one being used to validate the other. The generator's label is also a
 document property (1,699 folders uniform, 13 mixed), so items from one document
@@ -110,10 +115,10 @@ under test, so a majority is not unanimity.
 
 | Track | n | Open | Closed | Change |
 |---|---:|---:|---:|---:|
-| uc2 spec threshold | 150 | 0.9667 | 0.1000 | −0.8667 |
-| track2 sft | 394 | 0.9500 | 0.1406 | −0.8094 |
-| uc1 safety QA | 157 | 0.9294 | 0.1529 | −0.7765 |
-| probe (trained) | 400 | 0.9281 | 0.1125 | −0.8156 |
+| uc2 rebar spec | 150 | 0.9667 | 0.1000 | −0.8667 |
+| sft | 394 | 0.9500 | 0.1406 | −0.8094 |
+| uc1 safety | 157 | 0.9294 | 0.1529 | −0.7765 |
+| probe | 400 | 0.9281 | 0.1125 | −0.8156 |
 | uc4 faithfulness | 160 | 0.9062 | 0.1375 | −0.7687 |
 | uc7 requirement | 128 | 0.7109 | 0.0234 | −0.6875 |
 | uc5 incident | 118 | 0.4572 | 0.0107 | −0.4465 |
@@ -125,11 +130,11 @@ confined to one answer type:
 | Track | Type | v0.4 | v0.5.2 | Change |
 |---|---|---:|---:|---:|
 | uc1 safety | nameset | 0.4726 | 0.6764 | **+0.2038** |
-| track2 sft | nameset | 0.5869 | 0.7330 | **+0.1461** |
+| sft | nameset | 0.5869 | 0.7330 | **+0.1461** |
 | uc5 incident | nameset | 0.4683 | 0.4572 | −0.0111 |
-| track2 sft | numeric | 0.9437 | 0.9500 | +0.0063 |
+| sft | numeric | 0.9437 | 0.9500 | +0.0063 |
 | uc1 safety | numeric | 0.9412 | 0.9294 | −0.0118 |
-| uc2 spec threshold | numeric | 0.9667 | 0.9667 | 0.0000 |
+| uc2 rebar spec | numeric | 0.9667 | 0.9667 | 0.0000 |
 | uc4 faithfulness | faithfulness | 0.9125 | 0.9062 | −0.0063 |
 
 The two large moves are the nameset match-mode correction: uc1 and track2 keyed
@@ -217,7 +222,7 @@ than scoring it. Run separately against qwen3-vl:30b:
 
 | Track | n | Score | Baseline |
 |---|---:|---:|---:|
-| uc3 cross-image | 39 | 0.590 `correct` | 0.385 majority class |
+| uc3 bim site | 39 | 0.590 `correct` | 0.385 majority class |
 | track3 mapping | 4 | 0.308 `key_f1` | — |
 | track3 nameset | 6 | 0.692 `f1` | — |
 
@@ -264,10 +269,10 @@ came from is not in the corpus at all**, so no retriever could return it.
 | Track | gold in corpus | recall@10 | recall given present |
 |---|---:|---:|---:|
 | uc4 faithfulness | 1.000 | 0.356 | 0.356 |
-| uc1 safety QA | 0.637 | 0.197 | 0.310 |
+| uc1 safety | 0.637 | 0.197 | 0.310 |
 | uc7 requirement | 0.570 | 0.258 | 0.452 |
 | uc5 incident | 0.186 | 0.068 | 0.364 |
-| uc2 spec threshold | 0.047 | 0.013 | 0.286 |
+| uc2 rebar spec | 0.047 | 0.013 | 0.286 |
 | **all** | **0.508** | 0.191 | **0.362** |
 
 uc2's raw recall of 0.013 cannot exceed 0.047. Conditioned on the chunk being
@@ -284,10 +289,10 @@ The scores follow coverage, not the track:
 | Track | gold in corpus | Closed | Retrieved | Open | Gap recovered |
 |---|---:|---:|---:|---:|---:|
 | uc4 faithfulness | 1.000 | 0.1375 | 0.3937 | 0.9062 | 33 % |
-| uc1 safety QA | 0.637 | 0.0828 | 0.2566 | 0.8134 | 24 % |
+| uc1 safety | 0.637 | 0.0828 | 0.2566 | 0.8134 | 24 % |
 | uc7 requirement | 0.570 | 0.0234 | 0.1562 | 0.7109 | 19 % |
 | uc5 incident | 0.186 | 0.0107 | 0.0105 | 0.4572 | 0 % |
-| uc2 spec threshold | 0.047 | 0.1000 | 0.0800 | 0.9667 | negative |
+| uc2 rebar spec | 0.047 | 0.1000 | 0.0800 | 0.9667 | negative |
 
 Where the answer is in the corpus, retrieval recovers a fifth to a third of the
 distance between closed and open book. Where it is not, retrieval adds nothing
@@ -386,6 +391,12 @@ amendment markers — and BIM and smart construction is effectively absent at 6
 DAPT rows.
 
 ### Training and evaluation weight different categories
+
+Worked example-1 drew this chart counting SFT instruction pairs alone, because
+SFT was the only keyed training format it had. This one counts the rows of
+every training format — DAPT chunks, SFT pairs, STaR, DPO and RLVR records —
+which is why the axis says rows where example-1 said pairs. The finding is the
+same in both.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="catdist-v052-dark.png">

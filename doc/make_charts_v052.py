@@ -87,10 +87,10 @@ def chart_split(t):
     plt.close(fig)
 
 # ---------- chart 2
-ROWS = [("uc1 safety QA", 23, 45, 89), ("uc2 spec threshold", 104, 5, 41),
+ROWS = [("uc1 safety", 23, 45, 89), ("uc2 rebar spec", 104, 5, 41),
         ("uc4 faithfulness", 25, 63, 72), ("uc5 incident", 13, 5, 100),
         ("uc6 verdict", 138, 328, 344), ("uc7 requirement", 54, 26, 48),
-        ("track2 sft", 62, 136, 196)]
+        ("sft", 62, 136, 196)]
 
 def chart_routing(t):
     pal = THEME[t]
@@ -126,10 +126,10 @@ print("ok")
 
 # ---------- chart 3: the passage test
 BOOKS = [
-    ("uc2 spec threshold", 0.9667, 0.1000),
-    ("track2 sft",         0.9500, 0.1406),
-    ("uc1 safety QA",      0.9294, 0.1529),
-    ("probe (trained)",    0.9281, 0.1125),
+    ("uc2 rebar spec", 0.9667, 0.1000),
+    ("sft",         0.9500, 0.1406),
+    ("uc1 safety",      0.9294, 0.1529),
+    ("probe",    0.9281, 0.1125),
     ("uc4 faithfulness",   0.9062, 0.1375),
     ("uc7 requirement",    0.7109, 0.0234),
     ("uc5 incident",       0.4572, 0.0107),
@@ -175,10 +175,10 @@ print("ok books")
 # ---------- chart 4: retrieval tracks corpus coverage
 RAG = [  # track, coverage, closed, rag, open
     ("uc4 faithfulness",   1.000, 0.1375, 0.3937, 0.9062),
-    ("uc1 safety QA",      0.637, 0.0828, 0.2566, 0.8134),
+    ("uc1 safety",      0.637, 0.0828, 0.2566, 0.8134),
     ("uc7 requirement",    0.570, 0.0234, 0.1562, 0.7109),
     ("uc5 incident",       0.186, 0.0107, 0.0105, 0.4572),
-    ("uc2 spec threshold", 0.047, 0.1000, 0.0800, 0.9667),
+    ("uc2 rebar spec", 0.047, 0.1000, 0.0800, 0.9667),
 ]
 
 def chart_rag(t):
