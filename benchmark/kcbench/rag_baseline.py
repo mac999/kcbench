@@ -16,7 +16,11 @@ item; the top-k are concatenated as the passage in place of the gold clause.
 Everything downstream — prompt shape, graders, tolerances — is identical to an
 open-book run, so the three numbers are directly comparable.
 
-Retrieval quality is reported alongside accuracy: `recall_at_k` is the share of
+Retrieval quality is reported alongside accuracy. `gold_in_corpus` comes first:
+the corpus is the held-out chunks and items are mined from both sides of the
+contamination line, so for some tracks most gold chunks are not in it and raw
+recall has a ceiling well below 1. `recall_given_present` is the retriever's
+actual hit rate on the items it could possibly serve. `recall_at_k` is the share of
 items whose gold chunk was actually retrieved. An accuracy drop with recall near
 1.0 means the model failed; a drop with low recall means the retriever did.
 """
@@ -131,7 +135,15 @@ def main() -> int:
         qvs = normalise_rows(embed(cfg, args.embed_model,
                                    [r.get(f"question_{args.lang}") or r.get("question_ko", "")
                                     for r in rows]))
-        per_item, hits = [], 0
+        # Recall has a ceiling below 1 whenever the item's source chunk is not
+        # in the corpus at all. The corpus is the held-out chunks; items are
+        # mined from both sides of the contamination line, so uc2 -- 69 % of it
+        # from documents that still train the model -- has 7 of 150 gold chunks
+        # present and a raw recall that cannot exceed 0.047. Reported as
+        # coverage and recall-given-present so a retriever miss is not confused
+        # with a corpus that never held the answer.
+        corpus_key_set = set(corpus_keys)
+        per_item, hits, reachable, hits_reachable = [], 0, 0, 0
         for i, (item, qv) in enumerate(zip(rows, qvs), 1):
             idx = top_k(qv, mat, args.top_k)
             passage = "\n\n".join(texts[j] for j in idx)
@@ -141,8 +153,11 @@ def main() -> int:
             # the generated file and row it came from.
             pv = item.get("provenance") or {}
             gold = (pv.get("dataset_file"), pv.get("row_index"))
+            present = gold[0] is not None and gold in corpus_key_set
+            reachable += int(present)
             if gold[0] is not None and gold in {corpus_keys[j] for j in idx}:
                 hits += 1
+                hits_reachable += int(present)
             q = item.get(f"question_{args.lang}") or item.get("question_ko", "")
             instr = item.get(f"instruction_{args.lang}") or item.get("instruction_ko", "")
             prompt = render(cfg, f"rag.{args.lang}",
@@ -172,6 +187,9 @@ def main() -> int:
         agg = _aggregate(per_item)
         result["tracks"][t] = {"items": len(per_item), "by_type": agg,
                                "recall_at_k": round(hits / max(len(rows), 1), 4),
+                               "gold_in_corpus": round(reachable / max(len(rows), 1), 4),
+                               "recall_given_present": (round(hits_reachable / reachable, 4)
+                                                        if reachable else None),
                                "items_digest": items_digest(rows), "detail": per_item}
 
     result["elapsed_sec"] = round(time.time() - started, 1)
@@ -183,7 +201,11 @@ def main() -> int:
     out = write_json(runs_dir / f"{tag}.json", result)
     LOG.info("wrote %s", out)
     for t, v in result["tracks"].items():
-        LOG.info("  %-10s recall@%d %.3f", track_label(t), args.top_k, v["recall_at_k"])
+        LOG.info("  %-10s recall@%d %.3f  (gold in corpus %.3f, "
+                 "recall given present %s)", track_label(t), args.top_k,
+                 v["recall_at_k"], v["gold_in_corpus"],
+                 "n/a" if v["recall_given_present"] is None
+                 else "%.3f" % v["recall_given_present"])
         for k, m in v["by_type"].items():
             LOG.info("     %-9s %s", k, {a: b for a, b in m.items() if a in ("n", "correct", "f1")})
     return 0
