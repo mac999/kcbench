@@ -43,6 +43,9 @@ answer key expects.](doc/webview2.png)
 
 - [Install](#install) — dependencies, and the inference server
 - [Use](#use) — the nineteen commands, and what each does
+- [Layout](#layout) — what each file in the repository does
+- [Metric reference](#metric-reference) — every number in a run file, defined and sourced
+- [Revision history](#revision-history) — major revisions and the measurements behind them
 - [Evaluation design](#evaluation-design--held-out-and-contaminated-probe-sets) — the held-out and probe sets, and why one is contaminated on purpose
 - [Track reference](#track-reference--item-counts-and-answer-types) — the nine item sets, their sizes and answer types
 - [Workflow](#workflow) — build, baseline, train, register, score, compare — in order
@@ -52,9 +55,6 @@ answer key expects.](doc/webview2.png)
 - [Retrieval ablation and item validity](#retrieval-ablation-and-item-validity) — where the detail lives
 - [System design implications](#system-design-implications) — what the findings imply for the system that motivated them
 - [Adapting it to another domain](#adapting-it-to-another-domain) — what to change when the corpus is not construction
-- [Layout](#layout) — what each file in the repository does
-- [Metric reference](#metric-reference) — every number in a run file, defined and sourced
-- [Revision history](#revision-history) — major revisions and the measurements behind them
 - [Limits](#limits) — what this benchmark cannot decide
 
 The three longest sections live in their own files so this one stays readable:
@@ -260,6 +260,78 @@ localhost, refuses paths outside the directories the config names, and runs one
 command at a time, because scoring loads a model and `ppl` loads a second copy
 locally: on a unified-memory box, two at once is what kills long runs.
 
+## Layout
+
+```
+benchmark/
+  cb.py                  the only entry point: build, eval, ppl, compare, ...
+  config.json            every tunable, overridden by command-line flags
+  run_resumable.sh       supervisor: retry, resume, stop when stuck
+  webview.bat / .sh      start the browser view under the venv KCBENCH_PY names
+  kcbench/
+    build_holdout.py     choose the documents to withhold
+    build_tracks.py      mine tracks 1-3 from the held-out documents
+    build_probe.py       mine the probe from the trained-on documents
+    build_usecases.py    build the use-case tracks from the config registry
+    build_verdict.py     mine the verdict track from threshold items
+    build_all.py         run the build stages in order
+    make_train_split.py  write the training split, holdout excluded
+    verify_provenance.py prove where each item came from and that nothing trains on it
+    evaluate.py          score a model over the generation tracks
+    perplexity.py        score the dapt track locally
+    compare.py           compare two runs, with a bootstrap significance test
+    calibration.py       expected calibration error: is its confidence justified
+    run_matrix.py        score several models and tabulate
+    triage_items.py      pick the items a human should look at
+    apply_review.py      fold human review decisions back into the set
+    export_dataset.py    package the built benchmark, with an lm-eval-harness config
+    rag_baseline.py      score with retrieved context instead of the gold clause
+    selfcheck.py         sampling-consistency hallucination signal, no answer key
+    webview.py           serve the browser view
+    webui/               the page it serves: index.html, app.js, style.css
+    common.py            config resolution, paths, shared helpers
+training/
+  dapt.py                stage 1, domain-adaptive pre-training
+  sft.py                 stage 2, supervised fine-tuning
+  merge.py               fold the adapter into the base weights
+ground_truth_v052/       the current answer key, and the default out_dir. Item
+                         sets and holdout are tracked; train/, runs/ and export/
+                         are what the modules build into it, kept local
+ground_truth/            the first answer key, kept so worked example-1 stays
+                         reproducible (-o ../ground_truth)
+train_data_v052/         the input side, downloaded from the Drive link in
+                         Use: data/ (source documents), train_data/ (synthetic
+                         training set), metadata/ -- the input-path defaults
+run_cli.bat / .sh        run any cb.py command from the root under KCBENCH_PY
+run_webview.bat / .sh    start the browser view the same way
+```
+
+`training/` is kept separate from `benchmark/` deliberately: an instrument that
+shares code with the thing it measures stops being one.
+
+## Metric reference
+
+Every metric this benchmark reports — what it is, how it is graded, and where
+the definition comes from — is in [doc/metrics.md](doc/metrics.md): answer
+types and grading rules, reliability checks, calibration and consistency,
+significance testing, and the two axes every score is read on.
+
+## Revision history
+
+Major revisions only, most recent first. Every change that moved a score is
+recorded with the measurement that justified it; the numbers quoted throughout
+this README come from the runs listed in the worked examples.
+
+| Rev | Date | What changed |
+|---|---|---|
+| v3.9 | 2026-09-28 | Corpus regenerated with generator v0.5.2 (document routing, DPO/STaR/RLVR formats) and everything re-scored — worked example-2. Verdict scoring decomposed into `correct` / `abstained` / `off_vocab`; uc6 shown non-discriminating and repaired as `uc6_verdict_v2` (+0.26 for an 8B, +0.09 for a 70B, both above the constant-answer baseline). Retrieval reports coverage beside recall. Image tracks guarded against text-only models. Judge panel capped at its preferred size. Corpus-specific rules (volatility, uc7 mining, judge pool) moved into `config.json`. |
+| v3.8 | 2026-09-26 | Grader registry; nameset match mode derived from the answer key (+0.20 uc1, +0.15 sft on the full sets — the largest measurement correction to date). Volatility classifier (`cb.py volatility`). Sentence grader under a 3-judge panel with same-family judges excluded (a qwen judge passed qwen answers +0.27 more often). uc7 requirement track mined from threshold items. |
+| v3.7 | 2026-09-13 | uc6 verdict track: 810 compliance judgements, balanced entail/contradict, structured-answer grading. |
+| v3.3–3.6 | 2026-08-20 ~ 25 | Four turns of the data-centric loop scored: SFT v1–v3 and a hard-negative abstention recipe (refuted). Thinking-mode control; nameset format-bias fix; per-track ECE and selfcheck baselines. |
+| v3.2 | 2026-08-18 | Code published. Resumable runs, abort on consecutive generation failures, `repeats` 3 → 1 after greedy decoding proved deterministic. |
+| v3 / v3.1 | 2026-08-16 | Use-case tracks (uc1–uc5) with baselines; item-set corrections (uc3 unknown labels dropped, uc1/uc5 enlarged). |
+| v2 | 2026-08-15 | First complete harness: content-digest holdout, contamination verification, open-book / closed-book split, Wilson intervals and paired significance tests, deliberately contaminated probe set. |
+
 ## Evaluation design — held-out and contaminated probe sets
 
 A benchmark carved out of the same corpus a model trained on answers only half
@@ -269,10 +341,10 @@ whether the answers were never in the training data to begin with.
 
 So kcbench builds two sets from one corpus:
 
-| Set | Drawn from | Answer present in training data | Question it answers |
-|---|---|---:|---|
-| holdout tracks | documents withheld from training | 25% | does it generalize to unseen text |
-| probe | documents the model trained on | 83% | did it acquire what was taught |
+| Set | Drawn from | Question it answers |
+|---|---|---|
+| holdout tracks | documents withheld from training | does it generalize to unseen text |
+| probe | documents the model trained on | did it acquire what was taught |
 
 The probe is deliberately contaminated — every item carries
 `split: "train"` and `contamination: "intentional"`, and probe scores must
@@ -285,9 +357,13 @@ from reading the two together:
 | probe up, holdout flat | memorized the corpus, did not generalize |
 | both flat | training did not take |
 
-Those percentages are measured, not assumed: `build_probe.py` checks each item's
-subject and answer against the training rows and reports the share that are
-jointly present.
+How contaminated each side really is is measured per build, not assumed:
+`build_probe.py` checks each item's subject and answer against the training
+rows and reports the share jointly present. On
+[worked example-1](#worked-example-1-korean-construction-corpus-basic)'s build
+that came out at 83% for the probe against 25% for the holdout tracks — the
+separation the design needs — and a rebuild on another corpus reports its own
+figures.
 
 ## Track reference — item counts and answer types
 
@@ -835,78 +911,6 @@ Prompts default to Korean because the reference corpus is Korean regulation and
 translating the terms changes the question. Every item carries an English
 prompt as well (`question_en`, and `answer_en` for numeric units), so
 `--lang en` scores the same answer key in English.
-
-## Layout
-
-```
-benchmark/
-  cb.py                  the only entry point: build, eval, ppl, compare, ...
-  config.json            every tunable, overridden by command-line flags
-  run_resumable.sh       supervisor: retry, resume, stop when stuck
-  webview.bat / .sh      start the browser view under the venv KCBENCH_PY names
-  kcbench/
-    build_holdout.py     choose the documents to withhold
-    build_tracks.py      mine tracks 1-3 from the held-out documents
-    build_probe.py       mine the probe from the trained-on documents
-    build_usecases.py    build the use-case tracks from the config registry
-    build_verdict.py     mine the verdict track from threshold items
-    build_all.py         run the build stages in order
-    make_train_split.py  write the training split, holdout excluded
-    verify_provenance.py prove where each item came from and that nothing trains on it
-    evaluate.py          score a model over the generation tracks
-    perplexity.py        score the dapt track locally
-    compare.py           compare two runs, with a bootstrap significance test
-    calibration.py       expected calibration error: is its confidence justified
-    run_matrix.py        score several models and tabulate
-    triage_items.py      pick the items a human should look at
-    apply_review.py      fold human review decisions back into the set
-    export_dataset.py    package the built benchmark, with an lm-eval-harness config
-    rag_baseline.py      score with retrieved context instead of the gold clause
-    selfcheck.py         sampling-consistency hallucination signal, no answer key
-    webview.py           serve the browser view
-    webui/               the page it serves: index.html, app.js, style.css
-    common.py            config resolution, paths, shared helpers
-training/
-  dapt.py                stage 1, domain-adaptive pre-training
-  sft.py                 stage 2, supervised fine-tuning
-  merge.py               fold the adapter into the base weights
-ground_truth_v052/       the current answer key, and the default out_dir. Item
-                         sets and holdout are tracked; train/, runs/ and export/
-                         are what the modules build into it, kept local
-ground_truth/            the first answer key, kept so worked example-1 stays
-                         reproducible (-o ../ground_truth)
-train_data_v052/         the input side, downloaded from the Drive link in
-                         Use: data/ (source documents), train_data/ (synthetic
-                         training set), metadata/ -- the input-path defaults
-run_cli.bat / .sh        run any cb.py command from the root under KCBENCH_PY
-run_webview.bat / .sh    start the browser view the same way
-```
-
-`training/` is kept separate from `benchmark/` deliberately: an instrument that
-shares code with the thing it measures stops being one.
-
-## Metric reference
-
-Every metric this benchmark reports — what it is, how it is graded, and where
-the definition comes from — is in [doc/metrics.md](doc/metrics.md): answer
-types and grading rules, reliability checks, calibration and consistency,
-significance testing, and the two axes every score is read on.
-
-## Revision history
-
-Major revisions only, most recent first. Every change that moved a score is
-recorded with the measurement that justified it; the numbers quoted throughout
-this README come from the runs listed in the worked examples.
-
-| Rev | Date | What changed |
-|---|---|---|
-| v3.9 | 2026-09-28 | Corpus regenerated with generator v0.5.2 (document routing, DPO/STaR/RLVR formats) and everything re-scored — worked example-2. Verdict scoring decomposed into `correct` / `abstained` / `off_vocab`; uc6 shown non-discriminating and repaired as `uc6_verdict_v2` (+0.26 for an 8B, +0.09 for a 70B, both above the constant-answer baseline). Retrieval reports coverage beside recall. Image tracks guarded against text-only models. Judge panel capped at its preferred size. Corpus-specific rules (volatility, uc7 mining, judge pool) moved into `config.json`. |
-| v3.8 | 2026-09-26 | Grader registry; nameset match mode derived from the answer key (+0.20 uc1, +0.15 sft on the full sets — the largest measurement correction to date). Volatility classifier (`cb.py volatility`). Sentence grader under a 3-judge panel with same-family judges excluded (a qwen judge passed qwen answers +0.27 more often). uc7 requirement track mined from threshold items. |
-| v3.7 | 2026-09-13 | uc6 verdict track: 810 compliance judgements, balanced entail/contradict, structured-answer grading. |
-| v3.3–3.6 | 2026-08-20 ~ 25 | Four turns of the data-centric loop scored: SFT v1–v3 and a hard-negative abstention recipe (refuted). Thinking-mode control; nameset format-bias fix; per-track ECE and selfcheck baselines. |
-| v3.2 | 2026-08-18 | Code published. Resumable runs, abort on consecutive generation failures, `repeats` 3 → 1 after greedy decoding proved deterministic. |
-| v3 / v3.1 | 2026-08-16 | Use-case tracks (uc1–uc5) with baselines; item-set corrections (uc3 unknown labels dropped, uc1/uc5 enlarged). |
-| v2 | 2026-08-15 | First complete harness: content-digest holdout, contamination verification, open-book / closed-book split, Wilson intervals and paired significance tests, deliberately contaminated probe set. |
 
 ## Limits
 
