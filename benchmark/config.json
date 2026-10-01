@@ -1,8 +1,8 @@
 {
   "_comment": "Benchmark settings. Any value here is overridden by the matching command-line flag. Paths may be absolute or relative to the benchmark folder. Copy this file per dataset variant and pass it with --config.",
-  "corpus_dir": "../train_dataset_v052/data",
-  "generated_dir": "../train_dataset_v052/ai_ready",
-  "metadata_dir": "../train_dataset_v052/metadata",
+  "corpus_dir": "../train_data_v052/data",
+  "generated_dir": "../train_data_v052/train_data",
+  "metadata_dir": "../train_data_v052/metadata",
   "pipeline_dir": "../gen_aec_syn_data",
   "out_dir": "../ground_truth_v052",
   "holdout": {
