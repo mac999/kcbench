@@ -820,7 +820,6 @@ benchmark/
   config.json            every tunable, overridden by command-line flags
   run_resumable.sh       supervisor: retry, resume, stop when stuck
   webview.bat / .sh      start the browser view under the venv KCBENCH_PY names
-  data/                  built artefacts; evaluation sets are tracked, the rest is rebuilt
   kcbench/
     build_holdout.py     choose the documents to withhold
     build_tracks.py      mine tracks 1-3 from the held-out documents
@@ -847,6 +846,16 @@ training/
   dapt.py                stage 1, domain-adaptive pre-training
   sft.py                 stage 2, supervised fine-tuning
   merge.py               fold the adapter into the base weights
+ground_truth_v052/       the current answer key, and the default out_dir. Item
+                         sets and holdout are tracked; train/, runs/ and export/
+                         are what the modules build into it, kept local
+ground_truth/            the first answer key, kept so worked example-1 stays
+                         reproducible (-o ../ground_truth)
+train_dataset_v052/      the input side, local only: data/ holds the source
+                         documents, ai_ready/ the generated training data the
+                         builders read (corpus_dir and generated_dir defaults)
+run_cli.bat / .sh        run any cb.py command from the root under KCBENCH_PY
+run_webview.bat / .sh    start the browser view the same way
 ```
 
 `training/` is kept separate from `benchmark/` deliberately: an instrument that

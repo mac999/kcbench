@@ -120,9 +120,9 @@ def track_label(track: str) -> str:
 DEFAULTS: Dict[str, Any] = {
     # Where the pipeline reads from. All four accept absolute paths, or paths
     # relative to this directory.
-    "corpus_dir": "../data",              # source PDFs and IFC models
-    "generated_dir": "../ai_ready_full",  # AI-ready training data being evaluated
-    "metadata_dir": "../metadata",        # collector catalogues
+    "corpus_dir": "../train_dataset_v052/data",       # source PDFs and IFC models
+    "generated_dir": "../train_dataset_v052/ai_ready", # AI-ready training data being evaluated
+    "metadata_dir": "../train_dataset_v052/metadata",  # collector catalogues
     "pipeline_dir": "../gen_aec_syn_data",  # supplies the chunker, so chunking matches
     "out_dir": "../ground_truth_v052",               # benchmark artefacts
     "holdout": {

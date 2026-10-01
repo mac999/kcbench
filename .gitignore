@@ -6,6 +6,10 @@
 !/LICENSE
 !/README.md
 !/solution.md
+!/run_cli.bat
+!/run_cli.sh
+!/run_webview.bat
+!/run_webview.sh
 !/doc/
 !/benchmark/
 !/training/
