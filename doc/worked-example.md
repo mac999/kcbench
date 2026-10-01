@@ -39,7 +39,7 @@ in all, collected from public sources. It was turned into AI-ready training
 data (chunked text, instruction pairs, VLM captions) with
 [gen_aec_syn_data](https://github.com/mac999/gen_aec_syn_data), a synthetic-data
 pipeline by the same author; the processed dataset is available on
-[Google Drive](https://drive.google.com/drive/folders/1Cz7S-QhXRwQgsajDDyjBAC8vK30jQQTN?usp=drive_link).
+[Google Drive](https://drive.google.com/drive/folders/1Cz7S-QhXRwQgsajDDyjBAC8vK30jQQTN?usp=sharing).
 kcbench then split that dataset — the held-out documents became the evaluation
 tracks, the rest became `data/train/`, and every number below rests on that
 split.
