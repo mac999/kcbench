@@ -8,6 +8,7 @@ sentence. It has one now.
 
     python cb.py requirement                    # from uc2, uc1 and track2_sft
     python cb.py requirement --sources uc2_spec_threshold.jsonl --out req.jsonl
+    python cb.py requirement --usecase uc7_requirement_v2   # the repaired track
 
 Nothing here is written by a model. The answer is the sentence in the clause
 that states the requirement, lifted verbatim, located by the figure and
@@ -69,6 +70,13 @@ _ASKS = re.compile(r"(은|는|이|가)?\s*(몇|얼마).*$")
 _LEAD = re.compile(r"^\s*(?:\(\s*[0-9가-힣]+(?:[-.][0-9]+)*\s*\)|"
                    r"[0-9]+(?:[-.][0-9]+)*\s*[.)]|[가-힣]\s*[.)])\s*")
 
+# The same numbering spliced into the middle of a subject -- "수직높이임 (2)
+# 비탈면높" -- means the question line was damaged, not that the clause talks
+# about such a thing.
+_MARK = re.compile(r"\(\s*[0-9가-힣]+(?:[-.][0-9]+)*\s*\)|\s\d+\.\d+(?:\s|$)")
+
+_DIGIT = re.compile(r"\d")
+
 MINING_DEFAULTS: Dict[str, Any] = {
     "sentence_end": _END.pattern,
     "requirement_ending": _REQUIRES.pattern,
@@ -81,12 +89,24 @@ MINING_DEFAULTS: Dict[str, Any] = {
     "min_subject_chars": 2,
     "max_subject_chars": 60,
     "sources": list(DEFAULT_SOURCES),
+    # The three admission checks added after the v052 open-book run measured
+    # the key set's error floor: of 37 failures at grounded 0.711, eleven keyed
+    # a subject the clause states more than one requirement about (or a
+    # damaged one), and six keyed a sentence carrying a second obligation the
+    # question never asked. The original uc7_requirement entry in config.json
+    # pins all three off so a rebuild reproduces the published track; the
+    # repair lives in uc7_requirement_v2.
+    "subject_checked": True,
+    "rival_any_sentence": True,
+    "split_coordination": True,
+    "coordination_pattern": r"(?<=[고며]),\s*",
 }
 
 
-def mining(cfg: Dict[str, Any] | None = None) -> Dict[str, Any]:
+def mining(cfg: Dict[str, Any] | None = None,
+           usecase: str = "uc7_requirement") -> Dict[str, Any]:
     """The mining parameters, with any config override compiled in."""
-    over = (((cfg or {}).get("usecases") or {}).get("uc7_requirement") or {})
+    over = (((cfg or {}).get("usecases") or {}).get(usecase) or {})
     out: Dict[str, Any] = {}
     for k, default in MINING_DEFAULTS.items():
         v = over.get(k, default)
@@ -95,8 +115,8 @@ def mining(cfg: Dict[str, Any] | None = None) -> Dict[str, Any]:
             try:
                 out[k] = re.compile(v)
             except re.error as exc:
-                LOG.error("uc7_requirement.%s is not a valid regex (%s); "
-                          "using the default", k, exc)
+                LOG.error("%s.%s is not a valid regex (%s); "
+                          "using the default", usecase, k, exc)
                 out[k] = re.compile(default)
         else:
             out[k] = v
@@ -195,6 +215,52 @@ def find_requirement(item: Dict[str, Any], m: Dict[str, Any] | None = None):
     return admitted[0], "ok"
 
 
+def _single_obligation(sentence: str, start: int, end: int, subject: str,
+                       src: Dict[str, Any], m: Dict[str, Any]):
+    """
+    Cut a coordinated sentence down to the one obligation the item asks about.
+
+    "평상시에도 항상 점등되어야 하고, 비상 상황 발생 시 60분 이상 계속
+    점등되어야 한다" states two requirements; the question asks about one, and
+    a key carrying both fails `covered` on any answer that gives only the
+    asked one — measured at six of 37 open-book failures. The cut is a
+    verbatim sub-span, located by the figure match that admitted the sentence,
+    so the key stays findable in the clause. It is only made when the subject
+    sits in the keyed segment and in no other figure-bearing one — otherwise
+    the question does not say which obligation it means, and the sentence is
+    refused rather than guessed at.
+
+    Returns (sentence, start, end, truncated) or (None, None, None, reason).
+    """
+    parts, last = [], 0
+    for mo in m["coordination_pattern"].finditer(sentence):
+        parts.append((sentence[last:mo.start()], last))
+        last = mo.end()
+    parts.append((sentence[last:], last))
+    if sum(1 for p, _ in parts if _DIGIT.search(p)) < 2:
+        return sentence, start, end, False      # one obligation, nothing to cut
+
+    value, unit = src.get("answer_value"), src.get("answer_unit")
+    num = str(int(value)) if float(value) == int(value) else str(value)
+    key = _squash(num + str(unit))
+    holders = [(p, off) for p, off in parts if key in _squash(p)]
+    if len(holders) != 1:
+        return None, None, None, "coordinated obligations"
+
+    seg, off = holders[0]
+    sj = _squash(subject)
+    if sj not in _squash(seg) or any(sj in _squash(p) and _DIGIT.search(p)
+                                     for p, o in parts if o != off):
+        return None, None, None, "coordinated obligations"
+
+    kept = seg.strip()
+    if len(kept) < m["min_chars"]:
+        return None, None, None, "truncated too short"
+    lead = len(seg) - len(seg.lstrip())
+    a = start + off + lead
+    return kept, a, a + len(kept), True
+
+
 def _split_of(src: Dict[str, Any]) -> Optional[str]:
     """
     Which side of the contamination line the item sits on.
@@ -210,8 +276,9 @@ def _split_of(src: Dict[str, Any]) -> Optional[str]:
 
 
 def build(rows: List[Dict[str, Any]],
-          cfg: Dict[str, Any] | None = None) -> tuple[List[dict], collections.Counter]:
-    m = mining(cfg)
+          cfg: Dict[str, Any] | None = None,
+          usecase: str = "uc7_requirement") -> tuple[List[dict], collections.Counter]:
+    m = mining(cfg, usecase)
     out, why = [], collections.Counter()
     seen = set()
     for src in rows:
@@ -230,33 +297,73 @@ def build(rows: List[Dict[str, Any]],
         if not subject:
             why["no subject"] += 1
             continue
-        # The question names a document and a subject. If another admissible
-        # sentence in the same passage also states a requirement about that
-        # subject, the question has two right answers and the key only records
-        # one — measured at 6 of 134 before this check.
-        rivals = [t[0] for t in sentences(src.get("context") or "", m)
-                  if rejection(t[0], m) is None
-                  and _squash(t[0]) != _squash(sentence)
+        ctx = src.get("context") or ""
+        if m["subject_checked"]:
+            # A list marker spliced into the subject means the question line
+            # was damaged in extraction, and a subject the clause never states
+            # cannot anchor the rival scan below. Either way the item has no
+            # single checkable answer.
+            if _MARK.search(subject):
+                why["subject mangled"] += 1
+                continue
+            if _squash(subject) not in _squash(ctx):
+                why["subject not in clause"] += 1
+                continue
+        # The question names a document and a subject. If another sentence in
+        # the same passage also states a requirement about that subject, the
+        # question has two right answers and the key only records one. A rival
+        # that fails admission — too long, noisy — is still a true alternative
+        # answer to a model reading the clause, so by default anything shaped
+        # like a requirement or carrying a figure counts; the pinned v1
+        # behaviour counted admissible sentences only (6 of 134 at the time).
+        others = [t[0] for t in sentences(ctx, m)
+                  if _squash(t[0]) != _squash(sentence)
                   and _squash(subject) in _squash(t[0])]
+        if m["rival_any_sentence"]:
+            rivals = [s for s in others
+                      if m["requirement_ending"].search(s) or _DIGIT.search(s)]
+        else:
+            rivals = [s for s in others if rejection(s, m) is None]
         if rivals:
             why["subject not unique"] += 1
             continue
         seen.add(_squash(sentence))
 
+        truncated = False
+        if m["split_coordination"]:
+            sentence, start, end, cut = _single_obligation(
+                sentence, start, end, subject, src, m)
+            if sentence is None:
+                why[cut] += 1
+                continue
+            truncated = bool(cut)
+
         doc, clause = src.get("doc"), src.get("clause")
         where = f"「{doc}」" + (f" {clause}" if clause else "") if doc else "해당 기준"
-        ctx = src.get("context")
         span = [start, end]
+
+        # A truncated key sits inside a sentence that also states obligations
+        # the question never asked. The default instruction says to reproduce
+        # the clause's sentence, which would make the faithful answer fail
+        # `supported` against the shorter key — so these items ask for the one
+        # asked requirement instead.
+        if truncated:
+            i_ko = "조문에 적힌 대로, 질문이 묻는 요건 한 가지만 쓰고 다른 설명은 쓰지 마시오."
+            i_en = ("Only the one requirement the question asks about, "
+                    "as the clause words it. Nothing else.")
+        else:
+            i_ko = "조문에 적힌 대로 한 문장만 쓰고 다른 설명은 쓰지 마시오."
+            i_en = "One sentence, as the clause words it. Nothing else."
 
         out.append({
             "benchmark": src.get("benchmark", "kcbench"),
             "benchmark_version": src.get("benchmark_version"),
             "schema": src.get("schema"),
             "track": "usecase",
-            "usecase": "uc7_requirement",
+            "usecase": usecase,
             "eval_type": "sentence",
             "cognitive_level": "application",
-            "id": item_id("uc7_requirement", doc, clause, sentence),
+            "id": item_id(usecase, doc, clause, sentence),
             "doc": doc,
             "clause": clause,
             "category": src.get("category"),
@@ -267,8 +374,8 @@ def build(rows: List[Dict[str, Any]],
                             f"하여야 하는가?"),
             "question_en": (f"According to {where}, what is required regarding "
                             f"{subject}?"),
-            "instruction_ko": "조문에 적힌 대로 한 문장만 쓰고 다른 설명은 쓰지 마시오.",
-            "instruction_en": "One sentence, as the clause words it. Nothing else.",
+            "instruction_ko": i_ko,
+            "instruction_en": i_en,
             "answer": sentence,
             "answer_ko": sentence,
             "answer_lang": "ko",
@@ -295,10 +402,14 @@ def main(argv=None) -> int:
         description="mine a requirement-sentence track from threshold items",
         formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     add_common_args(ap)
+    ap.add_argument("--usecase", default="uc7_requirement",
+                    help="which usecases.<name> entry supplies the mining "
+                         "parameters and names the items")
     ap.add_argument("--sources", default=None,
                     help="comma-separated item files to derive from "
-                         "(default: usecases.uc7_requirement.sources)")
-    ap.add_argument("--out", default="uc7_requirement.jsonl")
+                         "(default: usecases.<usecase>.sources)")
+    ap.add_argument("--out", default=None,
+                    help="output file (default: the usecase's track_file)")
     ap.add_argument("--dry-run", action="store_true",
                     help="report what would be mined and write nothing")
     args = ap.parse_args(argv)
@@ -308,7 +419,7 @@ def main(argv=None) -> int:
     data = Path(cfg["out_dir"])
     rows: List[dict] = []
     names = ([x.strip() for x in args.sources.split(",") if x.strip()]
-             if args.sources else list(mining(cfg)["sources"]))
+             if args.sources else list(mining(cfg, args.usecase)["sources"]))
     for name in names:
         p = data / name
         if not p.is_file():
@@ -319,7 +430,7 @@ def main(argv=None) -> int:
         LOG.error("no source items")
         return 1
 
-    items, why = build(rows, cfg)
+    items, why = build(rows, cfg, args.usecase)
     print(f"from {len(rows)} source item(s):")
     for reason, n in why.most_common():
         print(f"  {reason:24s} {n:5d}")
@@ -331,8 +442,10 @@ def main(argv=None) -> int:
 
     if args.dry_run:
         return 0
-    write_jsonl(data / args.out, items)
-    LOG.info("wrote %s", data / args.out)
+    out_name = args.out or ((cfg.get("usecases") or {}).get(args.usecase)
+                            or {}).get("track_file", f"{args.usecase}.jsonl")
+    write_jsonl(data / out_name, items)
+    LOG.info("wrote %s", data / out_name)
     return 0
 
 

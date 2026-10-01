@@ -553,6 +553,7 @@ corpus where this one mines 394).
 | `uc6_verdict` | 810 | verdict 810 | compliance judgement against a stated threshold |
 | `uc6_verdict_v2` | 810 | verdict 810 | the same judgement, rebuilt after uc6 scored non-discriminating |
 | `uc7_requirement` | 128 | sentence 128 | state the requirement a clause imposes, graded by a judge panel |
+| `uc7_requirement_v2` | 116 | sentence 116 | the same task, remined after the key set measured as the score's ceiling |
 
 `--tracks uc` runs every use-case track. Use-case tracks are registered in
 `config.json`, so adding one takes a config entry rather than a code change.

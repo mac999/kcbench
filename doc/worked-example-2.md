@@ -248,6 +248,19 @@ failure a keyword or embedding score cannot see.
 Judge agreement rises from 0.918 to 0.974: judges converge more readily when an
 answer is clearly wrong.
 
+Decomposing the 37 open-book failures afterwards showed the key set, not the
+model, setting most of the ceiling: eleven items keyed a subject the clause
+states more than one requirement about (the model gave the clause's other true
+answer), six keyed a sentence carrying a second obligation the question never
+asked (a correct answer to the asked one fails `covered`), and three failed
+only the figure conjunct on a number belonging to a neighbouring
+sub-requirement. The remined track is `uc7_requirement_v2` — 116 items after
+the stricter admission — and `grounded` is now `covered` ∧ `supported` with
+`figure` reported beside it, so the table above, scored under the old
+three-way conjunction, reads stricter than a rerun will. The ~18 genuinely
+model-side failures are answer-form errors, dropped subjects mostly, which is
+the open-book handling SFT already moved (0.875 → 0.988 on uc4).
+
 ## Domain perplexity is unchanged
 
 `cb.py ppl` over the held-out chunks with Qwen/Qwen3-8B gives **7.5677**
