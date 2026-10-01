@@ -560,6 +560,14 @@ def make_sentence_grader(cfg, panel: List[str], embed_model: str):
         # is the one thing worth being certain about, and certainty is cheap
         # here: the key records the value, so the figure is compared rather
         # than asked about. The panel keeps the part only it can do, the prose.
+        #
+        # `figure` travels beside `grounded` rather than inside it. Folded in
+        # as a conjunct it charged answers the panel had passed whenever the
+        # keyed figure belonged to a neighbouring sub-requirement — 3 of 128
+        # on the v052 open-book run — which is a defect of the key, not of the
+        # answer. A run scored before this change carries the stricter
+        # conjunction, so compare grounded across that boundary through the
+        # per-axis columns, which mean the same thing on both sides.
         figure = None
         want = item.get("answer_value")
         if want is not None:
@@ -574,8 +582,6 @@ def make_sentence_grader(cfg, panel: List[str], embed_model: str):
                "n_judges": float(cov["n_judges"])}
         if figure is not None:
             out["figure"] = figure
-            # grounded now means the prose is right and the number is right
-            out["grounded"] = float(out["grounded"] > 0 and figure > 0)
         return out
 
     return grade

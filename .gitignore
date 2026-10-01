@@ -60,6 +60,7 @@ benchmark/config.json.bak
 !/ground_truth_v052/uc6_verdict.jsonl
 !/ground_truth_v052/uc6_verdict_v2.jsonl
 !/ground_truth_v052/uc7_requirement.jsonl
+!/ground_truth_v052/uc7_requirement_v2.jsonl
 
 # training: scripts only. Checkpoints, adapters and logs stay local.
 training/out/

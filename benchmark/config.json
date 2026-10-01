@@ -151,7 +151,11 @@
         "uc2_spec_threshold.jsonl",
         "uc1_safety_qa.jsonl",
         "track2_sft.jsonl"
-      ]
+      ],
+      "_comment_schema": "Pinned to the admission rules the published scores were made under, so a rebuild reproduces this track rather than silently becoming the repaired one. The repair lives in uc7_requirement_v2.",
+      "subject_checked": false,
+      "rival_any_sentence": false,
+      "split_coordination": false
     },
     "uc6_verdict_v2": {
       "enabled": true,
@@ -169,6 +173,12 @@
         "contradict"
       ],
       "evidence_scoring": "auto"
+    },
+    "uc7_requirement_v2": {
+      "enabled": true,
+      "track_file": "uc7_requirement_v2.jsonl",
+      "comment": "uc7 remined after the v052 open-book run measured the key set as the ceiling: of 37 failures at grounded 0.711, eleven keyed a subject the clause states more than one requirement about or a subject damaged in extraction, and six keyed a sentence carrying a second obligation the question never asked. This track checks the subject against the clause, counts inadmissible rivals too, and cuts a coordinated sentence down to the asked obligation when the subject identifies it (the item's instruction then asks for that one requirement). Kept beside uc7_requirement rather than replacing it so the effect of the repair is measurable. Build with: python cb.py requirement --usecase uc7_requirement_v2. Graded with the sentence type; read it open book.",
+      "builder": "requirement_from_thresholds"
     }
   },
   "eval": {
