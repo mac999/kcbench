@@ -223,7 +223,7 @@ those rows as well.
 ```bash
 python build_all.py -i ../ai_ready_full   # holdout, tracks, split, verify, export
 python evaluate.py --model <base> --tag base
-# fine-tune on data/train/, never on the source dataset directly
+# fine-tune on ground_truth/train/, never on the source dataset directly
 python evaluate.py --model <tuned> --tag tuned
 python compare.py --base base --after tuned --markdown report.md
 ```
@@ -249,7 +249,7 @@ sets as sets; use `evaluate.py` for the reported number.
 
 ## Do not / 금지
 
-Do not train on the items or on the held-out documents; use `data/train/`.
+Do not train on the items or on the held-out documents; use `ground_truth/train/`.
 Do not change the holdout seed once a base checkpoint has been scored — a
 different seed reserves different documents, and two runs on different items are
 not comparable.

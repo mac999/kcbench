@@ -98,7 +98,7 @@ costs one measurement; diagnosing it after stage 2 costs both runs.
 
 ## Input
 
-Both scripts read from `../benchmark/data/train/`, which
+Both scripts read from `../benchmark/ground_truth/train/`, which
 `benchmark/make_train_split.py` writes. **Never train from `ai_ready_full/`
 directly.** That directory contains generated output for the benchmark documents
 too, and training on it puts the evaluation text in front of the model, after
@@ -201,7 +201,7 @@ rather than a hardware one.** Serialise scoring and training, add
 | Flag | Default | What it changes |
 |---|---|---|
 | `-m, --model` | `Qwen/Qwen3-8B` | HF id or a local checkpoint directory |
-| `-d, --data` | `../benchmark/data/train/train_dapt.jsonl` | input file |
+| `-d, --data` | `../benchmark/ground_truth/train/train_dapt.jsonl` | input file |
 | `-o, --out` | `out/qwen3-8b-dapt` | where adapters and logs are written |
 | `--epochs` | `1.0` | fractional values are allowed and stop mid-epoch |
 | `--batch` | `4` | sequences per forward pass |

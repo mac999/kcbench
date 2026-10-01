@@ -322,7 +322,7 @@ The closed/open gap here tells you whether the corpus is worth training on at
 all. If the model already answers closed-book, there is nothing to teach it; if
 it cannot answer open-book, the items are broken rather than hard.
 
-**3. Train, on `data/train/` and nothing else.** On a unified-memory machine,
+**3. Train, on `ground_truth/train/` and nothing else.** On a unified-memory machine,
 train with nothing else on the box — a concurrent `cb.py ppl` loads a second
 full copy of the model and a concurrent `cb.py eval` keeps Ollama resident, and
 the three together have been enough to have the kernel kill the training run.
@@ -772,7 +772,7 @@ by the matching command-line flag. The parts worth knowing:
   relative to **`generated_dir`**, not `corpus_dir`: the renders and site photos
   are produced alongside the chunked text, so a run whose `generated_dir` does
   not hold them scores those tracks as unanswerable rather than failing loudly.
-  `benchmark/data/uc3_cross_image.jsonl` ships with the repository; the images it
+  `benchmark/ground_truth/uc3_cross_image.jsonl` ships with the repository; the images it
   names do not, for the same licensing reason the `dapt` chunks are withheld.
 - `holdout` — what fraction of chunks to withhold, per-document caps, and the
   seed. The seed is what makes a split reproducible.

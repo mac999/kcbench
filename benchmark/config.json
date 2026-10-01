@@ -4,7 +4,7 @@
   "generated_dir": "../ai_ready_full",
   "metadata_dir": "../metadata",
   "pipeline_dir": "../gen_aec_syn_data",
-  "out_dir": "data",
+  "out_dir": "ground_truth",
   "holdout": {
     "_comment": "Document-level split. Changing the seed reserves different documents and invalidates comparison against earlier runs. chunk_fraction trades benchmark size against training data: 0.20 yields ~395 items and withholds 16.3% of chunks.",
     "chunk_fraction": 0.2,
