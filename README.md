@@ -104,6 +104,17 @@ or set `out_dir` in a copy of `config.json`. Both ship as evaluation sets only
 carry source text and stay local; rebuild them from the corpus with `cb.py
 build` and `split` as the [Workflow](#workflow) describes before training.
 
+The dataset behind them is on
+[Google Drive](https://drive.google.com/drive/folders/1Cz7S-QhXRwQgsajDDyjBAC8vK30jQQTN?usp=sharing).
+Unpack it so the source documents sit at `train_dataset_v052/data/` and the
+generated training data at `train_dataset_v052/ai_ready/` -- the `corpus_dir`
+and `generated_dir` defaults already point there. The item sets alone score any
+model closed or open book; the download additionally unlocks `ppl` and `rag`
+(both read the held-out chunks), the image tracks (`vlm`, `uc3_bim_site`),
+`verify`, and the full rebuild -- `cb.py build` and `split` regenerate
+`track1_dapt.jsonl` and the training split deterministically from the published
+`holdout.json`, which is what training reads.
+
 | Command | What it does |
 |---|---|
 | `build` | run every build stage in order |
