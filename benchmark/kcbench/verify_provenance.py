@@ -3,7 +3,7 @@
 Prove, per item, where it came from and that nothing trains on it.
 
     python verify_provenance.py
-    python verify_provenance.py --train-dir data/train --strict
+    python verify_provenance.py --train-dir ground_truth/train --strict
     python verify_provenance.py -i /data/ai_ready_v3 -o /tmp/bench
 """
 from __future__ import annotations

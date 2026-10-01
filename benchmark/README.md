@@ -47,20 +47,20 @@ cb.py holdout      data/holdout.json              reserve the evaluation documen
 cb.py tracks       data/track{1,2,3}*.jsonl       mine the dapt, sft and vlm items
 cb.py probe        data/probe_trained.jsonl       mine the training-side probe set
 cb.py usecases     data/uc*.jsonl                 use-case tracks from the config registry
-cb.py split        data/train/                    training split, holdout excluded
+cb.py split        ground_truth/train/                    training split, holdout excluded
 cb.py verify       data/provenance.jsonl          provenance and contamination checks
-cb.py export       data/export/                   manifest, dataset card, harness tasks
+cb.py export       ground_truth/export/                   manifest, dataset card, harness tasks
 ```
 
 Score and compare:
 
 ```
-cb.py eval         data/runs/<tag>.json           score tracks sft, vlm and the use cases
-cb.py ppl          data/runs/<tag>.json           track dapt perplexity
+cb.py eval         ground_truth/runs/<tag>.json           score tracks sft, vlm and the use cases
+cb.py ppl          ground_truth/runs/<tag>.json           track dapt perplexity
 cb.py matrix       data/matrix.{json,md}          score several models at once
-cb.py compare      data/runs/compare_*.json       before/after, with a significance test
-cb.py ece          data/runs/<tag>.json           calibration error
-cb.py selfcheck    data/runs/<tag>.json           consistency, without an answer key
+cb.py compare      ground_truth/runs/compare_*.json       before/after, with a significance test
+cb.py ece          ground_truth/runs/<tag>.json           calibration error
+cb.py selfcheck    ground_truth/runs/<tag>.json           consistency, without an answer key
 ```
 
 Review (a person judges; the tooling only selects and applies):
@@ -80,7 +80,7 @@ python cb.py build -i ../ai_ready_full --strict
 python cb.py ppl  -m Qwen/Qwen3-8B --tag base-ppl
 python cb.py eval -m qwen3:8b --tag base --closed-book --tracks sft
 
-# 3. Fine-tune on data/train/, never on the source dataset, then score again
+# 3. Fine-tune on ground_truth/train/, never on the source dataset, then score again
 python cb.py ppl  -m ./out/qwen3-8b-dapt --tag ft-ppl
 python cb.py eval -m qwen3-ft:v1 --tag ft --closed-book --tracks sft
 
@@ -95,7 +95,7 @@ supervisor that retries and resumes:
 ./run_resumable.sh qwen3-ft:v1 ft-probe:probe ft-t2:2
 ```
 
-Every scored item is journalled to `data/runs/.ckpt/` as it completes, so a run
+Every scored item is journalled to `ground_truth/runs/.ckpt/` as it completes, so a run
 that dies picks up where it stopped rather than starting over. The journal is
 deleted once the track writes its score.
 
@@ -488,7 +488,7 @@ chunks in the training data** under a sibling's name. `cb.py split` drops those
 rows too and reports them separately.
 
 Run `python cb.py split --check` before any training run. Train from
-`data/train/`, never from the source dataset directly. `cb.py holdout` also
+`ground_truth/train/`, never from the source dataset directly. `cb.py holdout` also
 mirrors the reserved list to `BENCHMARK_HOLDOUT.json` at the project root, so a
 corpus regeneration can skip those files.
 
@@ -532,7 +532,7 @@ not have to be redone every time the corpus grows.
 
 ## Packaging
 
-`cb.py export` writes `data/export/`:
+`cb.py export` writes `ground_truth/export/`:
 
 - `manifest.json` — sha256 and line count per artefact, item counts per track and
   per category, the config the build used, and the contamination summary. Two
@@ -618,11 +618,11 @@ the chain of thought lands in `response` and the answer never arrives.
 
 ## Output
 
-`cb.py eval` writes `data/runs/<tag>.json` with per-item scores, per-type
+`cb.py eval` writes `ground_truth/runs/<tag>.json` with per-item scores, per-type
 aggregates including `no_answer`, and a headline number per track. `cb.py
 compare` reads two of those and prints the deltas plus a per-category breakdown.
 
-Long runs journal to `data/runs/.ckpt/<tag>-<track>.jsonl` while they are in
+Long runs journal to `ground_truth/runs/.ckpt/<tag>-<track>.jsonl` while they are in
 flight. Two guards stop a dead inference server from being scored as a bad
 model: a run of failed calls aborts the track, and so does a run of blank
 replies, which is what a server that answers but no longer generates looks like.
