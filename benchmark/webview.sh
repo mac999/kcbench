@@ -1,26 +1,39 @@
 #!/usr/bin/env bash
-# Start the benchmark's browser view under the venv_lmm environment.
+# Start the benchmark's browser view.
 #
 #     ./webview.sh
 #     ./webview.sh --port 8800 --no-browser
 #
-# Every argument is passed straight to `cb.py webview`. Set KCBENCH_PY to point
-# at a different interpreter, or KCBENCH_VENV at a different venv directory;
-# the default is venv_lmm, and either a Windows (Scripts/python.exe) or a
-# POSIX (bin/python) layout is found under it.
+# Every argument is passed straight to `cb.py webview`. The interpreter is
+# KCBENCH_PY if set, else a venv/ or .venv/ in the repository root (Windows or
+# POSIX layout), else the python on PATH. KCBENCH_VENV names a venv anywhere
+# else. Flask is checked before starting, since nothing else needs it.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(dirname "$HERE")"
 
 if [ -z "${KCBENCH_PY:-}" ]; then
-    VENV="${KCBENCH_VENV:-/d/projects/adv/venv_lmm}"
-    for candidate in "$VENV/Scripts/python.exe" "$VENV/bin/python"; do
+    for candidate in \
+        ${KCBENCH_VENV:+"$KCBENCH_VENV/Scripts/python.exe" "$KCBENCH_VENV/bin/python"} \
+        "$ROOT/venv/Scripts/python.exe"  "$ROOT/venv/bin/python" \
+        "$ROOT/.venv/Scripts/python.exe" "$ROOT/.venv/bin/python"; do
         if [ -x "$candidate" ]; then KCBENCH_PY="$candidate"; break; fi
+    done
+fi
+if [ -z "${KCBENCH_PY:-}" ]; then
+    # the Windows Store ships a python3 stub that only prints an install hint,
+    # so a candidate counts only if it actually runs
+    for name in python3 python; do
+        cand="$(command -v "$name" 2>/dev/null || true)"
+        if [ -n "$cand" ] && "$cand" -c "import sys" >/dev/null 2>&1; then
+            KCBENCH_PY="$cand"; break
+        fi
     done
 fi
 
 if [ -z "${KCBENCH_PY:-}" ] || [ ! -x "$KCBENCH_PY" ]; then
-    echo "webview.sh: no interpreter found under ${KCBENCH_VENV:-/d/projects/adv/venv_lmm}" >&2
-    echo "  set KCBENCH_PY to the python you want, or KCBENCH_VENV to its venv" >&2
+    echo "webview.sh: no python found. Make a venv in the repository root" >&2
+    echo "  (python -m venv venv) or set KCBENCH_PY / KCBENCH_VENV." >&2
     exit 1
 fi
 

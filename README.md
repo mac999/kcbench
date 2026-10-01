@@ -106,14 +106,25 @@ build` and `split` as the [Workflow](#workflow) describes before training.
 
 The dataset behind them is on
 [Google Drive](https://drive.google.com/drive/folders/1Cz7S-QhXRwQgsajDDyjBAC8vK30jQQTN?usp=sharing).
-Unpack it so the source documents sit at `train_dataset_v052/data/` and the
-generated training data at `train_dataset_v052/ai_ready/` -- the `corpus_dir`
-and `generated_dir` defaults already point there. The item sets alone score any
-model closed or open book; the download additionally unlocks `ppl` and `rag`
-(both read the held-out chunks), the image tracks (`vlm`, `uc3_bim_site`),
-`verify`, and the full rebuild -- `cb.py build` and `split` regenerate
-`track1_dapt.jsonl` and the training split deterministically from the published
-`holdout.json`, which is what training reads.
+In the shared folder, `data/` holds the source documents (the raw corpus),
+`train_data/` the synthetic AI-ready training set generated from it,
+`metadata/` the collector catalogues, and `scripts/`, `certs/` and `summary.md`
+how it was collected. Download the three data folders into the repository as
+`train_data_v052/`, keeping their names:
+
+```
+train_data_v052/
+  data/          source documents        -> corpus_dir
+  train_data/    synthetic training set  -> generated_dir
+  metadata/      collector catalogues    -> metadata_dir
+```
+
+The defaults already point there, so nothing needs configuring. The item sets
+alone score any model closed or open book; the download additionally unlocks
+`ppl` and `rag` (both read the held-out chunks), the image tracks (`vlm`,
+`uc3_bim_site`), `verify`, and the full rebuild -- `cb.py build` and `split`
+regenerate `track1_dapt.jsonl` and the training split deterministically from
+the published `holdout.json`, which is what training reads.
 
 | Command | What it does |
 |---|---|
@@ -201,10 +212,12 @@ webview.bat  --no-browser                  # the same, under a named environment
 
 The two launchers exist because the page usually runs from a different
 interpreter than the one on `PATH`. Both pass every argument through to
-`cb.py webview`, check that Flask is installed before starting, and take the
-interpreter from `KCBENCH_PY` — the same variable `training/pipeline_sft.sh`
-uses — falling back to a venv named `venv_lmm`. `webview.sh` also accepts
-`KCBENCH_VENV` and finds either a Windows or a POSIX layout under it.
+`cb.py webview` and check that Flask is installed before starting. The
+interpreter is `KCBENCH_PY` if set, else a `venv/` or `.venv/` in the
+repository root (either a Windows or a POSIX layout), else the `python` on
+`PATH`; `webview.sh` also accepts `KCBENCH_VENV` for a venv kept elsewhere.
+`run_cli` and `run_webview` at the repository root resolve the same way, so a
+clone needs no absolute path anywhere.
 
 | Flag | Default | What it does |
 |---|---|---|
@@ -862,9 +875,9 @@ ground_truth_v052/       the current answer key, and the default out_dir. Item
                          are what the modules build into it, kept local
 ground_truth/            the first answer key, kept so worked example-1 stays
                          reproducible (-o ../ground_truth)
-train_dataset_v052/      the input side, local only: data/ holds the source
-                         documents, ai_ready/ the generated training data the
-                         builders read (corpus_dir and generated_dir defaults)
+train_data_v052/         the input side, downloaded from the Drive link in
+                         Use: data/ (source documents), train_data/ (synthetic
+                         training set), metadata/ -- the input-path defaults
 run_cli.bat / .sh        run any cb.py command from the root under KCBENCH_PY
 run_webview.bat / .sh    start the browser view the same way
 ```

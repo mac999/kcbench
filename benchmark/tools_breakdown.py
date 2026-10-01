@@ -27,7 +27,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 # where the generator wrote rag_corpus.jsonl files; --generated-dir overrides
-GEN = ROOT / "ai_ready_v052"
+GEN = ROOT / "train_data_v052/train_data"
 
 
 def routes() -> tuple[dict, dict]:

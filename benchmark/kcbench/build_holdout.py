@@ -44,7 +44,7 @@ def main(argv: list[str] | None = None) -> int:
     LOG.info("reading generated documents under %s", cfg["generated_dir"])
     docs = generated_documents(cfg)
     if not docs:
-        LOG.error("no generated training data found - point -i at a dataset like ai_ready_full")
+        LOG.error("no generated training data found - point -i at a dataset like train_data_v052/train_data")
         return 1
     total = sum(len(d["chunks"]) for d in docs)
     LOG.info("%d document(s), %d chunk(s)", len(docs), total)

@@ -120,9 +120,9 @@ def track_label(track: str) -> str:
 DEFAULTS: Dict[str, Any] = {
     # Where the pipeline reads from. All four accept absolute paths, or paths
     # relative to this directory.
-    "corpus_dir": "../train_dataset_v052/data",       # source PDFs and IFC models
-    "generated_dir": "../train_dataset_v052/ai_ready", # AI-ready training data being evaluated
-    "metadata_dir": "../train_dataset_v052/metadata",  # collector catalogues
+    "corpus_dir": "../train_data_v052/data",            # source PDFs and IFC models
+    "generated_dir": "../train_data_v052/train_data",   # AI-ready training data being evaluated
+    "metadata_dir": "../train_data_v052/metadata",      # collector catalogues
     "pipeline_dir": "../gen_aec_syn_data",  # supplies the chunker, so chunking matches
     "out_dir": "../ground_truth_v052",               # benchmark artefacts
     "holdout": {
@@ -252,7 +252,7 @@ def add_common_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     g.add_argument("-c", "--config", metavar="FILE",
                    help="settings file; defaults to ./config.json when present")
     g.add_argument("-i", "--generated-dir", metavar="DIR",
-                   help="AI-ready training data to evaluate (default ../ai_ready_full)")
+                   help="AI-ready training data to evaluate (default ../train_data_v052/train_data)")
     g.add_argument("--corpus-dir", metavar="DIR",
                    help="source corpus of PDFs and IFC models (default ../data)")
     g.add_argument("--metadata-dir", metavar="DIR",
