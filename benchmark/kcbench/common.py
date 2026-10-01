@@ -220,6 +220,18 @@ DEFAULTS: Dict[str, Any] = {
 
 PATH_KEYS = ("corpus_dir", "generated_dir", "metadata_dir", "pipeline_dir", "out_dir")
 
+# A Windows console pipes and redirects through the locale code page (cp949
+# here), which cannot encode the em dashes and Korean the reports print, and
+# the print then raises instead of printing. Everything this project writes is
+# UTF-8, so redirected output should be too; anything truly unencodable
+# degrades to a replacement character rather than a crash.
+for _stream in (sys.stdout, sys.stderr):
+    if (getattr(_stream, "encoding", None) or "utf-8").lower() not in ("utf-8", "utf8"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError):
+            pass
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-7s %(message)s",
