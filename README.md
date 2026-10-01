@@ -88,14 +88,15 @@ Everything runs through one entry point, `cb.py`. Each command takes its own
 flags, shown by `python cb.py <command> -h`. Commands that take `--tracks` take
 the names listed under [What each track contains](#track-reference--item-counts-and-answer-types).
 
-Two answer keys ship with the repository. `ground_truth/` is the first build
-and the default `out_dir`; `ground_truth_v052/` is the current one, built
-against the corpus regenerated with generator v0.5.2 and scored in
+Two answer keys ship with the repository. `ground_truth_v052/` is the current
+one and the default `out_dir`, built against the corpus regenerated with
+generator v0.5.2 and scored in
 [worked example-2](#worked-example-2-korean-construction-corpus-advanced).
-Point any command at the current set from `benchmark/`:
+`ground_truth/` is the first build, kept so worked example-1 stays
+reproducible; point any command back at it from `benchmark/`:
 
 ```
-python cb.py eval -m qwen3:8b --tag base -o ../ground_truth_v052 --closed-book
+python cb.py eval -m qwen3:8b --tag base -o ../ground_truth --closed-book
 ```
 
 or set `out_dir` in a copy of `config.json`. Both ship as evaluation sets only
