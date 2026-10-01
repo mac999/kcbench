@@ -47,9 +47,9 @@ answer key expects.](doc/webview2.png)
 - [Metric reference](#metric-reference) — every number in a run file, defined and sourced
 - [Revision history](#revision-history) — major revisions and the measurements behind them
 - [Evaluation design](#evaluation-design--held-out-and-contaminated-probe-sets) — the held-out and probe sets, and why one is contaminated on purpose
-- [Track reference](#track-reference--item-counts-and-answer-types) — the nine item sets, their sizes and answer types
 - [Workflow](#workflow) — build, baseline, train, register, score, compare — in order
 - [Data-centric development loop](#data-centric-development-loop) — what to do with the numbers, and the line against Goodharting
+- [Track reference](#track-reference--item-counts-and-answer-types) — the shipped item sets, their sizes and answer types
 - [Worked example-1](#worked-example-1-korean-construction-corpus-basic) — DAPT and SFT on Korean construction regulation: what each stage moved, and why closed-book recall did not
 - [Worked example-2](#worked-example-2-korean-construction-corpus-advanced) — document routing, preference and verifier tracks, and what a second generator release changed
 - [Retrieval ablation and item validity](#retrieval-ablation-and-item-validity) — where the detail lives
@@ -365,45 +365,6 @@ that came out at 83% for the probe against 25% for the holdout tracks — the
 separation the design needs — and a rebuild on another corpus reports its own
 figures.
 
-## Track reference — item counts and answer types
-
-A track is one self-contained set of items with its own answer type and its own
-score — the sense the word carries in TREC. Each answers a different question, so
-they are read separately, never averaged into a single figure. Tracks are named
-for what they test:
-
-| Track | Items | Answer type | What it measures |
-|---|---:|---|---|
-| `dapt` | 5,381 chunks | perplexity | fit to held-out text — did pre-training take |
-| `sft` | 395 | numeric 320, nameset 75 | held-out QA — does it generalise to unseen regulation |
-| `vlm` | 10 | nameset 6, mapping 4 | vision: element types from renders, model-to-photo mapping |
-| `probe` | 400 | numeric 320, nameset 80 | training-side QA — did it acquire what it was taught. Diagnostic only |
-| `uc1_safety` | 157 | numeric 85, nameset 72 | safety regulation lookup |
-| `uc2_rebar_spec` | 150 | numeric 150 | specification limits and tolerances |
-| `uc3_bim_site` | 39 | label 39 | render and site photo judged together |
-| `uc4_faithfulness` | 160 | faithfulness 160 | abstention when the passage does not support an answer |
-| `uc5_incident` | 118 | nameset 118 | causes and controls from incident reports |
-| `uc6_verdict` | 810 | verdict 810 | compliance judgement against a stated threshold |
-
-`--tracks uc` runs every use-case track. Use-case tracks are registered in
-`config.json`, so adding one takes a config entry rather than a code change.
-
-`dapt`, `sft` and `vlm` were originally numbered 1, 2 and 3, for the training
-stage each diagnoses. The numbers are still accepted — `--tracks 2` is `--tracks
-sft` — and run files still key on them, so scores from older runs stay
-comparable. Nothing else needs them.
-
-Six answer types are graded: `numeric`, `nameset`, `label`, `faithfulness`,
-`verdict` and `sentence`. The first five are extractive; `sentence` scores a
-prose answer on semantic similarity, whether anything required was omitted, and
-whether anything unsupported was added, the last two voted by a panel of judge
-models drawn from families other than the one under test.
-
-Every type has precedent in a published benchmark — the mapping is in
-[benchmark/README.md](benchmark/README.md#precedent-for-each-grading-type).
-What each type scores, and what the rest of the numbers in a run file mean, is
-set out in [doc/metrics.md](doc/metrics.md).
-
 ## Workflow
 
 What the commands look like end to end, on the question this was built for:
@@ -566,6 +527,51 @@ rule-mined, not expert-written); judging free-form prose (extractive answer
 types only — `selfcheck` is the reference-free aid there, and its own
 validation showed consistency is no hallucination signal on a model that
 hallucinates stably); vision beyond a smoke test (`vlm` is 10 items).
+
+## Track reference — item counts and answer types
+
+A track is one self-contained set of items with its own answer type and its own
+score — the sense the word carries in TREC. Each answers a different question, so
+they are read separately, never averaged into a single figure. Tracks are named
+for what they test:
+
+Counts are the current `ground_truth_v052` build's; a rebuild carries its own
+(worked example-1's, for instance, mined 395 `sft` items from the earlier
+corpus where this one mines 394).
+
+| Track | Items | Answer type | What it measures |
+|---|---:|---|---|
+| `dapt` | held-out chunks | perplexity | fit to held-out text — did pre-training take |
+| `sft` | 394 | numeric 320, nameset 74 | held-out QA — does it generalise to unseen regulation |
+| `vlm` | 10 | nameset 6, mapping 4 | vision: element types from renders, model-to-photo mapping |
+| `probe` | 400 | numeric 320, nameset 80 | training-side QA — did it acquire what it was taught. Diagnostic only |
+| `uc1_safety` | 157 | numeric 85, nameset 72 | safety regulation lookup |
+| `uc2_rebar_spec` | 150 | numeric 150 | specification limits and tolerances |
+| `uc3_bim_site` | 39 | label 39 | render and site photo judged together |
+| `uc4_faithfulness` | 160 | faithfulness 160 | abstention when the passage does not support an answer |
+| `uc5_incident` | 118 | nameset 118 | causes and controls from incident reports |
+| `uc6_verdict` | 810 | verdict 810 | compliance judgement against a stated threshold |
+| `uc6_verdict_v2` | 810 | verdict 810 | the same judgement, rebuilt after uc6 scored non-discriminating |
+| `uc7_requirement` | 128 | sentence 128 | state the requirement a clause imposes, graded by a judge panel |
+
+`--tracks uc` runs every use-case track. Use-case tracks are registered in
+`config.json`, so adding one takes a config entry rather than a code change.
+
+`dapt`, `sft` and `vlm` were originally numbered 1, 2 and 3, for the training
+stage each diagnoses. The numbers are still accepted — `--tracks 2` is `--tracks
+sft` — and run files still key on them, so scores from older runs stay
+comparable. Nothing else needs them.
+
+Six answer types are graded: `numeric`, `nameset`, `label`, `faithfulness`,
+`verdict` and `sentence`. The first five are extractive; `sentence` scores a
+prose answer on semantic similarity, whether anything required was omitted, and
+whether anything unsupported was added, the last two voted by a panel of judge
+models drawn from families other than the one under test.
+
+Every type has precedent in a published benchmark — the mapping is in
+[benchmark/README.md](benchmark/README.md#precedent-for-each-grading-type).
+What each type scores, and what the rest of the numbers in a run file mean, is
+set out in [doc/metrics.md](doc/metrics.md).
 
 ## Worked example-1: Korean construction corpus (basic)
 
