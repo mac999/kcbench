@@ -11,7 +11,7 @@ set -uo pipefail
 MODEL="${1:?usage: run_resumable.sh MODEL TAG:TRACK [TAG:TRACK ...]}"
 shift
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CKPT_DIR="$HERE/ground_truth/runs/.ckpt"
+CKPT_DIR="$HERE/../ground_truth/runs/.ckpt"
 LOG_DIR="${LOG_DIR:-$HERE/../training}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-8}"
 MAX_STALLS="${MAX_STALLS:-3}"
