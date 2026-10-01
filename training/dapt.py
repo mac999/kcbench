@@ -6,7 +6,7 @@ Domain-adaptive pre-training on the held-out-free corpus.
     python dapt.py --model Qwen/Qwen3-8B --out out/qwen3-8b-dapt
     python dapt.py --epochs 2 --rank 128 --batch 4
 
-Reads benchmark/ground_truth/train/train_dapt.jsonl, which is the corpus with every
+Reads ground_truth/train/train_dapt.jsonl, which is the corpus with every
 benchmark document removed. Training on ai_ready_full directly would put the
 evaluation text in front of the model and make every later score meaningless.
 
@@ -31,7 +31,7 @@ from torch.utils.data import DataLoader, Dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, get_cosine_schedule_with_warmup
 
 PROJECT = Path(__file__).resolve().parent.parent
-DEFAULT_DATA = PROJECT / "benchmark/ground_truth/train/train_dapt.jsonl"
+DEFAULT_DATA = PROJECT / "ground_truth/train/train_dapt.jsonl"
 
 
 class Chunks(Dataset):

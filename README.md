@@ -772,7 +772,7 @@ by the matching command-line flag. The parts worth knowing:
   relative to **`generated_dir`**, not `corpus_dir`: the renders and site photos
   are produced alongside the chunked text, so a run whose `generated_dir` does
   not hold them scores those tracks as unanswerable rather than failing loudly.
-  `benchmark/ground_truth/uc3_cross_image.jsonl` ships with the repository; the images it
+  `ground_truth/uc3_cross_image.jsonl` ships with the repository; the images it
   names do not, for the same licensing reason the `dapt` chunks are withheld.
 - `holdout` — what fraction of chunks to withhold, per-document caps, and the
   seed. The seed is what makes a split reproducible.

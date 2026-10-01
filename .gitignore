@@ -19,27 +19,28 @@ benchmark/config.json.bak
 # benchmark data: evaluation sets only. The training split and the track 1
 # chunk file are derived from copyrighted source documents and are rebuilt
 # locally with build_all.py.
-benchmark/ground_truth/*
-!benchmark/ground_truth/holdout.json
-!benchmark/ground_truth/track2_sft.jsonl
-!benchmark/ground_truth/track3_vlm.jsonl
-!benchmark/ground_truth/probe_trained.jsonl
-!benchmark/ground_truth/uc1_safety_qa.jsonl
-!benchmark/ground_truth/uc2_spec_threshold.jsonl
-!benchmark/ground_truth/uc3_cross_image.jsonl
-!benchmark/ground_truth/uc4_faithfulness.jsonl
-!benchmark/ground_truth/uc5_incident.jsonl
-!benchmark/ground_truth/uc6_verdict.jsonl
-!benchmark/ground_truth/uc7_requirement.jsonl
-!benchmark/ground_truth/uc6_verdict_v2.jsonl
-!benchmark/ground_truth/volatility_validation.json
+!/ground_truth
+/ground_truth/*
+!/ground_truth/holdout.json
+!/ground_truth/track2_sft.jsonl
+!/ground_truth/track3_vlm.jsonl
+!/ground_truth/probe_trained.jsonl
+!/ground_truth/uc1_safety_qa.jsonl
+!/ground_truth/uc2_spec_threshold.jsonl
+!/ground_truth/uc3_cross_image.jsonl
+!/ground_truth/uc4_faithfulness.jsonl
+!/ground_truth/uc5_incident.jsonl
+!/ground_truth/uc6_verdict.jsonl
+!/ground_truth/uc7_requirement.jsonl
+!/ground_truth/uc6_verdict_v2.jsonl
+!/ground_truth/volatility_validation.json
 # runs/ holds scoring output, not the benchmark. Baseline numbers live in
 # README.md and benchmark/CHANGELOG.md.
 
 # a second build against a regenerated corpus, kept locally for comparison.
-# Its item files are the same ids as benchmark/ground_truth/ and its chunk and training
+# Its item files are the same ids as /ground_truth/ and its chunk and training
 # files carry source text, so nothing here is published.
-benchmark/ground_truth_v052/
+/ground_truth_v052/
 
 # training: scripts only. Checkpoints, adapters and logs stay local.
 training/out/

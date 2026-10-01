@@ -6,7 +6,7 @@ Supervised fine-tuning on the instruction pairs.
     python sft.py --base out/qwen3-8b-dapt --out out/qwen3-8b-sft
     python sft.py --model Qwen/Qwen3-8B --out out/qwen3-8b-sft-only
 
-Reads benchmark/ground_truth/train/train_sft.jsonl. `input` and `output` are nested
+Reads ground_truth/train/train_sft.jsonl. `input` and `output` are nested
 objects there, not strings, so both are flattened into the chat template before
 tokenising.
 
@@ -34,7 +34,7 @@ from torch.utils.data import DataLoader, Dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, get_cosine_schedule_with_warmup
 
 PROJECT = Path(__file__).resolve().parent.parent
-DEFAULT_DATA = PROJECT / "benchmark/ground_truth/train/train_sft.jsonl"
+DEFAULT_DATA = PROJECT / "ground_truth/train/train_sft.jsonl"
 
 
 def as_text(value) -> str:
