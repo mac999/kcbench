@@ -124,7 +124,7 @@ DEFAULTS: Dict[str, Any] = {
     "generated_dir": "../ai_ready_full",  # AI-ready training data being evaluated
     "metadata_dir": "../metadata",        # collector catalogues
     "pipeline_dir": "../gen_aec_syn_data",  # supplies the chunker, so chunking matches
-    "out_dir": "../ground_truth",                    # benchmark artefacts
+    "out_dir": "../ground_truth_v052",               # benchmark artefacts
     "holdout": {
         "chunk_fraction": 0.10,   # share of PDF chunks reserved, per category
         "ifc_fraction": 0.25,     # share of IFC models reserved for track 3
