@@ -142,7 +142,7 @@ def chart_books(t):
         t, (9.6, 5.4),
         "Withholding the clause collapses every track except one",
         "Same items, scored with and without the passage the answer was mined from.\n"
-        "uc6 moves 0.015 (McNemar p=0.56) and sits below the 0.500 a constant answer scores.",
+        "uc6 moves 0.019 (McNemar p=0.45) and sits below the 0.500 a constant answer scores.",
         "score",
         [("open book", pal["cat"][0]), ("closed book", pal["cat"][1])])
     y = np.arange(len(BOOKS))[::-1] * 1.0
