@@ -79,6 +79,13 @@ def generate(cfg, model: str, prompt: str, images: List[str] | None = None,
         payload["images"] = images
     if cfg["eval"].get("think") is not None:
         payload["think"] = bool(cfg["eval"]["think"])
+    # The server keeps a model loaded for the most recent request's keep_alive,
+    # default 5m. A 70B judge called once per item gets evicted between items,
+    # and its reload exceeds the server's load timeout -- both uc7 re-runs died
+    # on exactly that 500. Setting it per request is the only way that
+    # survives other callers resetting it.
+    if cfg["eval"].get("keep_alive") is not None:
+        payload["keep_alive"] = cfg["eval"]["keep_alive"]
     r = requests.post(f"{cfg['eval']['ollama_base_url']}/api/generate",
                       json=payload, timeout=cfg["eval"]["request_timeout"])
     r.raise_for_status()
@@ -548,9 +555,23 @@ def make_sentence_grader(cfg, panel: List[str], embed_model: str):
         for kind in ("covered", "supported"):
             calls = []
             for j in panel:
-                out = generate(cfg, j,
-                               prompt_for(cfg, kind).format(gold=gold, pred=pred)) or ""
-                calls.append("yes" in out.lower()[:40])
+                # One transient 500 from the server must not kill the run the
+                # way it killed uc7v2 at item 9 of 116: the generation path
+                # tolerates consecutive failures, so the judge path retries
+                # once and then drops this judge's vote on this item -- the
+                # panel shrinks for one answer and n_judges says so.
+                out = None
+                for attempt in (1, 2):
+                    try:
+                        out = generate(cfg, j, prompt_for(cfg, kind)
+                                       .format(gold=gold, pred=pred)) or ""
+                        break
+                    except Exception as exc:              # noqa: BLE001
+                        LOG.warning("judge %s failed on %s (try %d): %s",
+                                    j, item.get("id"), attempt, exc)
+                        time.sleep(5 * attempt)
+                if out is not None:
+                    calls.append("yes" in out.lower()[:40])
             votes[kind] = vote(calls)
 
         cov, sup = votes["covered"], votes["supported"]
