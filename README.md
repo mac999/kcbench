@@ -2,7 +2,8 @@
 
 Build a frozen, provenance-verified benchmark from your own document corpus —
 use cases, answer keys, mining rules and grading prompts all defined in
-`config.json` — and score any Ollama-served LLM or VLM on it, closed book,
+[`config.json`](benchmark/config.json) — and score any Ollama-served LLM or
+VLM on it, closed book,
 open book or retrieved, to measure whether fine-tuning on that corpus
 actually taught a model anything.
 
