@@ -201,7 +201,9 @@
     "_comment_images": "A track whose items carry a render is sent to the model as images. A text-only model answers every one of them with HTTP 400: twenty in a row abort the run, and a track shorter than that - vlm is ten items - stays under the threshold and records a clean zero that reads like a score. So the capability is checked first. image_capability is the name the server reports (ollama says 'vision'); on_missing_capability is skip, fail or ignore - ignore restores the old behaviour for a server whose /api/show does not list capabilities.",
     "image_capability": "vision",
     "on_missing_capability": "skip",
-    "capability_timeout": 30
+    "capability_timeout": 30,
+    "keep_alive": "30m",
+    "_comment_keep_alive": "How long the server keeps a model loaded after each request. The default 5m evicts a large judge between items and its reload can exceed the server's load timeout, which returns 500. 30m outlives any single item; -1 pins models for the session."
   },
   "judges": {
     "_comment": "The panel that grades a prose answer. candidates is in preference order, filtered against what the server actually has and then capped at preferred_panel -- the size is the decision rule, so entries past the cap are replacements for an unavailable judge, not extra votes. Three is the smallest panel where a majority is not unanimity; at two, one judge's refusal sinks an item. exclude_same_family drops any judge sharing the target model's lineage: measured at +0.27 pass rate for a qwen judge on a qwen answer, larger than most effects this benchmark reports. family_aliases extends the name-to-lineage table. The default order puts the largest installed judge first; drop it for a faster panel.",
