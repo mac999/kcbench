@@ -80,8 +80,27 @@ perplexity needs logprobs over a fixed text rather than generation.
 
 ```
 ollama serve
-ollama pull qwen3:8b
+ollama pull qwen3:8b                        # the model under test
 ```
+
+Two kinds of track need more than the model under test. Prose answers
+(`uc7_requirement`, and `uc6` reasons) are graded by a judge panel, and
+retrieval (`rag`, plus the sentence metric's semantic axis) needs an embedder;
+without them those scores degrade silently — the panel shrinks and the run is
+marked provisional rather than failing.
+
+```
+ollama pull exaone3.5:7.8b                  # judges: three lineages, so a
+ollama pull glm4:9b                         #   majority is not unanimity
+ollama pull gemma2:9b
+ollama pull bge-m3                          # embedder for rag and sentence
+ollama pull llama3.3:70b                    # optional, 42 GB: leads the panel
+                                            #   when present, skipped when not
+```
+
+The panel is configured under `judges` in `config.json`; judges sharing the
+tested model's family are excluded automatically, so testing an exaone or glm
+model needs one more family pulled in their place.
 
 ## Use
 
