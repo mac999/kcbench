@@ -50,6 +50,7 @@ answer key expects.](doc/webview2.png)
 - [Workflow](#workflow) — build, baseline, train, register, score, compare — in order
 - [Data-centric development loop](#data-centric-development-loop) — what to do with the numbers, and the line against Goodharting
 - [Track reference](#track-reference--item-counts-and-answer-types) — the shipped item sets, their sizes and answer types
+- [Reading the worked examples](#reading-the-worked-examples) — what the synthetic provenance limits, and what the next phase tests
 - [Worked example-1](#worked-example-1-korean-construction-corpus-basic) — DAPT and SFT on Korean construction regulation: what each stage moved, and why closed-book recall did not
 - [Worked example-2](#worked-example-2-korean-construction-corpus-advanced) — document routing, preference and verifier tracks, and what a second generator release changed
 - [Retrieval ablation and item validity](#retrieval-ablation-and-item-validity) — where the detail lives
@@ -573,6 +574,22 @@ Every type has precedent in a published benchmark — the mapping is in
 [benchmark/README.md](benchmark/README.md#precedent-for-each-grading-type).
 What each type scores, and what the rest of the numbers in a run file mean, is
 set out in [doc/metrics.md](doc/metrics.md).
+
+## Reading the worked examples
+
+Both campaigns below ran on synthetic training data and synthetic answer keys,
+and that provenance is their main limit: every key was mined by rules or a
+model, and the largest score movements measured so far came from repairing
+keys and graders — +0.15 to +0.26 on the affected tracks without touching a
+weight — so the scores are a lower bound set by instrument quality as much as
+by the model. What the measurements do establish: use of a supplied clause
+responds to fine-tuning (0.875 → 0.988), retrieval recovers a fifth to a third
+of the closed-book gap exactly where the corpus holds the answer, and
+closed-book recall of amendment-exposed figures responded to no training
+recipe tried. The working hypothesis for the next phase — human-reinforced
+keys and training data, fine-tuning and retrieval combined — is that the
+composite moves well above these figures, and the instrument is now measured
+well enough to tell whether it does.
 
 ## Worked example-1: Korean construction corpus (basic)
 
