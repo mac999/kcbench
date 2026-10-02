@@ -135,6 +135,11 @@ def reliability(points: List[dict], bins: int) -> Dict[str, Any]:
     """
     Equal-width bins over [0, 1], the standard construction. Returns the table
     a reliability diagram is drawn from, plus ECE, MCE and the Brier score.
+
+    With self-consistency confidence the input is discrete -- k samples give
+    k+1 possible values -- so `levels` reports the support actually observed.
+    Reading the per-level rows is more honest than the binned curve when the
+    support is that small.
     """
     n = len(points)
     if not n:
@@ -163,6 +168,7 @@ def reliability(points: List[dict], bins: int) -> Dict[str, Any]:
                      "contribution": round(w * abs(gap), 4),
                      "accuracy_ci95": [round(x, 4) for x in wilson(k, len(group))]})
     brier = statistics.fmean((p["confidence"] - p["correct"]) ** 2 for p in points)
+    support = sorted({round(p["confidence"], 4) for p in points})
     acc = statistics.fmean(p["correct"] for p in points)
     return {
         "n": n,
@@ -175,6 +181,7 @@ def reliability(points: List[dict], bins: int) -> Dict[str, Any]:
         "signed_gap": round(signed, 4),
         # the direction is the actionable half: a model that is under-confident
         # wastes good answers, one that is over-confident is the safety problem
+        "confidence_levels": len(support),
         "direction": ("overconfident" if signed < -0.01 else
                       "underconfident" if signed > 0.01 else "calibrated"),
         "bins": rows,
@@ -209,7 +216,9 @@ def score_track(cfg, model: str, rows: List[dict], args, ckpt: Checkpoint | None
             skipped += 1
             continue
         rec = {"id": item["id"], "eval_type": item["eval_type"],
-               "category": item.get("category"), "confidence": round(conf, 4),
+               "category": item.get("category"),
+               "volatility": item.get("volatility"),
+               "split": item.get("split"), "confidence": round(conf, 4),
                "correct": correct, "no_answer_samples": blank,
                "sample_reply": reply[:400]}
         points.append(rec)
@@ -219,6 +228,29 @@ def score_track(cfg, model: str, rows: List[dict], args, ckpt: Checkpoint | None
             LOG.info("%d/%d", i, len(rows))
 
     out = reliability(points, cal["bins"])
+
+    # Calibration pooled over a mixed track can cancel within a bin: items the
+    # model is overconfident on and items it is underconfident on average to a
+    # matching accuracy, and the pooled ECE reads calibrated while both halves
+    # are not. So the same table is computed per subgroup along the axes the
+    # score reports already use. Groups under 30 points are named but not
+    # scored -- a two-item reliability table is noise wearing a number.
+    MIN_GROUP = 30
+    for field in ("volatility", "split", "eval_type", "category"):
+        levels = sorted({str(p.get(field)) for p in points if p.get(field) is not None})
+        if len(levels) < 2:
+            continue
+        sub = {}
+        for lv in levels:
+            grp = [p for p in points if str(p.get(field)) == lv]
+            if len(grp) < MIN_GROUP:
+                sub[lv] = {"n": len(grp), "note": f"under {MIN_GROUP}, not scored"}
+                continue
+            r = reliability(grp, cal["bins"])
+            r.pop("bins", None)          # the pooled table keeps the diagram
+            sub[lv] = r
+        out[f"by_{field}"] = sub
+
     out["skipped_no_confidence"] = skipped
     out["detail"] = points
     return out
