@@ -8,6 +8,8 @@
 !/solution.md
 !/run_cli.bat
 !/run_cli.sh
+!/download_dataset.sh
+!/download_dataset.bat
 !/run_webview.bat
 !/run_webview.sh
 !/doc/
