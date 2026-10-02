@@ -1,0 +1,30 @@
+# Package-style install, for whoever prefers pip over running from the tree:
+#
+#     pip install -e ./benchmark              scoring and building
+#     pip install -e "./benchmark[all]"       plus the browser view and ppl
+#
+# The core needs nothing but requests; flask and torch stay optional because
+# the browser view and local perplexity are the only commands that import
+# them, and they do so lazily. The repository remains the primary way to run
+# the tool -- the instrument ships with its versioned answer keys, and a
+# package installed away from ground_truth*/ would separate the code from the
+# keys it is documented against.
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kcbench"
+version = "3.9.1"
+description = "Build a benchmark from a document corpus, then score models on it"
+requires-python = ">=3.11"
+dependencies = ["requests>=2.31"]
+
+[project.optional-dependencies]
+web = ["flask>=3"]
+ppl = ["torch", "transformers"]
+train = ["torch", "transformers", "peft"]
+all = ["flask>=3", "torch", "transformers", "peft"]
+
+[tool.setuptools]
+packages = ["kcbench"]
