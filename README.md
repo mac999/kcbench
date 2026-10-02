@@ -110,8 +110,12 @@ The dataset behind them is on
 In the shared folder, `data/` holds the source documents (the raw corpus),
 `train_data/` the synthetic AI-ready training set generated from it,
 `metadata/` the collector catalogues, and `scripts/`, `certs/` and `summary.md`
-how it was collected. Download the three data folders into the repository as
-`train_data_v052/`, keeping their names:
+how it was collected. One command fetches it all into place —
+`./download_dataset.sh` (or `download_dataset.bat` on Windows) installs gdown
+into the same interpreter the launchers use, downloads the folder, resumes if
+interrupted, and is safe to re-run. Downloading by hand works too: put the
+three data folders into the repository as `train_data_v052/`, keeping their
+names:
 
 ```
 train_data_v052/
@@ -303,6 +307,7 @@ ground_truth/            the first answer key, kept so worked example-1 stays
 train_data_v052/         the input side, downloaded from the Drive link in
                          Use: data/ (source documents), train_data/ (synthetic
                          training set), metadata/ -- the input-path defaults
+download_dataset.bat/.sh fetch the Drive dataset into train_data_v052/, resumable
 run_cli.bat / .sh        run any cb.py command from the root under KCBENCH_PY
 run_webview.bat / .sh    start the browser view the same way
 ```
