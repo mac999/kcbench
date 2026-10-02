@@ -582,11 +582,15 @@ and that provenance is their main limit: every key was mined by rules or a
 model, and the largest score movements measured so far came from repairing
 keys and graders — +0.15 to +0.26 on the affected tracks without touching a
 weight — so the scores are a lower bound set by instrument quality as much as
-by the model. What the measurements do establish: use of a supplied clause
-responds to fine-tuning (0.875 → 0.988), retrieval recovers a fifth to a third
-of the closed-book gap exactly where the corpus holds the answer, and
-closed-book recall of amendment-exposed figures responded to no training
-recipe tried. The working hypothesis for the next phase — human-reinforced
+by the model. What training measurably delivers is the
+form and the language of the output: fine-tuning moved grounded use of a
+supplied clause from 0.875 to 0.988 — answers arrive formatted for the
+pipeline that consumes them — and DAPT adapted the model to the domain's
+terminology, cutting perplexity 40 % across all thirteen document categories.
+The figures that amendments rewrite are served by retrieval rather than by
+weights, and retrieval recovers a fifth to a third of the closed-book gap
+exactly where the corpus holds the answer. The working hypothesis for the
+next phase — human-reinforced
 keys and training data, fine-tuning and retrieval combined — is that the
 composite moves well above these figures, and the instrument is now measured
 well enough to tell whether it does.
