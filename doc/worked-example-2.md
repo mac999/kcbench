@@ -122,7 +122,7 @@ under test, so a majority is not unanimity.
 | uc4 faithfulness | 160 | 0.9062 | 0.1375 | −0.7687 |
 | uc7 requirement | 128 | 0.7109 | 0.0234 | −0.6875 |
 | uc5 incident | 118 | 0.4572 | 0.0107 | −0.4465 |
-| uc6 verdict | 810 | 0.4136 | 0.3951 | −0.0148 |
+| uc6 verdict | 810 | 0.4136 | 0.3951 | −0.0185 |
 
 Against the August runs, which used the earlier graders, the movement is
 confined to one answer type:
@@ -168,9 +168,8 @@ claim about routing has to be made inside an answer type.
 ## uc6 does not measure whether the model read the clause
 
 Withholding the passage costs every other track between 0.45 and 0.87. It costs
-uc6 0.0148. On the 810 paired items McNemar gives **chi-squared 0.340, p = 0.560**
-— 184 items flip one way, 172 the other. The intervals overlap
-(open [0.377, 0.444], closed [0.362, 0.429]).
+uc6 0.0185. On the 810 paired items McNemar gives **chi-squared 0.565, p = 0.452**
+— 181 items flip one way, 166 the other. The intervals overlap.
 
 The model is not ignoring the passage. Its answer distribution shifts with it
 (`contradict` 55 % open against 47 % closed, `entail` 15 % against 29 %). The
@@ -182,7 +181,7 @@ Both conditions fall below the constant classifier. uc6 keys 405 `entail` and
 
 | | contradict | entail | Overall |
 |---|---:|---:|---:|
-| Open | 0.600 | 0.220 | 0.414 |
+| Open | 0.598 | 0.230 | 0.414 |
 | Closed | 0.486 | 0.304 | 0.395 |
 
 Two causes are separable. The reply schema offers `neutral` and `null`, which the

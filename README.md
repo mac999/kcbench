@@ -589,11 +589,21 @@ pipeline that consumes them — and DAPT adapted the model to the domain's
 terminology, cutting perplexity 40 % across all thirteen document categories.
 The figures that amendments rewrite are served by retrieval rather than by
 weights, and retrieval recovers a fifth to a third of the closed-book gap
-exactly where the corpus holds the answer. The working hypothesis for the
-next phase — human-reinforced
-keys and training data, fine-tuning and retrieval combined — is that the
-composite moves well above these figures, and the instrument is now measured
-well enough to tell whether it does.
+exactly where the corpus holds the answer. Three
+lessons from the campaigns generalise beyond this corpus. A defective track
+reads exactly like a model failure until a contrast separates them: uc6 sat
+below its constant-answer baseline for an 8B and a 70B model alike, and only
+the open-against-closed comparison, then a key repair, showed the instrument
+was measuring abstention rather than judgement. A prose answer cannot be
+graded by similarity alone — embedding similarity reported 0.65 where the
+share of answers actually stating the requirement was 0.02 — which is what
+the judge panel is for. And an aggregate follows its composition: the headline
+number is mostly a statement about whichever category and answer type
+dominate the item set, so the per-type and per-category rows are the readable
+result. The working hypothesis for the next phase — human-reinforced keys and
+training data, fine-tuning and retrieval combined — is that the composite
+moves well above these figures, and the instrument is now measured well
+enough to tell whether it does.
 
 ## Worked example-1: Korean construction corpus (basic)
 
@@ -798,10 +808,10 @@ between 0.45 and 0.87 — except one.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/open-vs-closed-v052-dark.png">
-  <img alt="Open-book against closed-book score by track. Every track falls sharply when the clause is withheld except uc6 verdict, which moves 0.015 and stays below the 0.500 a constant answer scores." src="doc/open-vs-closed-v052-light.png">
+  <img alt="Open-book against closed-book score by track. Every track falls sharply when the clause is withheld except uc6 verdict, which moves 0.019 and stays below the 0.500 a constant answer scores." src="doc/open-vs-closed-v052-light.png">
 </picture>
 
-uc6 moves 0.0148 (McNemar p = 0.560) and both conditions sit below the 0.500 a
+uc6 moves 0.0185 (McNemar p = 0.452) and both conditions sit below the 0.500 a
 constant answer scores on its balanced two-label key. uc6 is 810 of 2,317
 scored text items, and only the open-against-closed contrast exposes this.
 
