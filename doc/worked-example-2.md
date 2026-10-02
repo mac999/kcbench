@@ -260,6 +260,30 @@ three-way conjunction, reads stricter than a rerun will. The ~18 genuinely
 model-side failures are answer-form errors, dropped subjects mostly, which is
 the open-book handling SFT already moved (0.875 → 0.988 on uc4).
 
+Both tracks re-scored under one condition — the decoupled grader and a panel
+led by llama3.3:70b — measure what the repair did and did not do:
+
+| | v1 (128) | v2 (116) |
+|---|---:|---:|
+| grounded | 0.6562 | 0.6810 |
+| covered / supported | 0.719 / 0.750 | 0.741 / 0.776 |
+| semantic / figure | 0.832 / 0.883 | 0.839 / 0.888 |
+| judge agreement | 0.876 | 0.871 |
+
+The marginal gain is entirely composition. Paired on the 114 thresholds both
+tracks key, grounded is **0.6842 against 0.6842** — two items flip each way,
+McNemar p = 0.62. The fourteen items the stricter admission removed scored
+0.4286 under v1, against 0.6842 for the items it kept: the repair did not
+re-score anything, it stopped charging the model for keys with more than one
+right answer. That is the shape a key repair should have, and the paired-zero
+is the check that it inflated nothing.
+
+The published 0.711 is not comparable with either column: it was scored under
+the figure-folded grounded and a panel of three small judges. Re-scored under
+the 70B-led panel the same items read 0.6562 — the larger judge dissents more
+(agreement 0.918 → 0.876) and that outweighs the looser conjunction — so the
+boundary between the two conditions is the panel as much as the grader.
+
 ## Domain perplexity is unchanged
 
 `cb.py ppl` over the held-out chunks with Qwen/Qwen3-8B gives **7.5677**
