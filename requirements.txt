@@ -1,0 +1,8 @@
+# Core: build the benchmark and score through an Ollama server.
+# The browser view, local perplexity and fine-tuning each add their own line;
+# install only what you run (the Install section of README.md walks this).
+requests>=2.31
+
+# flask>=3                # cb.py webview
+# torch; transformers     # cb.py ppl
+# torch; transformers; peft   # training/

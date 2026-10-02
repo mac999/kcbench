@@ -65,14 +65,26 @@ The three longest sections live in their own files so this one stays readable:
 
 ## Install
 
-Python 3.11 or newer.
+Python 3.11 or newer. The core depends on nothing but `requests`; everything
+else is optional and imported only by the command that needs it.
 
 ```
-pip install requests                        # building and scoring
-pip install flask                           # the browser view, and only that
-pip install torch transformers              # dapt perplexity
-pip install torch transformers peft         # fine-tuning under training/
+python -m venv venv && . venv/bin/activate   # venv\Scripts\activate on Windows
+pip install -r requirements.txt              # scoring and building
 ```
+
+Or as a package, with extras per feature:
+
+```
+pip install -e ./benchmark                   # same core, importable anywhere
+pip install -e "./benchmark[all]"            # plus the browser view, ppl, training
+```
+
+The extras are `[web]` (flask, the browser view), `[ppl]` (torch and
+transformers, local perplexity) and `[train]` (those plus peft). Installing
+the package does not move the data: the tool is documented against the
+`ground_truth*/` answer keys in this repository, so run it from the checkout
+either way — the `run_cli` launchers find the venv on their own.
 
 Scoring goes through an [Ollama](https://ollama.com) server for `sft`, `vlm`
 and the use-case tracks. `dapt` loads the checkpoint locally instead, because

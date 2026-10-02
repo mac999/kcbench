@@ -75,3 +75,4 @@ benchmark/run_uc_rebase.sh
 # internal working notes, kept out of the repo
 benchmark/CHANGELOG.md
 benchmark/STANDARDS_REVIEW.md
+!/requirements.txt
