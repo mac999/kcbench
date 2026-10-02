@@ -1,7 +1,10 @@
 # kcbench
 
-Build a benchmark out of your own document corpus, then measure whether
-fine-tuning on that corpus actually taught a model anything.
+Build a frozen, provenance-verified benchmark from your own document corpus —
+use cases, answer keys, mining rules and grading prompts all defined in
+`config.json` — and score any Ollama-served LLM or VLM on it, closed book,
+open book or retrieved, to measure whether fine-tuning on that corpus
+actually taught a model anything.
 
 The question this answers is narrow on purpose: *did training help, and where?*
 It compares a base checkpoint against a fine-tuned one on identical frozen
