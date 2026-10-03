@@ -1,0 +1,346 @@
+{
+  "_variant": "us — 29 CFR Part 1926, construction safety regulation in English. Derived from config_kr.json by replacing the language-bound rules only: paths, volatility signals, requirement mining patterns, judge panel and prompts. Every builder, grader and threshold is shared, which is the point -- porting the method is a config edit, not a code change.",
+  "_comment": "Benchmark settings. Any value here is overridden by the matching command-line flag. Paths may be absolute or relative to the benchmark folder. Copy this file per dataset variant and pass it with --config.",
+  "corpus_dir": "../train_data_us/data",
+  "generated_dir": "../train_data_us/train_data",
+  "metadata_dir": "../train_data_us/metadata",
+  "pipeline_dir": "../gen_aec_syn_data",
+  "out_dir": "../ground_truth_us",
+  "holdout": {
+    "_comment": "Document-level split. Changing the seed reserves different documents and invalidates comparison against earlier runs. chunk_fraction trades benchmark size against training data: 0.20 yields ~395 items and withholds 16.3% of chunks.",
+    "chunk_fraction": 0.2,
+    "ifc_fraction": 0.5,
+    "max_chunks_per_doc": 50,
+    "seed": 20260814,
+    "ifc_exclude_categories": [
+      "06_reference_and_test"
+    ],
+    "ifc_min_element_types": 2
+  },
+  "track2_sft": {
+    "_comment": "Held-out regulation Q&A. numeric_uniqueness=strict drops thresholds whose subjects overlap; nameset_require_lead_in demands the sentence that introduces a list. Raising max_items_per_doc buys items without withholding more training data, up to roughly 12 before documents run dry.",
+    "target_items": 800,
+    "max_items_per_doc": 12,
+    "numeric_uniqueness": "strict",
+    "min_subject_len": 4,
+    "max_subject_len": 30,
+    "nameset_min_items": 3,
+    "nameset_max_item_len": 60,
+    "nameset_require_lead_in": true
+  },
+  "track3_vlm": {
+    "_comment": "whole_model_groups_only keeps only renders whose element catalogue is exact. Set false once ifc_processor.py records per-group membership. mapping_max_total_elements drops count questions on models too large to count from a photograph.",
+    "whole_model_groups_only": true,
+    "min_types_for_mapping": 3,
+    "mapping_max_total_elements": 60
+  },
+  "probe": {
+    "_comment": "Items mined from the training side, measuring whether the model absorbed what it was trained on. Contamination is deliberate; never report these as a benchmark result. Track 2 answers a different question, generalisation to regulation the model never saw.",
+    "target_items": 400,
+    "max_items_per_doc": 6,
+    "nameset_share": 0.2,
+    "seed": 20260814
+  },
+  "usecases": {
+    "_comment": "Use-case tracks, built by build_usecases.py. Each entry names a builder and its parameters, so a future use case is a config entry plus at most one builder function. Items from training-side documents carry contamination flags and only measure the open-book (RAG) question; the 80% output-accuracy target for the RAG agent is judged on open-book scores.",
+    "uc1_safety": {
+      "enabled": true,
+      "builder": "doc_filtered_qa",
+      "track_file": "uc1_safety_qa.jsonl",
+      "categories": [
+        "03_safety_and_disaster"
+      ],
+      "doc_patterns": [],
+      "target_items": 170,
+      "max_items_per_doc": 12,
+      "nameset_share": 0.5,
+      "include_train_side": true,
+      "nameset_max_per_doc": 3
+    },
+    "uc2_rebar_spec": {
+      "enabled": true,
+      "builder": "doc_filtered_qa",
+      "track_file": "uc2_spec_threshold.jsonl",
+      "categories": [
+        "01_design_standards_kds",
+        "02_specifications_kcs"
+      ],
+      "doc_patterns": [],
+      "target_items": 150,
+      "max_items_per_doc": 12,
+      "nameset_share": 0.0,
+      "include_train_side": true
+    },
+    "uc3_bim_site": {
+      "enabled": true,
+      "builder": "vlm_labels",
+      "track_file": "uc3_cross_image.jsonl",
+      "task_types": [
+        "bim_site_comparison",
+        "progress_assessment"
+      ],
+      "exclude_labels": [
+        "unknown"
+      ]
+    },
+    "uc4_faithfulness": {
+      "enabled": true,
+      "builder": "context_swap",
+      "track_file": "uc4_faithfulness.jsonl",
+      "source_track": "track2_sft.jsonl",
+      "swap_share": 0.5,
+      "max_items": 160,
+      "seed": 20260814
+    },
+    "uc5_incident": {
+      "enabled": true,
+      "builder": "missing_measures",
+      "track_file": "uc5_incident.jsonl",
+      "categories": [
+        "03_safety_and_disaster"
+      ],
+      "doc_patterns": [],
+      "min_items_per_list": 3,
+      "removed_share": 0.34,
+      "max_items": 120,
+      "include_train_side": true,
+      "seed": 20260814
+    },
+    "uc6_verdict": {
+      "enabled": true,
+      "builder": "verdict_from_thresholds",
+      "track_file": "uc6_verdict.jsonl",
+      "sources": [
+        "track2_sft.jsonl",
+        "uc1_safety_qa.jsonl"
+      ],
+      "holdout_only": true,
+      "_comment": "Compliance judgement mined from threshold items by build_verdict.py. Answers follow the m1_model output contract so one label schema serves both the training data and this track.",
+      "_comment_grading": "keyed_verdicts are the labels the answer key actually uses. The reply schema offers neutral and null as well, so a model may return a verdict that can never be right; those are scored wrong either way but counted as off_vocab so a decline can be told from a misjudgement. evidence_scoring is auto, always or never: auto scores the cited evidence only when the keyed evidence appears in the passage the model was shown. As built, the key is the document title and the model sees only the clause text, so the column is not measurable and auto omits it rather than reporting 0.0000 on every item.",
+      "keyed_verdicts": [
+        "entail",
+        "contradict"
+      ],
+      "evidence_scoring": "auto",
+      "_comment_schema": "Pinned to the schema the published scores were made under, so a rebuild reproduces this track rather than silently becoming the repaired one. The repair lives in uc6_verdict_v2.",
+      "name_subject": false,
+      "verdicts_offered": [
+        "entail",
+        "contradict",
+        "neutral"
+      ],
+      "offer_null": true,
+      "ask_evidence": "always"
+    },
+    "uc7_requirement": {
+      "enabled": true,
+      "track_file": "uc7_requirement.jsonl",
+      "comment": "Requirement sentences lifted from the clause a threshold item was mined from. Graded with the sentence type, so a judge panel is involved; read it open book.",
+      "builder": "requirement_from_thresholds",
+      "_comment_mining": "US sentence shapes. A requirement ends in a modal -- shall, must, may not -- where Korean ends in 하여야 한다; the interrogative the subject is stripped from is 'how many/how much' rather than 몇/얼마.",
+      "sentence_end": "(?<=[.;:])\\s+(?=[A-Z(])|(?<=[.;])\\s*\\n",
+      "requirement_ending": "\\b(shall|must|may not|shall not|is required|are required)\\b[^.]*\\.?$",
+      "extraction_noise": "\\s\\(\\d+\\)\\s.{0,6}\\s\\(\\d+\\)|[│┃|]{2,}|\\.{4,}|\\s{4,}",
+      "clause_heading": "^§\\s*\\d+\\.\\d+|^\\([a-z0-9]+\\)\\s*$",
+      "asks_pattern": "(is|are|be)?\\s*(how many|how much|what).*$",
+      "min_chars": 30,
+      "max_chars": 260,
+      "max_commas": 8,
+      "min_subject_chars": 3,
+      "max_subject_chars": 80,
+      "sources": [
+        "uc2_spec_threshold.jsonl",
+        "uc1_safety_qa.jsonl",
+        "track2_sft.jsonl"
+      ],
+      "_comment_schema": "Pinned to the admission rules the published scores were made under, so a rebuild reproduces this track rather than silently becoming the repaired one. The repair lives in uc7_requirement_v2.",
+      "subject_checked": false,
+      "rival_any_sentence": false,
+      "split_coordination": false
+    },
+    "uc6_verdict_v2": {
+      "enabled": true,
+      "track_file": "uc6_verdict_v2.jsonl",
+      "comment": "uc6 rebuilt after v3.9 measured three defects in the original: the question named no subject, so 58% of items sat in a passage holding two or more figures in the item's unit; the reply schema offered neutral and null, which the key never uses and which drew 33% of answers; and evidence was keyed on the document title, which the model is never shown. Kept beside uc6_verdict rather than replacing it so the effect of the repair is measurable.",
+      "builder": "verdict_from_thresholds",
+      "name_subject": true,
+      "verdicts_offered": [
+        "entail",
+        "contradict"
+      ],
+      "ask_evidence": "when_keyed",
+      "keyed_verdicts": [
+        "entail",
+        "contradict"
+      ],
+      "evidence_scoring": "auto"
+    },
+    "uc7_requirement_v2": {
+      "enabled": true,
+      "track_file": "uc7_requirement_v2.jsonl",
+      "comment": "uc7 remined after the v052 open-book run measured the key set as the ceiling: of 37 failures at grounded 0.711, eleven keyed a subject the clause states more than one requirement about or a subject damaged in extraction, and six keyed a sentence carrying a second obligation the question never asked. This track checks the subject against the clause, counts inadmissible rivals too, and cuts a coordinated sentence down to the asked obligation when the subject identifies it (the item's instruction then asks for that one requirement). Kept beside uc7_requirement rather than replacing it so the effect of the repair is measurable. Build with: python cb.py requirement --usecase uc7_requirement_v2. Graded with the sentence type; read it open book.",
+      "builder": "requirement_from_thresholds"
+    }
+  },
+  "eval": {
+    "_comment": "Scoring through an inference server. num_ctx must be set: without it the server sizes the KV cache from the model's maximum context, which is 40 GB on qwen3. num_predict must cover a reasoning model's thinking or the answer never arrives. models and book are the defaults run_matrix.py uses when given none. repeats is 1 because temperature is 0: greedy decoding returned the same reply every time across all 560 scores of the base probe run, so extra samples cost time and tell you nothing. Raise both together to measure sampling variance.",
+    "repeats": 1,
+    "numeric_tolerance": 0.02,
+    "ollama_base_url": "http://localhost:11434",
+    "request_timeout": 600,
+    "max_consecutive_failures": 20,
+    "num_ctx": 8192,
+    "num_predict": 4096,
+    "temperature": 0.0,
+    "models": [],
+    "book": "both",
+    "lang_mix": {
+      "en": 1.0,
+      "ko": 0.0
+    },
+    "max_consecutive_empty": 25,
+    "_comment_images": "A track whose items carry a render is sent to the model as images. A text-only model answers every one of them with HTTP 400: twenty in a row abort the run, and a track shorter than that - vlm is ten items - stays under the threshold and records a clean zero that reads like a score. So the capability is checked first. image_capability is the name the server reports (ollama says 'vision'); on_missing_capability is skip, fail or ignore - ignore restores the old behaviour for a server whose /api/show does not list capabilities.",
+    "image_capability": "vision",
+    "on_missing_capability": "skip",
+    "capability_timeout": 30,
+    "keep_alive": "30m",
+    "_comment_keep_alive": "How long the server keeps a model loaded after each request. The default 5m evicts a large judge between items and its reload can exceed the server's load timeout, which returns 500. 30m outlives any single item; -1 pins models for the session."
+  },
+  "judges": {
+    "_comment": "English panel. exaone3.5 is Korean-specialised and is dropped here; the cap, the same-family exclusion and the three-judge majority are unchanged, so the two variants are scored under the same rule.",
+    "candidates": [
+      "llama3.3:70b",
+      "gemma2:9b",
+      "glm4:9b",
+      "qwen3:14b",
+      "mistral-nemo:12b"
+    ],
+    "min_panel": 2,
+    "preferred_panel": 3,
+    "exclude_same_family": true,
+    "family_aliases": {}
+  },
+  "volatility": {
+    "_comment": "Which item sets cb.py volatility classifies. Only tracks whose answer is text can be classified: dapt is scored by perplexity and vlm is keyed on an image, so both are excluded by default. tracks is 'all' or a comma-separated list of registered track names.",
+    "tracks": "all",
+    "exclude_tracks": [
+      "1",
+      "3"
+    ],
+    "rules": {
+      "_comment": "US forms of the same signals. A federal rule announces its amendments in a source credit -- '[61 FR 5509, Feb. 13, 1996, as amended at 63 FR 3814]' -- where a Korean notice prints 개정 in its title.",
+      "revised_title": "as amended|amended at|\\bFR\\b\\s+\\d+|Federal Register|effective date",
+      "notice_number": "\\b\\d{2,3}\\s*FR\\s*\\d{3,6}\\b",
+      "table_clause": "[Tt]able\\s+[A-Z]?-?\\d|[Aa]ppendix\\s+[A-Z]|[Ff]igure\\s+[A-Z]?-?\\d",
+      "definition_cue": "\\bmeans\\b|\\bis defined as\\b|[Ff]or (?:the )?purposes? of this (?:section|part)",
+      "obligation": "\\b(shall|must|may not|is required to|no .{0,20} shall)\\b",
+      "regulated_units": [
+        "%",
+        "C",
+        "F",
+        "amp",
+        "ampere",
+        "amps",
+        "cubic feet",
+        "day",
+        "days",
+        "degree",
+        "degrees",
+        "feet",
+        "foot",
+        "ft",
+        "gallon",
+        "gallons",
+        "hour",
+        "hours",
+        "in.",
+        "inch",
+        "inches",
+        "ksi",
+        "lb",
+        "lbs",
+        "mile",
+        "miles",
+        "minute",
+        "minutes",
+        "month",
+        "months",
+        "percent",
+        "person",
+        "persons",
+        "pound",
+        "pounds",
+        "psf",
+        "psi",
+        "square feet",
+        "ton",
+        "tons",
+        "volt",
+        "volts",
+        "watt",
+        "watts",
+        "yard",
+        "yards",
+        "year",
+        "years"
+      ],
+      "requirement_eval_types": [
+        "nameset",
+        "verdict"
+      ],
+      "definition_scan_chars": 400
+    }
+  },
+  "perplexity": {
+    "_comment": "Track 1 runs the weights through transformers, so these decide whether it fits in memory and how long it takes. Lower max_length or switch dtype to float16 on a smaller card.",
+    "max_length": 2048,
+    "dtype": "bfloat16",
+    "device": "cuda",
+    "log_every": 200
+  },
+  "compare": {
+    "_comment": "Paired significance testing. alpha is the threshold for McNemar and the width of the bootstrap interval.",
+    "alpha": 0.05,
+    "bootstrap_rounds": 10000,
+    "bootstrap_seed": 20260814
+  },
+  "triage": {
+    "_comment": "Selecting items for human review. min_models is how many runs an item needs before disagreement means anything; sample draws unflagged items so the review can state an error rate for the whole set.",
+    "min_models": 2,
+    "sample": 30,
+    "sample_seed": 20260814,
+    "no_answer_threshold": 0.5
+  },
+  "export": {
+    "_comment": "Packaging for external harnesses.",
+    "lm_eval_harness": true,
+    "dataset_card": true
+  },
+  "calibration": {
+    "_comment": "Expected Calibration Error, following Guo et al. (2017). method is where the confidence comes from: self_consistency samples the same question and lets the answers vote, which needs temperature above 0 and costs `samples` generations per item; verbalized asks the model to state a confidence and costs one. bins is the confidence histogram; 10 is the usual choice, 5 is what a small track can support.",
+    "method": "self_consistency",
+    "samples": 8,
+    "temperature": 0.7,
+    "bins": 10
+  },
+  "selfcheck": {
+    "_comment": "Reference-free hallucination signal, after SelfCheckGPT (Manakul et al., EMNLP 2023). One answer is decoded the way the benchmark decodes it, then `samples` more are drawn at `temperature` and compared against it; a fact the weights hold comes back the same way. threshold is the inconsistency at or above which an answer is flagged for review, not a score.",
+    "samples": 5,
+    "temperature": 0.7,
+    "threshold": 0.5
+  },
+  "prompts": {
+    "_comment": "Templates sent to a model, by key. Anything here replaces the built-in default in kcbench/prompts.py; delete a key to go back to it. Keep the {fields} the default declares. Overrides are recorded in the run file, because a reworded judge prompt moved this benchmark's own separation from 0.00 to 0.62 — larger than most effects it measures.",
+    "qa.open.ko": "다음 조문을 읽고 질문에 답하시오.\n\n[조문]\n{passage}\n\n[질문]\n{question}\n\n{instruction}",
+    "qa.open.en": "Read the passage and answer the question.\n\n[Passage]\n{passage}\n\n[Question]\n{question}\n\n{instruction}",
+    "qa.closed.ko": "다음 질문에 답하시오.\n\n[질문]\n{question}\n\n{instruction}",
+    "qa.closed.en": "Answer the question.\n\n[Question]\n{question}\n\n{instruction}",
+    "rag.ko": "다음 조문을 읽고 질문에 답하시오.\n\n[조문]\n{passage}\n\n[질문]\n{question}\n\n{instruction}",
+    "rag.en": "Read the passage and answer the question.\n\n[Passage]\n{passage}\n\n[Question]\n{question}\n\n{instruction}",
+    "judge.covered.ko": "[기준]\n{gold}\n\n[답변]\n{pred}\n\n답변이 기준의 내용을 빠짐없이 담고 있습니까? yes 또는 no 한 단어로만 답하시오.",
+    "judge.supported.ko": "[근거]\n{gold}\n\n[문장]\n{pred}\n\n문장에 담긴 내용이 모두 근거만으로 뒷받침됩니까? 근거에 없는 내용이 하나라도 있으면 no, 전부 뒷받침되면 yes. 한 단어로만 답하시오.",
+    "judge.covered.en": "[Reference]\n{gold}\n\n[Answer]\n{pred}\n\nDoes the answer contain everything the reference states? Reply with one word, yes or no.",
+    "judge.supported.en": "[Evidence]\n{gold}\n\n[Statement]\n{pred}\n\nIs everything the statement claims supported by the evidence alone? If anything is not in the evidence, no; otherwise yes. Reply with one word.",
+    "volatility.adjudicate.ko": "[조문]\n{context}\n\n[질문]\n{question}\n\n[정답]\n{answer}\n\n이 정답은 소관 고시·기준이 개정되면 달라집니까? 수치 한도·기간·비율처럼 개정으로 바뀌는 값이면 volatile, 정의·원리·계산방법처럼 개정돼도 유지되는 내용이면 stable. 한 단어로만 답하시오."
+  }
+}

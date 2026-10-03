@@ -2,7 +2,7 @@
 
 Build a frozen, provenance-verified benchmark from your own document corpus —
 use cases, answer keys, mining rules and grading prompts all defined in
-[`config.json`](benchmark/config.json) — and score any Ollama-served LLM or
+[`config_kr.json`](benchmark/config_kr.json) / [`config_us.json`](benchmark/config_us.json) — and score any Ollama-served LLM or
 VLM on it, closed book,
 open book or retrieved, to measure whether fine-tuning on that corpus
 actually taught a model anything.
@@ -159,7 +159,12 @@ train_data_v052/
   metadata/      collector catalogues    -> metadata_dir
 ```
 
-The defaults already point there, so nothing needs configuring. The item sets
+Pick the variant with `-c`: `config_kr.json` for this corpus,
+`config_us.json` for the English one (29 CFR 1926, under `train_data_us/`).
+Neither is the default — with both present the tools ask which, because a
+reproduction must not depend on which file happens to be named
+`config.json`. Each variant names its own corpus, generated set and answer
+key, so the two never write into each other. The item sets
 alone score any model closed or open book; the download additionally unlocks
 `ppl` and `rag` (both read the held-out chunks), the image tracks (`vlm`,
 `uc3_bim_site`), `verify`, and the full rebuild -- `cb.py build` and `split`
