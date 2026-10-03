@@ -16,6 +16,11 @@
 !/benchmark/
 !/training/
 
+# corpus collectors: code only, their output is data and stays local
+!/scripts/
+scripts/__pycache__/
+*.egg-info/
+
 # benchmark: code, config and docs
 __pycache__/
 *.pyc

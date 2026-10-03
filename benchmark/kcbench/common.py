@@ -277,7 +277,26 @@ def resolve_config(args: argparse.Namespace | None = None) -> Dict[str, Any]:
     """Defaults, then the config file, then anything given on the command line."""
     cfg = copy.deepcopy(DEFAULTS)
 
-    path = Path(args.config) if (args and args.config) else HERE / "config.json"
+    # No implicit default between dataset variants. config_kr.json and
+    # config_us.json are siblings, and picking one of them silently would make
+    # a run's corpus depend on which file happens to be named config.json --
+    # the one thing a reproduction must not guess. A plain config.json is still
+    # honoured for a single-variant checkout; with several present, say which.
+    if args and args.config:
+        path = Path(args.config)
+    else:
+        plain = HERE / "config.json"
+        variants = sorted(HERE.glob("config_*.json"))
+        if plain.is_file():
+            path = plain
+        elif len(variants) == 1:
+            path = variants[0]
+        elif variants:
+            raise SystemExit(
+                "several dataset variants are present; pass -c to choose one:\n  "
+                + "\n  ".join("-c %s" % v.name for v in variants))
+        else:
+            path = plain
     if path.is_file():
         user = json.loads(path.read_text(encoding="utf-8"))
         cfg = _deep_merge(cfg, {k: v for k, v in user.items() if not k.startswith("_")})
