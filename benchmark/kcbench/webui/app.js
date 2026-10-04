@@ -42,6 +42,9 @@ const I18N = {
     'd.keys': 'Scored on', 'd.keySame': 'current key',
     'd.keyDiff': 'differs from current key', 'd.keyGone': 'key not on this machine',
     'd.keyDiffTip': 'The items this run scored are not the key file as it stands now — a partial run (--limit, --lang) or the key changed since.',
+    'e.edit': 'Edit', 'e.del': 'Delete', 'e.save': 'Save', 'e.cancel': 'Cancel',
+    'e.add': '+ add record', 'e.confirm': 'Delete this record? The previous file is kept as .bak.',
+    'e.badJson': 'Not valid JSON: ', 'e.hint': 'Saving rewrites this line of the file (previous version kept as .bak). Runs scored before the edit will show "differs from current key".',
     'w.title': 'A benchmark run, in order',
     'w.lead': 'This tool answers one question: did fine-tuning on the corpus teach the model anything? Each step below loads its command into the bar above.',
     'w.1t': 'Build the benchmark, once', 'w.1d': 'Split the corpus, mine the items, write the training split with held-out documents removed. Do this before any training.',
@@ -88,6 +91,9 @@ const I18N = {
     'd.keys': '채점에 쓴 정답지', 'd.keySame': '현재 정답지와 동일',
     'd.keyDiff': '현재 정답지와 다름', 'd.keyGone': '이 컴퓨터에 정답지 없음',
     'd.keyDiffTip': '이 실행이 채점한 문항이 지금의 정답지 파일과 다릅니다 — 부분 실행(--limit, --lang)이었거나 이후 정답지가 바뀐 경우입니다.',
+    'e.edit': '편집', 'e.del': '삭제', 'e.save': '저장', 'e.cancel': '취소',
+    'e.add': '+ 레코드 추가', 'e.confirm': '이 레코드를 삭제할까요? 이전 파일은 .bak으로 남습니다.',
+    'e.badJson': 'JSON 형식이 아닙니다: ', 'e.hint': '저장하면 파일의 이 줄이 다시 쓰입니다(이전 버전은 .bak으로 보존). 수정 전에 채점된 실행에는 "현재 정답지와 다름"이 표시됩니다.',
     'w.title': '벤치마크 한 바퀴, 순서대로',
     'w.lead': '이 도구가 답하는 질문은 하나입니다: 코퍼스로 파인튜닝한 것이 모델에 무언가를 가르쳤는가? 아래 각 단계를 누르면 명령이 상단 바에 채워집니다.',
     'w.1t': '벤치마크 빌드 — 한 번만', 'w.1d': '코퍼스를 나누고, 문항을 채굴하고, 홀드아웃 문서를 뺀 학습 분할을 씁니다. 어떤 학습보다도 먼저 하십시오.',
@@ -514,10 +520,75 @@ function viewRecords(root, path, data, label) {
     d.appendChild(s);
     const body = el('div', 'body');
     body.appendChild(kvList(rec, ['answer', 'answer_value', 'answer_unit', 'answer_en']));
+    body.appendChild(recordActions(root, path, data.offset + i, rec, body));
     d.appendChild(body);
     wrap.appendChild(d);
   });
+  const add = el('button', 'ghost small', t('e.add'));
+  add.addEventListener('click', () => {
+    if (wrap.querySelector('.editor')) return;       // one editor at a time
+    const template = data.records.length ? { ...data.records[data.records.length - 1] } : {};
+    delete template.id;
+    wrap.insertBefore(recordEditor(root, path, null, template), add);
+  });
+  wrap.appendChild(add);
   setViewer(label, [], wrap);
+}
+
+// ── answer-key editing: one line of the .jsonl at a time ──────────────────
+async function saveRecord(root, path, payload) {
+  const res = await api('/api/record', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ root, path, ...payload }),
+  });
+  await loadTracks();          // counts and the items_digest badges move
+  VIEW.reload && VIEW.reload();
+  return res;
+}
+
+function recordActions(root, path, index, rec, body) {
+  const row = el('div', 'recactions');
+  const edit = el('button', 'ghost small', t('e.edit'));
+  edit.addEventListener('click', () => {
+    if (body.querySelector('.editor')) return;
+    row.hidden = true;
+    body.appendChild(recordEditor(root, path, index, rec, () => { row.hidden = false; }));
+  });
+  const del = el('button', 'ghost small danger', t('e.del'));
+  del.addEventListener('click', async () => {
+    if (!window.confirm(t('e.confirm'))) return;
+    try { await saveRecord(root, path, { action: 'delete', index }); }
+    catch (e) { window.alert(e.message); }
+  });
+  row.append(edit, del);
+  return row;
+}
+
+function recordEditor(root, path, index, rec, onCancel) {
+  const box = el('div', 'editor');
+  box.appendChild(el('div', 'hint', t('e.hint')));
+  const ta = el('textarea');
+  ta.value = JSON.stringify(rec, null, 2);
+  ta.rows = Math.min(24, ta.value.split('\n').length + 1);
+  box.appendChild(ta);
+  const err = el('div', 'note bad', '');
+  box.appendChild(err);
+  const row = el('div', 'recactions');
+  const save = el('button', 'small', t('e.save'));
+  save.addEventListener('click', async () => {
+    let parsed;
+    try { parsed = JSON.parse(ta.value); } catch (e) { err.textContent = t('e.badJson') + e.message; return; }
+    try {
+      await saveRecord(root, path, index == null
+        ? { action: 'append', record: parsed }
+        : { action: 'save', index, record: parsed });
+    } catch (e) { err.textContent = e.message; }
+  });
+  const cancel = el('button', 'ghost small', t('e.cancel'));
+  cancel.addEventListener('click', () => { box.remove(); onCancel && onCancel(); });
+  row.append(save, cancel);
+  box.appendChild(row);
+  return box;
 }
 function kvList(obj, highlight) {
   const dl = el('dl', 'kv');

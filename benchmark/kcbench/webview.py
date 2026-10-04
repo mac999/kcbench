@@ -96,7 +96,11 @@ COMMAND_SPECS: Dict[str, Dict[str, Any]] = {
         {"flag": "-m", "type": "text", "required": True, "placeholder": "qwen3:8b",
          "label": "model"},
         {"flag": "--tag", "type": "text", "placeholder": "base"},
-        {"flag": "--tracks", "type": "text", "default": "sft"},
+        # 'uc' expands to every use-case track the config registers, so this
+        # default scores every answer key eval covers; narrow it for a
+        # single-track rerun. ppl and rag stay their own commands.
+        {"flag": "--tracks", "type": "text", "default": "sft,vlm,probe,uc",
+         "help": "every answer key; narrow to one track for a quick rerun"},
         {"flag": "--closed-book", "type": "flag",
          "help": "withhold the passage, so the item tests what the weights hold"},
         {"flag": "--lang", "type": "select", "options": ["", "ko", "en", "mix"]},
@@ -486,6 +490,54 @@ def create_app(cfg: Dict[str, Any], jobs: Jobs):
         return jsonify({"saved": True, "path": str(target),
                         "note": "takes effect on the next command; "
                                 "restart the webview to re-resolve its own paths"})
+
+    @app.post("/api/record")
+    def record():
+        """
+        Edit one line of a .jsonl item file: save, delete or append a record.
+
+        The same safety net as the config editor — the previous file survives
+        as .bak and the write is atomic — because these are the answer keys
+        runs are scored on. An edit changes the file's items_digest, so runs
+        made before it start showing "differs from current key" on their run
+        view, which is the trail the edit should leave.
+        """
+        body = request.json or {}
+        try:
+            path = safe_path(cfg, body.get("root", ""), body.get("path", ""))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        if not path.is_file() or path.suffix.lower() != ".jsonl":
+            return jsonify({"error": "record editing is for .jsonl files"}), 400
+        action = body.get("action")
+        rec = body.get("record")
+        if action in ("save", "append") and not isinstance(rec, dict):
+            return jsonify({"error": "record must be a JSON object"}), 400
+
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        # record indices count non-empty lines, the same way the viewer pages
+        positions = [i for i, ln in enumerate(lines) if ln.strip()]
+        if action == "append":
+            lines.append(json.dumps(rec, ensure_ascii=False))
+        elif action in ("save", "delete"):
+            idx = body.get("index")
+            if not isinstance(idx, int) or not 0 <= idx < len(positions):
+                return jsonify({"error": "no such record"}), 400
+            if action == "save":
+                lines[positions[idx]] = json.dumps(rec, ensure_ascii=False)
+            else:
+                del lines[positions[idx]]
+        else:
+            return jsonify({"error": "action must be save, delete or append"}), 400
+
+        shutil.copy2(path, path.with_suffix(path.suffix + ".bak"))
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text("\n".join(lines) + ("\n" if lines else ""),
+                       encoding="utf-8")
+        os.replace(tmp, path)
+        LOG.info("%s record in %s (previous kept as .bak)", action, path.name)
+        return jsonify({"saved": True,
+                        "total": sum(1 for ln in lines if ln.strip())})
 
     @app.get("/api/ls")
     def ls():
