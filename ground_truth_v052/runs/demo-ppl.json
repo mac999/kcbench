@@ -1,0 +1,41 @@
+{
+ "benchmark": "kcbench",
+ "version": "v2",
+ "tag": "demo-ppl",
+ "model": "Qwen/Qwen3-8B",
+ "scored_at": "2026-09-28T16:41:37Z",
+ "track": "1",
+ "chunks": 5320,
+ "skipped": 0,
+ "tokens": 2459262,
+ "max_length": 2048,
+ "dtype": "bfloat16",
+ "tracks": {
+  "1": {
+   "items": 5320,
+   "scored": 5320,
+   "perplexity": 7.5677,
+   "perplexity_median": 7.7534,
+   "perplexity_mean_per_chunk": 8.9932,
+   "by_category": {
+    "01_design_standards_kds": 8.1879,
+    "02_specifications_kcs": 10.2438,
+    "03_safety_and_disaster": 7.4724,
+    "04_quality_and_inspection": 8.1873,
+    "05_structures_and_facilities": 7.8606,
+    "06_building_and_architecture": 8.6919,
+    "07_environment_and_energy": 8.2157,
+    "08_contract_and_cost": 7.943,
+    "09_bim_and_smart_construction": 7.2684,
+    "10_equipment_and_services": 7.9575,
+    "11_general_construction": 8.2536,
+    "12_other_construction": 7.5309,
+    "50_research_reports": 15.4689
+   }
+  }
+ },
+ "elapsed_sec": 5302.9,
+ "headline": {
+  "track1_perplexity": 7.5677
+ }
+}

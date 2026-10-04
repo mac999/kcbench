@@ -269,6 +269,7 @@ clone needs no absolute path anywhere.
 | `--port N` | `8799` | port to serve on |
 | `--host ADDR` | `127.0.0.1` | interface to bind. Anything but localhost serves the corpus to the network and lets whoever reaches it start a command; the log says so when you do it |
 | `--no-browser` | off | do not open a browser window on start |
+| `--readonly` | off | a viewing demo: every route that runs a command or writes a file refuses, and the page hides those controls. What a public deployment should run |
 | `--debug` | off | Flask's debug reloader, for working on the page itself |
 | `-c, --config FILE` | `./config.json` | the settings file the page reads, edits and runs commands against |
 | `-o, --out-dir DIR` | from config | where run files are read from and commands write to |
@@ -277,6 +278,13 @@ It needs Flask, which nothing else in the benchmark does; `pip install flask`
 and the module says so if it is missing. It takes the same path flags as every
 other command (`-i`, `--corpus-dir`, `--metadata-dir`), so a page can be pointed
 at any dataset variant the way a command can.
+
+A clone is also a self-contained demo: the answer keys are in the repository
+and `runs/demo-*.json` carry four scored runs with their per-item records
+stripped, so the charts have something to draw without the dataset download.
+The `Dockerfile` at the root packages exactly that — `docker build -t
+kcbench-demo . && docker run -p 8799:8799 kcbench-demo` — serving the page
+with `--readonly` on port 8799, small enough for the cheapest CPU host.
 
 The page is arranged the way the benchmark is used, not the way the disk is
 laid out. On the left is the benchmark itself: one card per item set with its

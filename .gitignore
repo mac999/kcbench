@@ -12,6 +12,7 @@
 !/download_dataset.bat
 !/run_webview.bat
 !/run_webview.sh
+!/Dockerfile
 !/doc/
 !/benchmark/
 !/training/
@@ -68,6 +69,10 @@ benchmark/config.json.bak
 !/ground_truth_v052/uc6_verdict_v2.jsonl
 !/ground_truth_v052/uc7_requirement.jsonl
 !/ground_truth_v052/uc7_requirement_v2.jsonl
+# demo runs: aggregates only, per-item records stripped. Full runs stay local.
+!/ground_truth_v052/runs/
+/ground_truth_v052/runs/*
+!/ground_truth_v052/runs/demo-*.json
 
 # training: scripts only. Checkpoints, adapters and logs stay local.
 training/out/
