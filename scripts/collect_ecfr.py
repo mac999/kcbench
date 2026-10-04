@@ -101,8 +101,15 @@ def main(argv=None) -> int:
         # untouched: 92% routed to training against 12% for the Korean
         # corpus. Leading with it puts the signal where the router looks,
         # without inventing anything the document does not say.
-        full = (("[Source: %s]\n\n" % credit) if credit else "") + body \
-               + (("\n\n" + credit) if credit else "")
+        # Fold the credit into the opening line rather than standing it on its
+        # own. As a separate short line it became its own chunk, and the
+        # non-informative filter dropped it before the router ever saw it:
+        # the signal was in the file and absent from chunk 0, so every amended
+        # section scored 0.0 and routed to training.
+        lines = body.split("\n", 1)
+        head_line = lines[0] + (("  [Source: %s]" % credit) if credit else "")
+        rest = ("\n" + lines[1]) if len(lines) > 1 else ""
+        full = head_line + rest + (("\n\n" + credit) if credit else "")
         title = re.sub(r"^§\s*", "", head) or num
         fname = safe("%s %s" % (num, re.sub(r"^%s\s*" % re.escape(num), "", title))) + ".txt"
         (out / fname).write_text(full, encoding="utf-8")
