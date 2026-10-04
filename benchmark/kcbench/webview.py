@@ -37,8 +37,8 @@ from collections import deque
 from pathlib import Path
 from typing import Any, Dict, List
 
-from kcbench.common import (HERE, PROJECT, add_common_args, describe, log,
-                            resolve_config)
+from kcbench.common import (HERE, PROJECT, add_common_args, describe,
+                            items_digest, log, resolve_config)
 
 LOG = log("webview")
 
@@ -334,6 +334,7 @@ def track_summaries(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
             rows.append(cached["row"])
             continue
         n, kinds, splits, modes, track, usecase = 0, {}, {}, {}, None, None
+        ids: List[Dict[str, Any]] = []
         with path.open(encoding="utf-8", errors="replace") as fh:
             for line in fh:
                 if not line.strip():
@@ -347,6 +348,7 @@ def track_summaries(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
                 if not any(k.startswith(("question", "instruction")) for k in rec):
                     continue
                 n += 1
+                ids.append({"id": rec.get("id", "")})
                 kinds[rec.get("eval_type", "?")] = kinds.get(rec.get("eval_type", "?"), 0) + 1
                 sp = rec.get("split", "holdout")
                 splits[sp] = splits.get(sp, 0) + 1
@@ -356,10 +358,13 @@ def track_summaries(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
                 usecase = usecase or rec.get("usecase")
         if n == 0:
             continue
+        # The same digest a run records for the items it scored, so the page
+        # can say whether a run file was made from the key as it stands now.
         row = {"file": path.name, "size": path.stat().st_size, "n": n,
                "track": track, "usecase": usecase, "eval_types": kinds,
                "splits": splits, "match_modes": modes,
-               "contaminated": splits.get("train", 0)}
+               "contaminated": splits.get("train", 0),
+               "items_digest": items_digest(ids)}
         _TRACK_CACHE[key] = {"mtime": mtime, "row": row}
         rows.append(row)
     return rows
