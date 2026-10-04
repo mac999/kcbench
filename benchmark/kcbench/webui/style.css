@@ -133,6 +133,8 @@ button.small { padding: 2px 8px; font-size: 12px; }
 .pill.bad  { color: var(--bad);  border-color: var(--bad); }
 .pill.warn { color: var(--warn); border-color: var(--warn); }
 .pill.solid { background: var(--surface-2); border-color: transparent; }
+.keylinks { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 2px 0 10px; }
+.keylinks .keylink { font-family: var(--mono); font-size: 11.5px; text-decoration: underline; text-underline-offset: 3px; padding: 1px 4px; }
 
 /* ── track list (left, Benchmark tab) ──────────────────────────────────── */
 .tracklist { display: flex; flex-direction: column; gap: 5px; }

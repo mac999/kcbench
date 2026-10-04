@@ -39,6 +39,9 @@ const I18N = {
     'd.cmpTitle': 'Paired comparisons', 'd.cmpNote': 'Written by cb.py compare. McNemar for accuracies, paired bootstrap for F1. An interval straddling zero, or a p-value near 1, means the data cannot tell the change from noise.',
     'd.sig': 'significant', 'd.noise': 'noise', 'd.delta': 'Change, after − base',
     'd.headline': 'Headline', 'd.cmpRow': 'comparison', 'd.items': 'items',
+    'd.keys': 'Scored on', 'd.keySame': 'current key',
+    'd.keyDiff': 'differs from current key', 'd.keyGone': 'key not on this machine',
+    'd.keyDiffTip': 'The items this run scored are not the key file as it stands now — a partial run (--limit, --lang) or the key changed since.',
     'w.title': 'A benchmark run, in order',
     'w.lead': 'This tool answers one question: did fine-tuning on the corpus teach the model anything? Each step below loads its command into the bar above.',
     'w.1t': 'Build the benchmark, once', 'w.1d': 'Split the corpus, mine the items, write the training split with held-out documents removed. Do this before any training.',
@@ -82,6 +85,9 @@ const I18N = {
     'd.cmpTitle': '짝지은 비교', 'd.cmpNote': 'cb.py compare가 쓴 값입니다. 정확도는 McNemar, F1은 paired bootstrap. 구간이 0을 걸치거나 p값이 1에 가까우면 변화를 잡음과 구별할 수 없다는 뜻입니다.',
     'd.sig': '유의미', 'd.noise': '잡음', 'd.delta': '변화량, 이후 − 기준',
     'd.headline': '대표 지표', 'd.cmpRow': '비교', 'd.items': '문항',
+    'd.keys': '채점에 쓴 정답지', 'd.keySame': '현재 정답지와 동일',
+    'd.keyDiff': '현재 정답지와 다름', 'd.keyGone': '이 컴퓨터에 정답지 없음',
+    'd.keyDiffTip': '이 실행이 채점한 문항이 지금의 정답지 파일과 다릅니다 — 부분 실행(--limit, --lang)이었거나 이후 정답지가 바뀐 경우입니다.',
     'w.title': '벤치마크 한 바퀴, 순서대로',
     'w.lead': '이 도구가 답하는 질문은 하나입니다: 코퍼스로 파인튜닝한 것이 모델에 무언가를 가르쳤는가? 아래 각 단계를 누르면 명령이 상단 바에 채워집니다.',
     'w.1t': '벤치마크 빌드 — 한 번만', 'w.1d': '코퍼스를 나누고, 문항을 채굴하고, 홀드아웃 문서를 뺀 학습 분할을 씁니다. 어떤 학습보다도 먼저 하십시오.',
@@ -559,6 +565,39 @@ function summariseRun(run) {
   return { kind: 'run', tag: run.tag, model: run.model, book: run.book, lang: run.lang, think: run.think, elapsed: run.elapsed_sec, headline: run.headline || {}, meta: run.meta || {}, metrics };
 }
 
+// A run file names its tracks by the names evaluate.py uses ('2', 'probe',
+// 'uc7_requirement'); the answer-key cards carry the file they were counted
+// from. This joins the two so a run can point at the key that scored it.
+function trackEntry(key) {
+  const name = { 1: 'dapt', 2: 'sft', 3: 'vlm' }[key] || key;
+  return (STATE.tracks || []).find((tr) => tr.usecase === name || tr.track === name);
+}
+
+function keyLinks(run) {
+  const row = el('div', 'keylinks');
+  row.appendChild(el('span', 'note', t('d.keys') + ':'));
+  Object.entries(run.tracks || {}).forEach(([k, body]) => {
+    const tr = trackEntry(k);
+    if (!tr) {
+      const pill = el('span', 'pill', k);
+      pill.title = t('d.keyGone');
+      row.appendChild(pill);
+      return;
+    }
+    const btn = el('button', 'ghost small keylink', tr.file);
+    btn.addEventListener('click', () => openFile('out', tr.file));
+    row.appendChild(btn);
+    if (body.items_digest && tr.items_digest) {
+      const same = body.items_digest === tr.items_digest;
+      const pill = el('span', 'pill ' + (same ? 'good' : 'warn'),
+                      same ? t('d.keySame') : t('d.keyDiff'));
+      if (!same) pill.title = t('d.keyDiffTip');
+      row.appendChild(pill);
+    }
+  });
+  return row;
+}
+
 function viewRun(run, label) {
   const r = summariseRun(run);
   const raw = el('button', 'ghost small', t('v.raw'));
@@ -566,6 +605,7 @@ function viewRun(run, label) {
   const wrap = el('div', 'dash');
   wrap.appendChild(el('h3', null, `${r.tag || '(untagged)'} — ${r.model || ''}`));
   wrap.appendChild(el('p', 'note', [r.book, r.lang, r.think == null ? null : `think ${r.think}`, r.elapsed ? `${r.elapsed}s` : null].filter(Boolean).join(' · ')));
+  wrap.appendChild(keyLinks(run));
   if (Object.keys(r.headline).length) wrap.appendChild(headlineTable(r.headline));
   wrap.appendChild(metricGrid([r]));
   VIEW.reload = () => viewRun(run, label);
