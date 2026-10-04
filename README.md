@@ -286,6 +286,22 @@ The `Dockerfile` at the root packages exactly that — `docker build -t
 kcbench-demo . && docker run -p 8799:8799 kcbench-demo` — serving the page
 with `--readonly` on port 8799, small enough for the cheapest CPU host.
 
+On a bare Ubuntu host, `./run_demo.sh [port]` does the same without Docker:
+it installs Flask into the interpreter that will actually run the page
+(Ubuntu images often carry two pythons, and `pip3` may not belong to
+`python3`), steps over the distutils `blinker` that blocks a plain
+`pip install flask`, and frees the port from a template's Jupyter. A RunPod
+CPU pod runs the whole demo with one start command:
+
+```
+bash -c "apt-get update -qq; apt-get install -y -qq git python3-pip;
+  git clone --depth 1 https://github.com/mac999/kcbench /app;
+  bash /app/run_demo.sh 8888"
+```
+
+(8888 because that is the port a stock RunPod template already proxies;
+any exposed HTTP port works.)
+
 The page is arranged the way the benchmark is used, not the way the disk is
 laid out. On the left is the benchmark itself: one card per item set with its
 count, answer types and how many items are training-side — the answer key,

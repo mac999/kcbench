@@ -12,6 +12,7 @@
 !/download_dataset.bat
 !/run_webview.bat
 !/run_webview.sh
+!/run_demo.sh
 !/Dockerfile
 !/doc/
 !/benchmark/
