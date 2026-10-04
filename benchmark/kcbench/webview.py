@@ -426,7 +426,7 @@ def run_summaries(cfg: Dict[str, Any], folder: Path | None = None) -> List[Dict[
     return out
 
 
-def create_app(cfg: Dict[str, Any], jobs: Jobs):
+def create_app(cfg: Dict[str, Any], jobs: Jobs, readonly: bool = False):
     try:
         from flask import Flask, jsonify, request, send_file, send_from_directory
     except ImportError as exc:                 # noqa: PLC0415
@@ -434,6 +434,13 @@ def create_app(cfg: Dict[str, Any], jobs: Jobs):
 
     static_dir = Path(__file__).resolve().parent / "webui"
     app = Flask(__name__, static_folder=None)
+
+    # The proxy URL of a hosted demo is the public internet, and this app can
+    # otherwise run commands and rewrite answer keys. Read-only closes every
+    # route that changes anything; the page hides the matching controls.
+    def refused_readonly():
+        return jsonify({"error": "read-only demo: this instance does not "
+                                 "run commands or write files"}), 403
 
     @app.after_request
     def no_store(resp):
@@ -462,6 +469,7 @@ def create_app(cfg: Dict[str, Any], jobs: Jobs):
             "project": str(PROJECT),
             "job": current.describe() if current else None,
             "recent": jobs.recent(),
+            "readonly": readonly,
         })
 
     @app.get("/api/config")
@@ -474,6 +482,8 @@ def create_app(cfg: Dict[str, Any], jobs: Jobs):
 
     @app.put("/api/config")
     def put_config():
+        if readonly:
+            return refused_readonly()
         path = cfg.get("_config_path")
         if not path:
             return jsonify({"error": "this session has no config file to write"}), 400
@@ -502,6 +512,8 @@ def create_app(cfg: Dict[str, Any], jobs: Jobs):
         made before it start showing "differs from current key" on their run
         view, which is the trail the edit should leave.
         """
+        if readonly:
+            return refused_readonly()
         body = request.json or {}
         try:
             path = safe_path(cfg, body.get("root", ""), body.get("path", ""))
@@ -598,6 +610,8 @@ def create_app(cfg: Dict[str, Any], jobs: Jobs):
 
     @app.post("/api/run")
     def run_command():
+        if readonly:
+            return refused_readonly()
         body = request.json or {}
         command = body.get("command")
         if command not in COMMAND_SPECS:
@@ -627,6 +641,8 @@ def create_app(cfg: Dict[str, Any], jobs: Jobs):
 
     @app.post("/api/stop")
     def stop():
+        if readonly:
+            return refused_readonly()
         job = jobs.all.get((request.json or {}).get("job", ""))
         if not job:
             return jsonify({"error": "no such job"}), 404
@@ -647,18 +663,22 @@ def main(argv: List[str] | None = None) -> int:
     ap.add_argument("--port", type=int, default=8799, help="port (default 8799)")
     ap.add_argument("--no-browser", action="store_true",
                     help="do not open a browser window")
+    ap.add_argument("--readonly", action="store_true",
+                    help="serve a viewing demo: no commands, no file writes "
+                         "(what a public deployment should run)")
     ap.add_argument("--debug", action="store_true", help="Flask debug reloader")
     args = ap.parse_args(argv)
 
     cfg = resolve_config(args)
     describe(cfg)
 
-    app = create_app(cfg, Jobs())
+    app = create_app(cfg, Jobs(), readonly=args.readonly)
     url = f"http://{args.host}:{args.port}/"
     LOG.info("webview on %s", url)
-    if args.host not in ("127.0.0.1", "localhost"):
+    if args.host not in ("127.0.0.1", "localhost") and not args.readonly:
         LOG.warning("bound to %s - this serves your corpus to the network, and "
-                    "anyone who can reach it can start a command", args.host)
+                    "anyone who can reach it can start a command; a public "
+                    "deployment should add --readonly", args.host)
     if not args.no_browser:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     app.run(host=args.host, port=args.port, debug=args.debug,

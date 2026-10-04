@@ -524,7 +524,7 @@ function viewRecords(root, path, data, label) {
     d.appendChild(body);
     wrap.appendChild(d);
   });
-  const add = el('button', 'ghost small', t('e.add'));
+  const add = el('button', 'ghost small recadd', t('e.add'));
   add.addEventListener('click', () => {
     if (wrap.querySelector('.editor')) return;       // one editor at a time
     const template = data.records.length ? { ...data.records[data.records.length - 1] } : {};
@@ -973,7 +973,10 @@ async function boot() {
   applyTheme(localStorage.getItem('kc.theme') || 'dark');
   initTabs(); initSplitters();
   const s = await api('/api/state');
-  Object.assign(STATE, { commands: s.commands, roots: s.roots, input_roots: s.input_roots, output_roots: s.output_roots, job: s.job });
+  Object.assign(STATE, { commands: s.commands, roots: s.roots, input_roots: s.input_roots, output_roots: s.output_roots, job: s.job, readonly: !!s.readonly });
+  // a read-only demo hides everything that runs or writes; the server
+  // refuses those routes anyway, this just keeps the page honest about it
+  if (STATE.readonly) document.body.classList.add('readonly');
   renderCommands();
   await Promise.all([loadConfig(), loadRuns(), loadTracks()]);
   refreshTrees();
