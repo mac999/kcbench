@@ -19,7 +19,7 @@ mines factual questions from them, holds out the source material, and scores a
 model on what it withheld. It ships configured for the corpus it was built
 against — Korean construction standards (KDS/KCS), safety regulation and IFC
 building models — which is where the name comes from: **K**orean
-**c**onstruction. Everything domain-specific is in `config.json` and a handful
+**c**onstruction. Everything domain-specific is in the settings file and a handful
 of prompt strings; see [Adapting it to another
 domain](#adapting-it-to-another-domain).
 
@@ -57,13 +57,15 @@ answer key expects.](doc/webview2.png)
 - [Reading the worked examples](#reading-the-worked-examples) — what the synthetic provenance limits, and what the next phase tests
 - [Worked example-1](#worked-example-1-korean-construction-corpus-basic) — DAPT and SFT on Korean construction regulation: what each stage moved, and why closed-book recall did not
 - [Worked example-2](#worked-example-2-korean-construction-corpus-advanced) — document routing, preference and verifier tracks, and what a second generator release changed
+- [English instantiation](#english-instantiation-us-federal-safety-regulation-29-cfr-1926) — the second dataset, its settings file and its known defects
 - [Retrieval ablation and item validity](#retrieval-ablation-and-item-validity) — where the detail lives
 - [System design implications](#system-design-implications) — what the findings imply for the system that motivated them
 - [Adapting it to another domain](#adapting-it-to-another-domain) — what to change when the corpus is not construction
 - [Limits](#limits) — what this benchmark cannot decide
 
-The three longest sections live in their own files so this one stays readable:
+The longest sections live in their own files so this one stays readable:
 [doc/worked-example.md](doc/worked-example.md) (the full campaign),
+[doc/worked-example-2.md](doc/worked-example-2.md),
 [doc/retrieval-and-validity.md](doc/retrieval-and-validity.md),
 [doc/metrics.md](doc/metrics.md).
 
@@ -114,7 +116,7 @@ ollama pull llama3.3:70b                    # optional, 42 GB: leads the panel
                                             #   when present, skipped when not
 ```
 
-The panel is configured under `judges` in `config.json`; judges sharing the
+The panel is configured under `judges` in the settings file; judges sharing the
 tested model's family are excluded automatically, so testing an exaone or glm
 model needs one more family pulled in their place.
 
@@ -135,7 +137,7 @@ reproducible; point any command back at it from `benchmark/`:
 python cb.py eval -m qwen3:8b --tag base -o ../ground_truth --closed-book
 ```
 
-or set `out_dir` in a copy of `config.json`. Both ship as evaluation sets only
+or set `out_dir` in a copy of the settings file. Both ship as evaluation sets only
 -- questions, answers and citations. Their `train/` splits and raw-chunk files
 carry source text and stay local; rebuild them from the corpus with `cb.py
 build` and `split` as the [Workflow](#workflow) describes before training.
@@ -271,7 +273,7 @@ clone needs no absolute path anywhere.
 | `--no-browser` | off | do not open a browser window on start |
 | `--readonly` | off | a viewing demo: every route that runs a command or writes a file refuses, and the page hides those controls. What a public deployment should run |
 | `--debug` | off | Flask's debug reloader, for working on the page itself |
-| `-c, --config FILE` | `./config.json` | the settings file the page reads, edits and runs commands against |
+| `-c, --config FILE` | `./config.json` when present | the settings file the page reads, edits and runs commands against; with several variants present, name one |
 | `-o, --out-dir DIR` | from config | where run files are read from and commands write to |
 
 It needs Flask, which nothing else in the benchmark does; `pip install flask`
@@ -308,7 +310,7 @@ count, answer types and how many items are training-side — the answer key,
 which is what a before/after comparison rests on. Open one and its items read
 with the expected answer on the same line as the question. The corpus and
 generated data sit behind a second tab, since scoring never reads them, and
-`config.json` is editable in a third. On the right are the checkpoints scored
+the settings file is editable in a third. On the right are the checkpoints scored
 against those items, one card each; tick several and press Chart to draw them
 on identical items, which is the only comparison this benchmark treats as
 meaningful. The middle opens on the seven-step workflow from this README, each
@@ -324,7 +326,7 @@ Korean and English, all remembered per browser.
 It is a reader and a launcher, not a second implementation: every number it
 draws is read back out of a run file an ordinary command wrote, so the page
 cannot disagree with what `cb.py` reports. It writes in two places only —
-starting a command, and saving `config.json`, which keeps a `.bak`. It binds to
+starting a command, and saving the settings file, which keeps a `.bak`. It binds to
 localhost, refuses paths outside the directories the config names, and runs one
 command at a time, because scoring loads a model and `ppl` loads a second copy
 locally: on a unified-memory box, two at once is what kills long runs.
@@ -334,7 +336,8 @@ locally: on a unified-memory box, two at once is what kills long runs.
 ```
 benchmark/
   cb.py                  the only entry point: build, eval, ppl, compare, ...
-  config.json            every tunable, overridden by command-line flags
+  config_kr.json         Korean corpus settings; every tunable, overridden by flags
+  config_us.json         English corpus settings (29 CFR 1926)
   run_resumable.sh       supervisor: retry, resume, stop when stuck
   webview.bat / .sh      start the browser view under the venv KCBENCH_PY names
   kcbench/
@@ -359,6 +362,9 @@ benchmark/
     webview.py           serve the browser view
     webui/               the page it serves: index.html, app.js, style.css
     common.py            config resolution, paths, shared helpers
+  tools_breakdown.py     score by two axes at once, and a majority-class floor
+  tools_subject_split.py split a run by whether the mined subject is well formed
+  tools_rehead.py        repair a finished run's per-track summary without rescoring
 training/
   dapt.py                stage 1, domain-adaptive pre-training
   sft.py                 stage 2, supervised fine-tuning
@@ -368,9 +374,13 @@ ground_truth_v052/       the current answer key, and the default out_dir. Item
                          are what the modules build into it, kept local
 ground_truth/            the first answer key, kept so worked example-1 stays
                          reproducible (-o ../ground_truth)
+ground_truth_us/         the English answer key for worked example-3, built from
+                         29 CFR 1926 with -c config_us.json
 train_data_v052/         the input side, downloaded from the Drive link in
                          Use: data/ (source documents), train_data/ (synthetic
                          training set), metadata/ -- the input-path defaults
+train_data_us/           the English input side, same three subdirectories,
+                         collected by scripts/collect_ecfr.py
 download_dataset.bat/.sh fetch the Drive dataset into train_data_v052/, resumable
 run_cli.bat / .sh        run any cb.py command from the root under KCBENCH_PY
 run_webview.bat / .sh    start the browser view the same way
@@ -394,6 +404,7 @@ this README come from the runs listed in the worked examples.
 
 | Rev | Date | What changed |
 |---|---|---|
+| v4.0 | 2026-10-09 | Second dataset: 29 CFR 1926 collected, built and scored with `config_us.json`. Settings files split per dataset with no implicit default; a variant may `extends` a base. Language-dependent mining rules (units, qualifiers, enumeration, clause citation, subject direction, chunk boundary) moved into settings, Korean behaviour as the default. Per-track summary metric configurable via `eval.headline_metrics`, with one list shared by the summary and the paired comparison (`common.score_metrics`); `tools_rehead.py` repairs a finished run's summary without rescoring. `triage` now reads every track the config registers rather than two. |
 | v3.9 | 2026-09-28 | Corpus regenerated with generator v0.5.2 (document routing, DPO/STaR/RLVR formats) and everything re-scored — worked example-2. Verdict scoring decomposed into `correct` / `abstained` / `off_vocab`; uc6 shown non-discriminating and repaired as `uc6_verdict_v2` (+0.26 for an 8B, +0.09 for a 70B, both above the constant-answer baseline). Retrieval reports coverage beside recall. Image tracks guarded against text-only models. Judge panel capped at its preferred size. Corpus-specific rules (volatility, uc7 mining, judge pool) moved into `config.json`. |
 | v3.8 | 2026-09-26 | Grader registry; nameset match mode derived from the answer key (+0.20 uc1, +0.15 sft on the full sets — the largest measurement correction to date). Volatility classifier (`cb.py volatility`). Sentence grader under a 3-judge panel with same-family judges excluded (a qwen judge passed qwen answers +0.27 more often). uc7 requirement track mined from threshold items. |
 | v3.7 | 2026-09-13 | uc6 verdict track: 810 compliance judgements, balanced entail/contradict, structured-answer grading. |
@@ -626,7 +637,7 @@ corpus where this one mines 394).
 | `uc7_requirement_v2` | 116 | sentence 116 | the same task, remined after the key set measured as the score's ceiling |
 
 `--tracks uc` runs every use-case track. Use-case tracks are registered in
-`config.json`, so adding one takes a config entry rather than a code change.
+the settings file, so adding one takes a config entry rather than a code change.
 
 `dapt`, `sft` and `vlm` were originally numbered 1, 2 and 3, for the training
 stage each diagnoses. The numbers are still accepted — `--tracks 2` is `--tracks
@@ -659,7 +670,7 @@ terminology, cutting perplexity 40 % across all thirteen document categories.
 The figures that amendments rewrite are served by retrieval rather than by
 weights, and retrieval recovers a fifth to a third of the closed-book gap
 exactly where the corpus holds the answer. Three
-lessons from the campaigns generalise beyond this corpus. A defective track
+lessons from the campaigns generalise beyond one corpus. A defective track
 reads exactly like a model failure until a contrast separates them: uc6 sat
 below its constant-answer baseline for an 8B and a 70B model alike, and only
 the open-against-closed comparison, then a key repair, showed the instrument
@@ -948,6 +959,78 @@ marginally, `train` leads `retrieve` 0.740 to 0.688, but within answer type
 `retrieve` is higher in three of five, because `train` holds more of the easiest
 type and `retrieve` more of the hardest.
 
+## English instantiation: US federal safety regulation (29 CFR 1926)
+
+A second dataset built with the same code and one settings file,
+[benchmark/config_us.json](benchmark/config_us.json): OSHA's construction
+standards, 236 sections collected from the eCFR API by
+[scripts/collect_ecfr.py](scripts/collect_ecfr.py). The BIM assets are reused
+from the Korean corpus, so the image track is off here.
+
+```
+python scripts/collect_ecfr.py                       # 236 sections -> train_data_us/
+python benchmark/cb.py build -c benchmark/config_us.json
+python benchmark/cb.py eval  -c benchmark/config_us.json -m qwen3:8b -t us-open
+python benchmark/cb.py eval  -c benchmark/config_us.json -m qwen3:8b -t us-closed --closed-book
+```
+
+| | |
+|---|---|
+| Sections | 236 |
+| Chunks | 12,540 |
+| Held-out documents | 101 |
+| Routing train / both / retrieve | 135 / 19 / 82 |
+| Generated rows | DAPT 1,438 · SFT 3,175 · STaR 3,175 (1,736 rejected) · DPO 1,020 · RLVR 3,175 · RAG 3,622 |
+| Benchmark items | 916 over eight tracks, plus a 340-item repaired uc6 variant |
+| Generation time | 1 h 51 min on one GB10 |
+
+uc3 is disabled: no IFC was collected for this corpus.
+
+### What the English settings file sets
+
+`config_kr.json` carries none of these and keeps the built-in Korean defaults.
+Each is a corpus or language property rather than a code path, so porting the
+pipeline is a settings exercise.
+
+| Setting | What it names |
+|---|---|
+| `input_extensions` | which file types the collector and chunker read |
+| `informative_script` | the script a chunk must contain to count as text |
+| `mining.units`, `mining.qualifiers`, `mining.verdict_qualifiers` | the unit and threshold-qualifier vocabulary a figure is mined with |
+| `mining.qualifier_leads` | whether a qualifier may precede its figure |
+| `mining.item_lang` | the language item text is rendered in |
+| `enumeration.*` | list markers, lead-ins and clause headings |
+| `enumeration.require_start_at_one` | whether a list must begin at 1 to be mined |
+| `clause_format.*` | how a clause is cited, and where to read its number when the body does not cite itself |
+| `abstain_token` | the word an item accepts for "not stated" |
+| `subject.direction` | where the subject sits relative to the figure |
+| `chunk_boundary` | the boundary chunk overlap realigns to |
+| `subject_quality.*` | what counts as a well-formed mined subject |
+| `eval.headline_metrics` | which per-item metric stands for a track's score |
+| `review_sheet.*`, `triage.*` | how the human-review sample is drawn and exported |
+
+### Known defects in this build
+
+- `cb.py verify` fails `in_train`, 34 of 57. Twenty-three use-case items were
+  mined from documents the router sent to `retrieve`, which emit no training
+  data, but the split has two values -- `holdout` and `train` -- so they are
+  labelled `train`. Whole-track and headline scores pool every item and are
+  unaffected; the `by_split` rows move by about 0.004. The fix is a third split
+  value and a rebuild.
+- Most items carry no clause citation: 14 of 93 in track2, none in uc1 or the
+  probe, and the 14 are formatted wrongly. CFR states a section number in its
+  heading and refers to neighbours in the body, so mining the body alone finds
+  little. `clause_format.from_document` and a corrected
+  `enumeration.clause` are in the settings file but applying them needs a
+  rebuild. `provenance.jsonl` carries document, chunk digest and character
+  offsets, so traceability itself is unaffected.
+- 28 % of mined subjects are fragments rather than complete noun phrases.
+  [benchmark/tools_subject_split.py](benchmark/tools_subject_split.py) splits a
+  run by subject quality.
+- uc2 has 21 items and uc5 has 26. Wilson intervals there are wide.
+- Every answer key was mined by rule or model; none has been reviewed by a
+  domain expert.
+
 ## Retrieval ablation and item validity
 
 How much of a score the retriever decides rather than the model, and how much
@@ -987,8 +1070,13 @@ may change. The reasoning transfers further than the figures do.
 
 ## Adapting it to another domain
 
-Everything tunable lives in `config.json`, and every value there is overridden
-by the matching command-line flag. The parts worth knowing:
+Everything tunable lives in a settings file, and every value there is overridden
+by the matching command-line flag. Two ship —
+[benchmark/config_kr.json](benchmark/config_kr.json) for the Korean corpus and
+[benchmark/config_us.json](benchmark/config_us.json) for the English one — and
+with more than one present the tools refuse to guess: pass `-c`. A variant that
+needs to hold one setting fixed can name a base with `extends` and carry only
+what it changes. The parts worth knowing:
 
 - `corpus_dir`, `generated_dir`, `out_dir` — where documents are read and
   artefacts are written. The `images` paths carried by `vlm` and `uc3` items are
@@ -1010,9 +1098,14 @@ by the matching command-line flag. The parts worth knowing:
 
 What is domain-specific and would need editing: the prompt strings for the
 vision tracks in `kcbench/build_tracks.py` and `build_usecases.py`, which name IFC
-classes and construction site photos, and the IFC reader itself. The text
-tracks make no assumption about subject matter beyond the corpus being chunked
-prose with numbers and named lists in it.
+classes and construction site photos, and the IFC reader itself.
+
+The text tracks assume more about **language** than about subject matter: unit
+and qualifier vocabulary, enumeration patterns, clause citation, sentence word
+order and what counts as informative text are all settings whose defaults are
+Korean. The
+[English instantiation](#english-instantiation-us-federal-safety-regulation-29-cfr-1926)
+lists the ones a second language needed.
 
 Prompts default to Korean because the reference corpus is Korean regulation and
 translating the terms changes the question. Every item carries an English
