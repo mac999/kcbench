@@ -11,11 +11,14 @@ from __future__ import annotations
 import argparse
 import collections
 import json
+import functools
 import re
 from pathlib import Path
 from typing import Any, Dict, List
 
-from kcbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, QUALIFIER_EN,
+from kcbench.common import (clause_label, clause_for, verified_note, BENCHMARK_NAME, BENCHMARK_VERSION, QUALIFIER_EN,
+                    item_lang,
+                    mining_vocab, qualifier_leads,
                             TRACKS_HELP, resolve_tracks,
                     SCHEMA_VERSION, UNIT_EN, add_common_args, describe,
                     generated_documents, item_id, log, nameset_match_mode, normalise,
@@ -29,6 +32,24 @@ UNITS = tuple(UNIT_EN)
 # Regulations state a requirement as "<subject> ... <number> <unit> 이상/이하/…".
 FACT_RE = re.compile(
     r"([0-9][0-9,]*(?:\.[0-9]+)?)\s*(" + "|".join(map(re.escape, UNITS)) + r")\s*(이상|이하|미만|초과|이내)")
+
+
+@functools.lru_cache(maxsize=8)
+def _fact_re(units: tuple, quals: tuple, leads: bool):
+    """
+    The threshold pattern for one vocabulary and word order.
+
+    Korean puts the qualifier after the figure ("30 cm 이상"), English before
+    it ("at least 30 inches"). Both orders return (value, unit, qualifier) in
+    that order so the caller does not branch.
+    """
+    num = r"([0-9][0-9,]*(?:\.[0-9]+)?)"
+    u = "(" + "|".join(map(re.escape, units)) + ")"
+    q = "(" + "|".join(map(re.escape, quals)) + ")"
+    if leads:
+        # reordered to (value, unit, qualifier) by the caller
+        return re.compile(q + r"\s+" + num + r"\s*" + u + r"\b", re.I), True
+    return re.compile(num + r"\s*" + u + r"\s*" + q), False
 CLAUSE_RE = re.compile(r"제\s*(\d+)\s*조(?:\s*제\s*(\d+)\s*항)?")
 
 # Enumerated lists. Arabic and Korean ordinals both appear, often in the same
@@ -46,6 +67,50 @@ LEAD_IN_RE = re.compile(
 # Failing an explicit lead-in, the clause heading that governs the list. Korean
 HEADING_RE = re.compile(r"제\s*(\d+)\s*조\s*\(([^)]{2,40})\)")
 
+# The four patterns above are Korean statute's own shapes. A federal rule
+# enumerates as (a)(1)(iii), introduces a list with "shall include" rather
+# than 다음 각 호, and heads a section with "§ 1926.501 Duty to have fall
+# protection" -- so uc5 mined 0 items from 236 documents, every one rejected
+# for a marker run that does not start at 1 or a missing lead-in. Each is a
+# setting; the defaults are the Korean patterns unchanged.
+ENUM_DEFAULTS = {
+    "enum_primary": ENUM_ARABIC.pattern,
+    "enum_secondary": ENUM_HANGUL.pattern,
+    "secondary_order": HANGUL_ORDER,
+    "lead_in": LEAD_IN_RE.pattern,
+    "heading": HEADING_RE.pattern,
+    "clause": CLAUSE_RE.pattern,
+    # Korean statute restarts its 각 호 numbering in every clause, so a list
+    # that does not open at 1 is a fragment. A federal rule numbers straight
+    # through a section, and a chunk cut from its middle legitimately opens at
+    # (d) -- 567 of 771 candidates were rejected for exactly that.
+    "require_start_at_one": True,
+}
+
+
+@functools.lru_cache(maxsize=8)
+def _enum_set(frozen: tuple):
+    over = dict(frozen)
+    out = {}
+    for k, default in ENUM_DEFAULTS.items():
+        v = over.get(k, default)
+        if k in ("secondary_order", "require_start_at_one"):
+            out[k] = v
+            continue
+        try:
+            out[k] = re.compile(v, re.M)
+        except re.error as exc:
+            LOG.error("enumeration.%s is not a valid regex (%s); using the default", k, exc)
+            out[k] = re.compile(default, re.M)
+    return out
+
+
+def enum_patterns(cfg=None):
+    """Enumeration markers, list lead-ins and clause headings for this corpus."""
+    over = (cfg or {}).get("enumeration") or {}
+    return _enum_set(tuple(sorted(over.items())))
+
+
 TOKEN_RE = re.compile(r"[가-힣A-Za-z0-9()·\-]+")
 # A token ending one of these connects to something that follows, so a subject
 # ending there has been cut before its head noun.
@@ -62,6 +127,62 @@ HEAD_OK = ("관한", "대한", "위한", "따른", "의한", "관하여", "대�
 STOP_TOK = {"는", "은", "이", "가", "을", "를", "의", "최대", "최소", "각", "그", "해당",
             "다음", "단", "또한", "위", "아래", *UNITS}
 PARTICLE_RE = re.compile(r"(은|는|이|가|을|를|의)$")
+
+# The lists above are Korean morphology: particles, adnominal endings, the
+# tokens that end a phrase. English marks the same boundaries with function
+# words in a different position -- a Korean threshold reads "<noun phrase>
+# <number> <unit> 이상", an English one "<subject> shall be at least <number>
+# <unit>", so walking back from the number lands on "shall be" rather than on
+# the subject. 41 of 85 uc1 subjects came out as fragments ("capacity of",
+# "step stools shall be") before this was configurable.
+SUBJECT_DEFAULTS = {
+    "direction": "before",          # before | sentence_subject
+    "stop_tokens": sorted(STOP_TOK),
+    "stop_endings": list(STOP_END),
+    "tail_bad": list(TAIL_BAD),
+    "head_bad": list(HEAD_BAD),
+    "head_ok": list(HEAD_OK),
+    "particle": PARTICLE_RE.pattern,
+    "max_tokens": 4,
+    "window": 6,
+}
+
+
+def subject_rules(cfg=None):
+    over = (cfg or {}).get("subject") or {}
+    out = dict(SUBJECT_DEFAULTS)
+    out.update({k: v for k, v in over.items() if not k.startswith("_")})
+    out["stop_tokens"] = set(out["stop_tokens"]) | set(UNITS)
+    out["particle_re"] = re.compile(out["particle"]) if out["particle"] else None
+    return out
+
+
+# An English requirement names its subject before the modal: "Step stools
+# shall be at least 8 inches". Taking the span from the start of the clause up
+# to the modal gives the subject the question needs.
+_MODAL = re.compile(
+    r"(?<!\bthat )(?<!\bwhich )(?<!\bwho )(?<!\bwhere )(?<!\bwhen )"
+    r"\b(shall|must|may|is|are|was|were|has|have|had)\b", re.I)
+# A participial or relative clause opens a new predicate -- "a liquid
+# having a vapor pressure", "equipment that has a rated capacity" -- and
+# the subject the question needs stands before it, not inside it.
+_CLAUSE_OPEN = re.compile(r"\b(that|which|who|whose|where|when|having|containing|used|intended|designed|installed|forming|meeting|exceeding)\b", re.I)
+
+
+def subject_sentence(text: str, rules) -> str:
+    """The clause subject: what stands before the first modal or copula."""
+    tail = re.split(r"(?<=[.;:])\s+", text)[-1] if text else ""
+    tail = re.sub(r"^\s*\(?[a-z0-9]{1,3}\)\s*", "", tail).strip()
+    # Cut at whichever comes first: the main-clause modal, or the opener of a
+    # relative/participial clause. Taking the modal alone left the relative
+    # clause as the subject -- "requirements apply to equipment that".
+    cuts = [m.start() for m in (_MODAL.search(tail), _CLAUSE_OPEN.search(tail)) if m]
+    phrase = (tail[:min(cuts)] if cuts else tail).strip(" ,;:")
+    toks = phrase.split()
+    if len(toks) > rules["max_tokens"] + 2:
+        toks = toks[-(rules["max_tokens"] + 2):]
+    phrase = " ".join(toks)
+    return phrase if len(phrase) >= 3 and any(len(t) > 2 for t in toks) else ""
 
 # Cognitive levels, following AECBench's taxonomy so a reader coming from that
 LEVEL = {"numeric": "memorization", "nameset": "understanding", "mapping": "understanding",
@@ -216,8 +337,11 @@ def subject_is_clean(phrase: str) -> str:
     return ""
 
 
-def _instr(kind: str) -> dict:
-    return {"instruction_ko": INSTRUCTION[kind]["ko"], "instruction_en": INSTRUCTION[kind]["en"]}
+def _instr(kind: str, cfg=None) -> dict:
+    """The instruction pair, with the keyed slot holding the item language."""
+    lang = item_lang(cfg)
+    return {"instruction_ko": INSTRUCTION[kind][lang],
+            "instruction_en": INSTRUCTION[kind]["en"]}
 
 
 def _provenance(cfg, doc: dict, chunk: dict, span: tuple[int, int] | None = None) -> dict:
@@ -304,16 +428,22 @@ def build_track1(cfg, holdout) -> Path:
 def _numeric_candidates(text: str, rej: Rejects, cfg) -> List[dict]:
     """Every stipulated threshold in one passage that survives admission."""
     t2 = cfg["track2_sft"]
+    units, quals = mining_vocab(cfg)
+    rx, leads = _fact_re(tuple(units), tuple(quals), qualifier_leads(cfg))
     found = []
-    for m in FACT_RE.finditer(text):
-        value, unit, qual = m.groups()
+    for m in FACT_RE.finditer(text) if False else rx.finditer(text):
+        g = m.groups()
+        value, unit, qual = (g[1], g[2], g[0]) if leads else g
         # A four-digit year with 년 is a date, not a duration.
         if unit == "년" and re.fullmatch(r"(19|20)\d\d", value):
             rej("number is a calendar year, not a duration", m.group(0))
             continue
+        rules = subject_rules(cfg)
+        subj = (subject_sentence(text[:m.start()], rules)
+                if rules["direction"] == "sentence_subject"
+                else subject_before(text[:m.start()]))
         found.append({"value": value, "unit": unit, "qualifier": qual,
-                      "span": (m.start(), m.end()),
-                      "subject": subject_before(text[:m.start()])})
+                      "span": (m.start(), m.end()), "subject": subj})
 
     # Subject quality first. A phrase that is not a usable subject cannot
     usable = []
@@ -375,7 +505,7 @@ def build_track2(cfg, holdout, rej: Rejects) -> Path:
             if made >= per_doc_cap or len(rows) >= want:
                 break
             text = chunk["text"]
-            clause = CLAUSE_RE.search(text)
+            clause = enum_patterns(cfg)["clause"].search(text)
             for f in _numeric_candidates(text, rej, cfg):
                 subject, value, unit, qual = f["subject"], f["value"], f["unit"], f["qualifier"]
                 key = (subject, value, unit, qual)
@@ -392,30 +522,36 @@ def build_track2(cfg, holdout, rej: Rejects) -> Path:
                     continue
                 seen.add(key)
 
-                topic = josa(subject, "은", "는")
+                units, quals = mining_vocab(cfg)
+                # The keyed question is written in the item language; the
+                # Korean form needs a topic particle, the English one does not.
+                en_order = item_lang(cfg) == "en"
+                topic = "" if en_order else josa(subject, "은", "는")
                 rows.append({
                     **_base("sft", "numeric", d),
                     "id": item,
-                    "lang": "ko",
+                    "lang": item_lang(cfg),
                     "context": text,
-                    "question_ko": f"{subject}{topic} 몇 {unit} {qual}이어야 하는가?",
+                    "question_ko": (f"What is the stipulated threshold for '{subject}', "
+                                    f"in {units.get(unit, unit)} ({quals.get(qual, qual)})?"
+                                    if en_order else
+                                    f"{subject}{topic} 몇 {unit} {qual}이어야 하는가?"),
                     # The subject is a legal term of art; translating it would
                     "question_en": f"What is the stipulated threshold for '{subject}', "
-                                   f"in {UNIT_EN[unit]} ({QUALIFIER_EN[qual]})?",
-                    **_instr("numeric"),
+                                   f"in {units.get(unit, unit)} ({quals.get(qual, qual)})?",
+                    **_instr("numeric", cfg),
                     "answer": answer_ko,
                     "answer_ko": answer_ko,
-                    "answer_en": f"{value} {UNIT_EN[unit]}",
+                    "answer_en": f"{value} {units.get(unit, unit)}",
                     "answer_value": float(value.replace(",", "")),
                     "answer_unit": unit,
-                    "answer_unit_en": UNIT_EN[unit],
+                    "answer_unit_en": units.get(unit, unit),
                     "qualifier": qual,
-                    "qualifier_en": QUALIFIER_EN[qual],
-                    "clause": (f"제{clause.group(1)}조" + (f"제{clause.group(2)}항" if clause.group(2) else "")
-                               if clause else None),
+                    "qualifier_en": quals.get(qual, qual),
+                    "clause": clause_for(cfg, clause, d.get("stem")),
                     "verified_en": ("stated threshold; the only figure in this passage with this "
                                     "unit and qualifier, and present in the passage as keyed"),
-                    "verified_ko": "본문에 명시된 기준값. 같은 지문에서 이 단위·한정어를 갖는 유일한 수치.",
+                    "verified_ko": verified_note(cfg, "본문에 명시된 기준값. 같은 지문에서 이 단위·한정어를 갖는 유일한 수치.", "A figure stated in the passage, and the only one there with this unit and qualifier."),
                     "provenance": _provenance(cfg, d, chunk, f["span"]),
                 })
                 made += 1
@@ -448,20 +584,24 @@ def build_track2(cfg, holdout, rej: Rejects) -> Path:
                 continue
             seen.add(key)
             if kind == "heading":
-                q_ko = f"조문 {lead}에서 정한 항목을 모두 나열하시오."
+                q_ko = (f"List every item stipulated in {lead}."
+                        if item_lang(cfg) == "en" else
+                        f"조문 {lead}에서 정한 항목을 모두 나열하시오.")
                 q_en = f"List every item stipulated in {lead} of the passage."
             else:
-                q_ko = f"조문에 따르면 {lead}에 해당하는 항목을 모두 나열하시오."
+                q_ko = (f"List every item that falls under {lead}."
+                        if item_lang(cfg) == "en" else
+                        f"조문에 따르면 {lead}에 해당하는 항목을 모두 나열하시오.")
                 q_en = f"According to the passage, list every item that falls under '{lead}'."
             rows.append({
                 **_base("sft", "nameset", d),
                 "id": item,
-                "lang": "ko",
+                "lang": item_lang(cfg),
                 "context": prefix + chunk["text"],
                 "context_extended": bool(prefix),
                 "question_ko": q_ko,
                 "question_en": q_en,
-                **_instr("nameset"),
+                **_instr("nameset", cfg),
                 "match_mode": nameset_match_mode(items),
                 "answer": items,
                 "answer_ko": items,
@@ -469,7 +609,7 @@ def build_track2(cfg, holdout, rej: Rejects) -> Path:
                 "lead_in": lead,
                 "lead_in_kind": kind,
                 "verified_en": "items parsed from a numbered list introduced by the passage itself",
-                "verified_ko": "지문이 스스로 예고한 각 호 목록에서 추출한 항목.",
+                "verified_ko": verified_note(cfg, "지문이 스스로 예고한 각 호 목록에서 추출한 항목.", "Entries taken from a list the passage itself announces."),
                 "provenance": _provenance(cfg, d, chunk, span),
             })
             made += 1
@@ -505,7 +645,9 @@ def _nameset_candidate(text: str, rej: Rejects, cfg,
     a model sees still contains the sentence its question quotes.
     """
     t2 = cfg["track2_sft"]
-    for pattern, ordered in ((ENUM_ARABIC, "arabic"), (ENUM_HANGUL, "hangul")):
+    ep = enum_patterns(cfg)
+    for pattern, ordered in ((ep["enum_primary"], "arabic"),
+                             (ep["enum_secondary"], "secondary")):
         matches = list(pattern.finditer(text))
         if len(matches) < t2["nameset_min_items"]:
             continue
@@ -514,23 +656,29 @@ def _nameset_candidate(text: str, rej: Rejects, cfg,
         run: List[Any] = []
         for m in matches:
             marker = m.group(1)
-            pos = int(marker) if ordered == "arabic" else HANGUL_ORDER.index(marker) + 1
-            if not run and pos != 1:
+            if ordered == "arabic":
+                pos = int(marker)
+            else:
+                order = ep["secondary_order"]
+                pos = (order.index(marker) + 1) if marker in order else -1
+                if pos < 0:
+                    break
+            if not run and ep["require_start_at_one"] and pos != 1:
                 continue
             if run and pos != run[-1][0] + 1:
                 break
             run.append((pos, m))
         if len(run) < t2["nameset_min_items"]:
-            rej("enumeration markers are not a run starting at 1", text[:80])
+            rej("enumeration markers are not a consecutive run", text[:80])
             continue
 
         first = run[0][1]
         lead, prefix = "", ""
         if t2.get("nameset_require_lead_in", True):
             own = text[:first.start()].rstrip()
-            m = LEAD_IN_RE.search(own)
+            m = ep["lead_in"].search(own)
             if not m and prev_tail:
-                m = LEAD_IN_RE.search((prev_tail + "\n" + own).rstrip())
+                m = ep["lead_in"].search((prev_tail + "\n" + own).rstrip())
                 if m:
                     prefix = prev_tail.rstrip() + "\n"
             if m:
@@ -543,13 +691,14 @@ def _nameset_candidate(text: str, rej: Rejects, cfg,
                 kind = "sentence"
             else:
                 head = None
-                for h in HEADING_RE.finditer(prev_tail + "\n" + own):
+                for h in ep["heading"].finditer(prev_tail + "\n" + own):
                     head = h
                 if not head:
                     rej("enumeration has no lead-in sentence saying what it lists",
                         own[-80:] if own else text[:80])
                     continue
-                lead = f"제{head.group(1)}조({re.sub(r'\\s+', ' ', head.group(2)).strip()})"
+                lead = clause_label(cfg, head.group(1), None,
+                                    re.sub(r"\s+", " ", head.group(2)).strip())
                 kind = "heading"
                 if not own.strip():
                     prefix = prev_tail.rstrip() + "\n"
@@ -632,16 +781,16 @@ def build_track3(cfg, holdout, rej: Rejects) -> Path:
             rows.append({
                 **_base("vlm", "nameset", doc_like),
                 "id": item_id("t3", model, stem, "nameset"),
-                "lang": "ko",
+                "lang": item_lang(cfg),
                 "question_ko": "이 건설 현장 사진에 보이는 구조 요소의 종류를 IFC 명칭으로 모두 나열하시오.",
                 "question_en": "List every structural element type visible in this "
                                "construction site photo, using IFC class names.",
-                **_instr("nameset"),
+                **_instr("nameset", cfg),
                 "match_mode": nameset_match_mode(sorted(types)),
                 "answer": sorted(types),
                 "answer_lang": "neutral",
                 "verified_en": "element catalogue written from the IFC file during generation",
-                "verified_ko": "생성 시 IFC 파일에서 추출한 요소 카탈로그.",
+                "verified_ko": verified_note(cfg, "생성 시 IFC 파일에서 추출한 요소 카탈로그.", "An element catalogue extracted from the IFC file at generation time."),
                 **common,
             })
             total = m["element_total"]
@@ -655,7 +804,7 @@ def build_track3(cfg, holdout, rej: Rejects) -> Path:
             rows.append({
                 **_base("vlm", "mapping", doc_like),
                 "id": item_id("t3", model, stem, "mapping"),
-                "lang": "ko",
+                "lang": item_lang(cfg),
                 "question_ko": "이 사진의 건물 모델을 구성하는 구조 요소를 IFC 명칭과 종류별 개수로 제시하시오.",
                 "question_en": "Give the structural elements of the building model in this photo "
                                "as IFC class names with a count for each.",

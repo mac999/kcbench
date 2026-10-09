@@ -33,7 +33,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from kcbench.common import (add_common_args, describe, item_id, log,
+from kcbench.common import (item_lang, add_common_args, describe, item_id, log,
                             read_jsonl, resolve_config, write_jsonl)
 
 LOG = log("requirement")
@@ -89,6 +89,12 @@ MINING_DEFAULTS: Dict[str, Any] = {
     "min_subject_chars": 2,
     "max_subject_chars": 60,
     "sources": list(DEFAULT_SOURCES),
+    # The sentences wrapped around a mined requirement. A citation convention
+    # and a question frame are corpus properties, not method ones.
+    "citation": {"document": "「{doc}」", "fallback": "해당 기준"},
+    "question": "{where}에 따르면, {subject}에 관하여 무엇을 어떻게 하여야 하는가?",
+    "instruction": "조문에 적힌 대로 한 문장만 쓰고 다른 설명은 쓰지 마시오.",
+    "verified": "조문에서 그대로 옮긴 요건 문장. 수치와 한정어로 위치를 특정함.",
     # The three admission checks added after the v052 open-book run measured
     # the key set's error floor: of 37 failures at grounded 0.711, eleven keyed
     # a subject the clause states more than one requirement about (or a
@@ -339,7 +345,13 @@ def build(rows: List[Dict[str, Any]],
             truncated = bool(cut)
 
         doc, clause = src.get("doc"), src.get("clause")
-        where = f"「{doc}」" + (f" {clause}" if clause else "") if doc else "해당 기준"
+        cite = m.get("citation") or {}
+        if doc:
+            where = str(cite.get("document", "「{doc}」")).format(doc=doc)
+            if clause:
+                where += " " + clause
+        else:
+            where = str(cite.get("fallback", "해당 기준"))
         span = [start, end]
 
         # A truncated key sits inside a sentence that also states obligations
@@ -368,13 +380,14 @@ def build(rows: List[Dict[str, Any]],
             "clause": clause,
             "category": src.get("category"),
             "split": _split_of(src),
-            "lang": "ko",
+            "lang": item_lang(cfg),
             "context": ctx,
-            "question_ko": (f"{where}에 따르면, {subject}에 관하여 무엇을 어떻게 "
-                            f"하여야 하는가?"),
+            "question_ko": (str(m.get("question", "{where}에 따르면, {subject}에 관하여 "
+                                                  "무엇을 어떻게 하여야 하는가?"))
+                            .format(where=where, subject=subject)),
             "question_en": (f"According to {where}, what is required regarding "
                             f"{subject}?"),
-            "instruction_ko": i_ko,
+            "instruction_ko": (i_en if item_lang(cfg) == "en" else i_ko),
             "instruction_en": i_en,
             "answer": sentence,
             "answer_ko": sentence,
@@ -386,7 +399,8 @@ def build(rows: List[Dict[str, Any]],
             "volatility": src.get("volatility"),
             "routing": src.get("routing"),
             "volatility_basis": src.get("volatility_basis"),
-            "verified_ko": "조문에서 그대로 옮긴 요건 문장. 수치와 한정어로 위치를 특정함.",
+            "verified_ko": str(m.get("verified",
+                                     "조문에서 그대로 옮긴 요건 문장. 수치와 한정어로 위치를 특정함.")),
             "verified_en": ("the requirement sentence lifted verbatim from the clause, "
                             "located by the figure and qualifier the source item keys on"),
             "answer_span": span,

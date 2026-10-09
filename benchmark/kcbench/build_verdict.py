@@ -21,7 +21,7 @@ import random
 from pathlib import Path
 
 from kcbench.build_requirement import subject_of
-from kcbench.common import add_common_args, log, read_jsonl, resolve_config, write_jsonl
+from kcbench.common import item_lang, verified_note, add_common_args, log, read_jsonl, resolve_config, write_jsonl
 
 LOG = log("verdict")
 
@@ -55,6 +55,21 @@ QUALIFIERS = {
 }
 
 ENTAIL, CONTRADICT = "entail", "contradict"
+
+
+def qualifiers(cfg=None):
+    """
+    Which qualifier means which comparison.
+
+    The table is the corpus's own wording, so an English corpus keyed on
+    "not less than" found none of its 146 thresholds usable. `config.json`
+    replaces it under mining.verdict_qualifiers; the default is unchanged.
+    """
+    over = ((cfg or {}).get("mining") or {}).get("verdict_qualifiers")
+    if not over:
+        return QUALIFIERS
+    return {k: (v[0], v[1]) if isinstance(v, (list, tuple)) else (v, k)
+            for k, v in over.items()}
 
 
 def satisfies(measured: float, limit: float, rule: str) -> bool:
@@ -104,20 +119,26 @@ def _instruction(st, evidence_keyed: bool, lang: str) -> str:
                   f'"verdict":{verdicts},"value":수치|null')
         fields += ',"evidence":["조문 id"]}' if ev else "}"
         return "주어진 조문만 근거로 판정하시오. 아래 JSON 객체 하나만 반환한다. " + fields
-    fields = '{"answer","answerable","verdict","value"'
-    fields += ',"evidence"}.' if ev else "}."
-    return ("Judge using only the clause supplied. Return one JSON object: "
-            + fields)
+    # The English form named the fields and not their values, so a model
+    # answered verdict "Non-compliant" -- correct in substance, outside the
+    # keyed vocabulary, and scored 0.0 on all 298 items. The contract has to
+    # state the words, the way the Korean form does.
+    fields = ('{"answer":"the reason","answerable":true|false,'
+              f'"verdict":{verdicts},"value":number|null')
+    fields += ',"evidence":["clause id"]}' if ev else "}"
+    return ("Judge using only the clause supplied. Return one JSON object, "
+            "and use exactly these verdict words: " + fields)
 
 
 def build_item(src: dict, want_pass: bool, rng: random.Random,
                st: dict | None = None, usecase: str = "uc6_verdict") -> dict | None:
     st = st or dict(DEFAULTS)
+    quals = qualifiers(st.get("_cfg"))
     qualifier = src.get("qualifier")
     limit = src.get("answer_value")
-    if qualifier not in QUALIFIERS or not isinstance(limit, (int, float)):
+    if qualifier not in quals or not isinstance(limit, (int, float)):
         return None
-    rule, qualifier_en = QUALIFIERS[qualifier]
+    rule, qualifier_en = quals[qualifier]
     measured = measured_for(float(limit), rule, want_pass, rng)
     verdict = ENTAIL if want_pass else CONTRADICT
     unit = src.get("answer_unit") or ""
@@ -156,15 +177,19 @@ def build_item(src: dict, want_pass: bool, rng: random.Random,
         "doc": src.get("doc", ""),
         "category": src.get("category", ""),
         "split": src.get("split", "holdout"),
-        "lang": "ko",
+        "lang": item_lang(st.get("_cfg")),
         "context": src.get("context", ""),
         "field_data": {"측정값": measured, "단위": unit},
-        "question_ko": (f"{about}{measured}{unit}로 확인되었다. "
-                        f"규정에 적합한지 판정하시오."),
+        "question_ko": (((f"{asked} was measured at " if asked else "The measured value is ")
+                         + f"{measured} {unit_en or unit}. "
+                         "Judge whether it complies with the clause.")
+                        if item_lang(st.get("_cfg")) == "en" else
+                        f"{about}{measured}{unit}로 확인되었다. 규정에 적합한지 판정하시오."),
         "question_en": ((f"{asked} was measured at " if asked else "The measured value is ")
                         + f"{measured} {unit_en}. "
                         f"Judge whether it complies with the clause."),
-        "instruction_ko": _instruction(st, bool(evidence), "ko"),
+        "instruction_ko": _instruction(st, bool(evidence),
+                                       item_lang(st.get("_cfg"))),
         "instruction_en": _instruction(st, bool(evidence), "en"),
         "answer": verdict,
         "answer_verdict": verdict,
@@ -175,7 +200,7 @@ def build_item(src: dict, want_pass: bool, rng: random.Random,
         "threshold": {"limit": limit, "qualifier": qualifier,
                       "qualifier_en": qualifier_en, "unit": unit, "rule": rule},
         "subject": subject,
-        "verified_ko": "조문에 명시된 기준값과 측정값의 대소 비교로 판정이 결정된다.",
+        "verified_ko": verified_note(st.get("_cfg"), "조문에 명시된 기준값과 측정값의 대소 비교로 판정이 결정된다.", "The verdict follows from comparing the measured value with the limit the clause states."),
         "verified_en": "The verdict follows from comparing the measured figure with the stated limit.",
         "provenance": {**(src.get("provenance") or {}), "derived_from": src["id"]},
     }
@@ -200,6 +225,7 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = Path(cfg["out_dir"])
     rng = random.Random(cfg.get("holdout", {}).get("seed", 0))
     st = settings(cfg, args.usecase)
+    st["_cfg"] = cfg
     out_name = args.out or ((cfg.get("usecases") or {}).get(args.usecase) or {}).get(
         "track_file", f"{args.usecase}.jsonl")
 

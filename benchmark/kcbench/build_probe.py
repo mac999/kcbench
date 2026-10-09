@@ -30,7 +30,7 @@ from typing import Dict, List
 from kcbench.build_tracks import (Rejects, _base, _instr, _nameset_candidate,
                           _numeric_candidates, _provenance, CLAUSE_RE, josa,
                           load_reviews, reviewed_out)
-from kcbench.common import (QUALIFIER_EN, UNIT_EN, add_common_args, describe,
+from kcbench.common import (item_lang, verified_note, mining_vocab, QUALIFIER_EN, UNIT_EN, add_common_args, describe,
                     generated_documents, item_id, log, resolve_config, utc_now,
                     write_json, write_jsonl, nameset_match_mode)
 
@@ -38,6 +38,7 @@ LOG = log("probe")
 
 
 def train_documents(cfg, holdout) -> List[dict]:
+    _u, _q = mining_vocab(cfg)
     """Documents on the training side, in a deterministic shuffled order."""
     held = {d["generated_dir"] for d in holdout["pdf_documents"]}
     docs = [d for d in generated_documents(cfg) if d["generated_dir"] not in held]
@@ -47,6 +48,7 @@ def train_documents(cfg, holdout) -> List[dict]:
 
 
 def build(cfg, holdout, rej: Rejects) -> Path:
+    _u, _q = mining_vocab(cfg)
     p = cfg["probe"]
     want, cap = p["target_items"], p["max_items_per_doc"]
     # Reserve room for the nameset half up front; mining numeric first would
@@ -67,7 +69,7 @@ def build(cfg, holdout, rej: Rejects) -> Path:
             if made >= cap or len(rows) >= numeric_want:
                 break
             text = chunk["text"]
-            clause = CLAUSE_RE.search(text)
+            clause = enum_patterns(cfg)["clause"].search(text)
             for f in _numeric_candidates(text, rej, cfg):
                 subject, value, unit, qual = f["subject"], f["value"], f["unit"], f["qualifier"]
                 key = (subject, value, unit, qual)
@@ -86,23 +88,26 @@ def build(cfg, holdout, rej: Rejects) -> Path:
                     "id": ident,
                     "split": "train",
                     "contamination": "intentional",
-                    "lang": "ko",
+                    "lang": item_lang(cfg),
                     "context": text,
-                    "question_ko": f"{subject}{topic} 몇 {unit} {qual}이어야 하는가?",
+                    "question_ko": (f"What is the stipulated threshold for '{subject}', "
+                                     f"in {_u.get(unit, unit)} ({_q.get(qual, qual)})?"
+                                     if item_lang(cfg) == "en" else
+                                     f"{subject}{topic} 몇 {unit} {qual}이어야 하는가?"),
                     "question_en": f"What is the stipulated threshold for '{subject}', "
-                                   f"in {UNIT_EN[unit]} ({QUALIFIER_EN[qual]})?",
-                    **_instr("numeric"),
+                                   f"in {_u.get(unit, unit)} ({_q.get(qual, qual)})?",
+                    **_instr("numeric", cfg),
                     "answer": answer_ko,
                     "answer_ko": answer_ko,
-                    "answer_en": f"{value} {UNIT_EN[unit]}",
+                    "answer_en": f"{value} {_u.get(unit, unit)}",
                     "answer_value": float(value.replace(",", "")),
                     "answer_unit": unit,
-                    "answer_unit_en": UNIT_EN[unit],
+                    "answer_unit_en": _u.get(unit, unit),
                     "qualifier": qual,
-                    "qualifier_en": QUALIFIER_EN[qual],
-                    "clause": (f"제{clause.group(1)}조" if clause else None),
+                    "qualifier_en": _q.get(qual, qual),
+                    "clause": clause_for(cfg, clause, d.get("stem")),
                     "verified_en": "threshold stated in a document used for training",
-                    "verified_ko": "학습에 사용한 문서에 명시된 기준값.",
+                    "verified_ko": verified_note(cfg, "학습에 사용한 문서에 명시된 기준값.", "A figure stated in a document the model was trained on."),
                     "provenance": _provenance(cfg, d, chunk, f["span"]),
                 })
                 made += 1
@@ -134,21 +139,25 @@ def build(cfg, holdout, rej: Rejects) -> Path:
                 continue
             seen.add(key)
             if kind == "heading":
-                q_ko = f"조문 {lead}에서 정한 항목을 모두 나열하시오."
+                q_ko = (f"List every item stipulated in {lead}."
+                        if item_lang(cfg) == "en" else
+                        f"조문 {lead}에서 정한 항목을 모두 나열하시오.")
                 q_en = f"List every item stipulated in {lead} of the passage."
             else:
-                q_ko = f"조문에 따르면 {lead}에 해당하는 항목을 모두 나열하시오."
+                q_ko = (f"List every item that falls under {lead}."
+                        if item_lang(cfg) == "en" else
+                        f"조문에 따르면 {lead}에 해당하는 항목을 모두 나열하시오.")
                 q_en = f"According to the passage, list every item that falls under '{lead}'."
             rows.append({
                 **_base("probe", "nameset", d),
                 "id": ident,
                 "split": "train",
                 "contamination": "intentional",
-                "lang": "ko",
+                "lang": item_lang(cfg),
                 "context": prefix + chunk["text"],
                 "question_ko": q_ko,
                 "question_en": q_en,
-                **_instr("nameset"),
+                **_instr("nameset", cfg),
                 "match_mode": nameset_match_mode(items),
                 "answer": items,
                 "answer_ko": items,
@@ -156,7 +165,7 @@ def build(cfg, holdout, rej: Rejects) -> Path:
                 "lead_in": lead,
                 "lead_in_kind": kind,
                 "verified_en": "list from a document used for training",
-                "verified_ko": "학습에 사용한 문서의 각 호 목록.",
+                "verified_ko": verified_note(cfg, "학습에 사용한 문서의 각 호 목록.", "An enumerated list from a document the model was trained on."),
                 "provenance": _provenance(cfg, d, chunk, span),
             })
             made += 1

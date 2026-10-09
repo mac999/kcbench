@@ -1,0 +1,7 @@
+{
+  "_comment": "Worked example-2 fine-tuning utility experiment. Inherits config_kr.json and changes nothing but the judge panel, which is pinned to the three judges the base qwen3:8b run (v052-open / v052-closed) actually used. llama3.3:70b is installed on this machine and would otherwise enter the panel, making the fine-tuned runs incomparable to the base they are measured against.",
+  "extends": "config_kr.json",
+  "judges": {
+    "candidates": ["exaone3.5:7.8b", "glm4:9b", "gemma2:9b"]
+  }
+}
