@@ -30,13 +30,23 @@ from typing import Any, Dict, List
 from kcbench.build_tracks import (CLAUSE_RE, Rejects, _base, _instr,
                           _nameset_candidate, _numeric_candidates, _provenance,
                           josa, load_reviews, reviewed_out)
-from kcbench.common import (QUALIFIER_EN, UNIT_EN, add_common_args, describe,
+from kcbench.common import (clause_label, clause_for, verified_note, item_lang, mining_vocab, QUALIFIER_EN, UNIT_EN, add_common_args, describe,
                     generated_documents, item_id, log, resolve_config, utc_now,
                     write_json, write_jsonl, nameset_match_mode)
 
 LOG = log("usecases")
 
 ABSTAIN_TOKEN_KO = "자료 없음"
+ABSTAIN_TOKEN_EN = "no data"
+
+
+def abstain_token(cfg=None) -> str:
+    """The exact word a model must return to decline. It is the answer key for
+    every swapped-context item, so it travels with the item language."""
+    over = ((cfg or {}).get("mining") or {}).get("abstain_token")
+    if over:
+        return str(over)
+    return ABSTAIN_TOKEN_EN if item_lang(cfg) == "en" else ABSTAIN_TOKEN_KO
 
 FAITHFULNESS_INSTRUCTION = {
     "ko": ("주어진 조문에 답이 있으면 숫자와 단위만 답하시오. 조문에서 답을 "
@@ -77,6 +87,7 @@ def _side(doc: dict, held_keys: set) -> dict:
 
 
 def _match_docs(cfg, uc: dict, held_keys: set) -> List[dict]:
+    _u, _q = mining_vocab(cfg)
     """
     Documents this use case draws from, holdout side first.
 
@@ -102,6 +113,7 @@ def _match_docs(cfg, uc: dict, held_keys: set) -> List[dict]:
 # builder: doc_filtered_qa (UC1 safety, UC2 specification thresholds)
 
 def build_doc_filtered_qa(cfg, holdout, key: str, uc: dict, rej: Rejects) -> List[dict]:
+    _u, _q = mining_vocab(cfg)
     """Track 2's numeric and nameset questions, restricted to the UC's documents."""
     held_keys = {d["generated_dir"] for d in holdout["pdf_documents"]}
     docs = _match_docs(cfg, uc, held_keys)
@@ -124,7 +136,7 @@ def build_doc_filtered_qa(cfg, holdout, key: str, uc: dict, rej: Rejects) -> Lis
             if made >= cap or len(rows) >= numeric_want:
                 break
             text = chunk["text"]
-            clause = CLAUSE_RE.search(text)
+            clause = enum_patterns(cfg)["clause"].search(text)
             for f in _numeric_candidates(text, rej, cfg):
                 subject, value, unit, qual = f["subject"], f["value"], f["unit"], f["qualifier"]
                 if (subject, value, unit, qual) in seen:
@@ -142,23 +154,27 @@ def build_doc_filtered_qa(cfg, holdout, key: str, uc: dict, rej: Rejects) -> Lis
                     "id": ident,
                     "usecase": key,
                     **_side(d, held_keys),
-                    "lang": "ko",
+                    "lang": item_lang(cfg),
                     "context": text,
-                    "question_ko": f"{subject}{topic} 몇 {unit} {qual}이어야 하는가?",
+                    "question_ko": (f"What is the stipulated threshold for '{subject}', "
+                                     f"in {_u.get(unit, unit)} ({_q.get(qual, qual)})?"
+                                     if item_lang(cfg) == "en" else
+                                     f"{subject}{topic} 몇 {unit} {qual}이어야 하는가?"),
                     "question_en": f"What is the stipulated threshold for '{subject}', "
-                                   f"in {UNIT_EN[unit]} ({QUALIFIER_EN[qual]})?",
-                    **_instr("numeric"),
+                                   f"in {_u.get(unit, unit)} ({_q.get(qual, qual)})?",
+                    **_instr("numeric", cfg),
                     "answer": answer_ko,
                     "answer_ko": answer_ko,
-                    "answer_en": f"{value} {UNIT_EN[unit]}",
+                    "answer_en": f"{value} {_u.get(unit, unit)}",
                     "answer_value": float(value.replace(",", "")),
                     "answer_unit": unit,
-                    "answer_unit_en": UNIT_EN[unit],
+                    "answer_unit_en": _u.get(unit, unit),
                     "qualifier": qual,
-                    "qualifier_en": QUALIFIER_EN[qual],
-                    "clause": (f"제{clause.group(1)}조" if clause else None),
+                    "qualifier_en": _q.get(qual, qual),
+                    "clause": clause_for(cfg, clause, d.get("stem")),
                     "verified_en": "stated threshold, present in the passage as keyed",
-                    "verified_ko": "본문에 명시된 기준값.",
+                    "verified_ko": verified_note(cfg, "본문에 명시된 기준값.",
+                                                  "A figure stated in the passage."),
                     "provenance": _provenance(cfg, d, chunk, f["span"]),
                 })
                 made += 1
@@ -188,21 +204,25 @@ def build_doc_filtered_qa(cfg, holdout, key: str, uc: dict, rej: Rejects) -> Lis
                 continue
             seen.add((lead, tuple(items)))
             if kind == "heading":
-                q_ko = f"조문 {lead}에서 정한 항목을 모두 나열하시오."
+                q_ko = (f"List every item stipulated in {lead}."
+                        if item_lang(cfg) == "en" else
+                        f"조문 {lead}에서 정한 항목을 모두 나열하시오.")
                 q_en = f"List every item stipulated in {lead} of the passage."
             else:
-                q_ko = f"조문에 따르면 {lead}에 해당하는 항목을 모두 나열하시오."
+                q_ko = (f"List every item that falls under {lead}."
+                        if item_lang(cfg) == "en" else
+                        f"조문에 따르면 {lead}에 해당하는 항목을 모두 나열하시오.")
                 q_en = f"According to the passage, list every item that falls under '{lead}'."
             rows.append({
                 **_base("usecase", "nameset", d),
                 "id": ident,
                 "usecase": key,
                 **_side(d, held_keys),
-                "lang": "ko",
+                "lang": item_lang(cfg),
                 "context": prefix + chunk["text"],
                 "question_ko": q_ko,
                 "question_en": q_en,
-                **_instr("nameset"),
+                **_instr("nameset", cfg),
                 "match_mode": nameset_match_mode(items),
                 "answer": items,
                 "answer_ko": items,
@@ -210,7 +230,8 @@ def build_doc_filtered_qa(cfg, holdout, key: str, uc: dict, rej: Rejects) -> Lis
                 "lead_in": lead,
                 "lead_in_kind": kind,
                 "verified_en": "items parsed from a numbered list introduced by the passage",
-                "verified_ko": "지문이 스스로 예고한 각 호 목록에서 추출한 항목.",
+                "verified_ko": verified_note(cfg, "지문이 스스로 예고한 각 호 목록에서 추출한 항목.",
+                                             "Entries taken from a list the passage itself announces."),
                 "provenance": _provenance(cfg, d, chunk, span),
             })
             made += 1
@@ -220,6 +241,7 @@ def build_doc_filtered_qa(cfg, holdout, key: str, uc: dict, rej: Rejects) -> Lis
 # builder: vlm_labels (UC3 site photo vs BIM render)
 
 def build_vlm_labels(cfg, holdout, key: str, uc: dict, rej: Rejects) -> List[dict]:
+    _u, _q = mining_vocab(cfg)
     """
     Cross-image judgement items from the dataset's own VLM annotations.
 
@@ -275,7 +297,7 @@ def build_vlm_labels(cfg, holdout, key: str, uc: dict, rej: Rejects) -> List[dic
                 "usecase": key,
                 "cognitive_level": "understanding",
                 "split": "holdout",
-                "lang": "ko",
+                "lang": item_lang(cfg),
                 "label_task": task,
                 "question_ko": LABEL_QUESTION[task]["ko"],
                 "question_en": LABEL_QUESTION[task]["en"],
@@ -305,6 +327,7 @@ def build_vlm_labels(cfg, holdout, key: str, uc: dict, rej: Rejects) -> List[dic
 # builder: context_swap (UC4 faithfulness under retrieval failure)
 
 def build_context_swap(cfg, holdout, key: str, uc: dict, rej: Rejects) -> List[dict]:
+    _u, _q = mining_vocab(cfg)
     """
     Track 2 numeric items with the passage swapped for an unrelated one.
 
@@ -350,23 +373,25 @@ def build_context_swap(cfg, holdout, key: str, uc: dict, rej: Rejects) -> List[d
             "id": item_id(key, it["id"], "swap" if swapped else "match"),
             "usecase": key,
             "split": "holdout",
-            "lang": "ko",
+            "lang": item_lang(cfg),
             "context": context,
             "context_matches": not swapped,
             "question_ko": it["question_ko"],
             "question_en": it["question_en"],
-            "instruction_ko": FAITHFULNESS_INSTRUCTION["ko"],
+            "instruction_ko": FAITHFULNESS_INSTRUCTION[item_lang(cfg)],
             "instruction_en": FAITHFULNESS_INSTRUCTION["en"],
-            "answer": ABSTAIN_TOKEN_KO if swapped else it["answer"],
+            "answer": abstain_token(cfg) if swapped else it["answer"],
             "answer_value": it["answer_value"],
             "answer_unit": it["answer_unit"],
-            "abstain_token": ABSTAIN_TOKEN_KO,
+            "abstain_token": abstain_token(cfg),
             "source_item": it["id"],
             "verified_en": ("context replaced with an unrelated passage verified not to "
                             "contain the keyed answer" if swapped else
                             "unmodified track 2 item, serving as the abstention control"),
-            "verified_ko": ("정답이 없음을 확인한 무관한 조문으로 교체된 문항." if swapped
-                            else "원본 그대로의 대조 문항."),
+            "verified_ko": (verified_note(cfg, "정답이 없음을 확인한 무관한 조문으로 교체된 문항.",
+                                           "The clause was swapped for an unrelated one that cannot answer.") if swapped
+                            else verified_note(cfg, "원문 조문을 그대로 둔 대조 문항.",
+                                               "A control item with its own clause left in place.")),
             "provenance": it.get("provenance"),
         })
     kinds = collections.Counter("swapped" if not r["context_matches"] else "control" for r in rows)
@@ -377,6 +402,7 @@ def build_context_swap(cfg, holdout, key: str, uc: dict, rej: Rejects) -> List[d
 # builder: missing_measures (UC5 incident analysis)
 
 def build_missing_measures(cfg, holdout, key: str, uc: dict, rej: Rejects) -> List[dict]:
+    _u, _q = mining_vocab(cfg)
     """
     Incident-shaped questions built from safety work-standard enumerations.
 
@@ -432,21 +458,30 @@ def build_missing_measures(cfg, holdout, key: str, uc: dict, rej: Rejects) -> Li
                 "id": ident,
                 "usecase": key,
                 **_side(d, held_keys),
-                "lang": "ko",
+                "lang": item_lang(cfg),
                 "context": prefix + chunk["text"],
-                "scenario_ko": ("공사 현장에서 사고가 발생하여 안전조치 이행 여부를 "
-                                "조사하고 있다. 현장에서 이행이 확인된 조치는 다음과 같다.\n"
-                                f"{confirmed}"),
-                "question_ko": (f"위 조사 결과를 '{lead}' 기준과 대조할 때, 기준이 요구하지만 "
-                                "이행이 확인되지 않은 조치를 모두 나열하시오."),
+                "scenario_ko": (("An incident is under investigation on site. The "
+                                 "measures below were confirmed as carried out.\n"
+                                 f"{confirmed}") if item_lang(cfg) == "en" else
+                                ("공사 현장에서 사고가 발생하여 안전조치 이행 여부를 "
+                                 "조사하고 있다. 현장에서 이행이 확인된 조치는 다음과 같다.\n"
+                                 f"{confirmed}")),
+                "question_ko": ((f"Against the requirements of '{lead}', list every measure "
+                                 "the rule requires that was not confirmed above.")
+                                if item_lang(cfg) == "en" else
+                                (f"위 조사 결과를 '{lead}' 기준과 대조할 때, 기준이 요구하지만 "
+                                 "이행이 확인되지 않은 조치를 모두 나열하시오.")),
                 "question_en": (f"An incident is under investigation; the measures above were "
                                 f"confirmed on site. Against the requirements of '{lead}', "
                                 "list every required measure not confirmed."),
                 # Not the generic nameset instruction: the answer is prose, so
                 # the item asks for the clause's own wording and is graded with
                 # token-coverage matching rather than exact lines.
-                "instruction_ko": "누락된 조치를 조문의 문구를 사용해 한 줄에 하나씩 "
-                                  "나열하시오. 다른 설명은 쓰지 마시오.",
+                "instruction_ko": ("List each missing measure on its own line, in the "
+                                   "clause's own words. Nothing else."
+                                   if item_lang(cfg) == "en" else
+                                   "누락된 조치를 조문의 문구를 사용해 한 줄에 하나씩 "
+                                   "나열하시오. 다른 설명은 쓰지 마시오."),
                 "instruction_en": "List each missing measure on its own line, using the "
                                   "clause's wording. Nothing else.",
                 "match_mode": nameset_match_mode(removed),
@@ -458,7 +493,8 @@ def build_missing_measures(cfg, holdout, key: str, uc: dict, rej: Rejects) -> Li
                 "measures_total": len(items),
                 "measures_confirmed": kept,
                 "verified_en": "the withheld subset of the clause's own enumerated measures",
-                "verified_ko": "조문의 각 호 목록에서 제외한 항목이 곧 정답.",
+                "verified_ko": verified_note(cfg, "조문의 각 호 목록에서 제외한 항목이 곧 정답.",
+                                             "The answer is the entries withheld from the clause's list."),
                 "provenance": _provenance(cfg, d, chunk, span),
             })
     return rows

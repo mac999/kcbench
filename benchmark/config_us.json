@@ -9,7 +9,7 @@
   "holdout": {
     "_comment": "Document-level split. Changing the seed reserves different documents and invalidates comparison against earlier runs. chunk_fraction trades benchmark size against training data: 0.20 yields ~395 items and withholds 16.3% of chunks.",
     "chunk_fraction": 0.2,
-    "ifc_fraction": 0.5,
+    "ifc_fraction": 0.0,
     "max_chunks_per_doc": 50,
     "seed": 20260814,
     "ifc_exclude_categories": [
@@ -23,10 +23,11 @@
     "max_items_per_doc": 12,
     "numeric_uniqueness": "strict",
     "min_subject_len": 4,
-    "max_subject_len": 30,
+    "max_subject_len": 80,
     "nameset_min_items": 3,
-    "nameset_max_item_len": 60,
-    "nameset_require_lead_in": true
+    "nameset_max_item_len": 400,
+    "nameset_require_lead_in": true,
+    "_comment_nameset": "Entry length measured on the corpus: a Part 1926 enumeration entry is 167 characters at the median and 390 at the 90th, against the 60 a Korean 각 호 entry fits."
   },
   "track3_vlm": {
     "_comment": "whole_model_groups_only keeps only renders whose element catalogue is exact. Set false once ifc_processor.py records per-group membership. mapping_max_total_elements drops count questions on models too large to count from a photograph.",
@@ -48,31 +49,42 @@
       "builder": "doc_filtered_qa",
       "track_file": "uc1_safety_qa.jsonl",
       "categories": [
-        "03_safety_and_disaster"
+        "01_osha_1926"
       ],
       "doc_patterns": [],
       "target_items": 170,
       "max_items_per_doc": 12,
       "nameset_share": 0.5,
       "include_train_side": true,
-      "nameset_max_per_doc": 3
+      "nameset_max_per_doc": 3,
+      "_comment_scope": "Part 1926 is construction safety end to end, so the category filter is the whole corpus rather than a safety subset of a wider one."
     },
     "uc2_rebar_spec": {
       "enabled": true,
       "builder": "doc_filtered_qa",
       "track_file": "uc2_spec_threshold.jsonl",
       "categories": [
-        "01_design_standards_kds",
-        "02_specifications_kcs"
+        "01_osha_1926"
       ],
-      "doc_patterns": [],
+      "doc_patterns": [
+        "concrete",
+        "steel",
+        "reinforc",
+        "formwork",
+        "masonry",
+        "scaffold",
+        "excavat",
+        "crane",
+        "rigging"
+      ],
       "target_items": 150,
       "max_items_per_doc": 12,
       "nameset_share": 0.0,
-      "include_train_side": true
+      "include_train_side": true,
+      "_comment_scope": "No separate design-standard series here; the structural subparts are selected by document pattern instead."
     },
     "uc3_bim_site": {
-      "enabled": true,
+      "enabled": false,
       "builder": "vlm_labels",
       "track_file": "uc3_cross_image.jsonl",
       "task_types": [
@@ -81,7 +93,8 @@
       ],
       "exclude_labels": [
         "unknown"
-      ]
+      ],
+      "_comment_disabled": "No IFC models in this corpus; the image track is off."
     },
     "uc4_faithfulness": {
       "enabled": true,
@@ -97,7 +110,7 @@
       "builder": "missing_measures",
       "track_file": "uc5_incident.jsonl",
       "categories": [
-        "03_safety_and_disaster"
+        "01_osha_1926"
       ],
       "doc_patterns": [],
       "min_items_per_list": 3,
@@ -142,7 +155,7 @@
       "requirement_ending": "\\b(shall|must|may not|shall not|is required|are required)\\b[^.]*\\.?$",
       "extraction_noise": "\\s\\(\\d+\\)\\s.{0,6}\\s\\(\\d+\\)|[│┃|]{2,}|\\.{4,}|\\s{4,}",
       "clause_heading": "^§\\s*\\d+\\.\\d+|^\\([a-z0-9]+\\)\\s*$",
-      "asks_pattern": "(is|are|be)?\\s*(how many|how much|what).*$",
+      "asks_pattern": "^\\s*What is the stipulated threshold for\\s*'?|'?\\s*,?\\s*in\\s+[^()]*\\([^)]*\\)\\s*\\??\\s*$|\\s*(is|are|be)?\\s*(how many|how much|what).*$",
       "min_chars": 30,
       "max_chars": 260,
       "max_commas": 8,
@@ -156,7 +169,14 @@
       "_comment_schema": "Pinned to the admission rules the published scores were made under, so a rebuild reproduces this track rather than silently becoming the repaired one. The repair lives in uc7_requirement_v2.",
       "subject_checked": false,
       "rival_any_sentence": false,
-      "split_coordination": false
+      "split_coordination": false,
+      "citation": {
+        "document": "{doc}",
+        "fallback": "the applicable standard"
+      },
+      "question": "According to {where}, what is required regarding {subject}, and how?",
+      "instruction": "One sentence, as the clause words it. Nothing else.",
+      "verified": "The requirement sentence lifted verbatim from the clause, located by the figure and qualifier the source item keys on."
     },
     "uc6_verdict_v2": {
       "enabled": true,
@@ -179,7 +199,15 @@
       "enabled": true,
       "track_file": "uc7_requirement_v2.jsonl",
       "comment": "uc7 remined after the v052 open-book run measured the key set as the ceiling: of 37 failures at grounded 0.711, eleven keyed a subject the clause states more than one requirement about or a subject damaged in extraction, and six keyed a sentence carrying a second obligation the question never asked. This track checks the subject against the clause, counts inadmissible rivals too, and cuts a coordinated sentence down to the asked obligation when the subject identifies it (the item's instruction then asks for that one requirement). Kept beside uc7_requirement rather than replacing it so the effect of the repair is measurable. Build with: python cb.py requirement --usecase uc7_requirement_v2. Graded with the sentence type; read it open book.",
-      "builder": "requirement_from_thresholds"
+      "builder": "requirement_from_thresholds",
+      "citation": {
+        "document": "{doc}",
+        "fallback": "the applicable standard"
+      },
+      "question": "According to {where}, what is required regarding {subject}, and how?",
+      "instruction": "One sentence, as the clause words it. Nothing else.",
+      "verified": "The requirement sentence lifted verbatim from the clause, located by the figure and qualifier the source item keys on.",
+      "asks_pattern": "^\\s*What is the stipulated threshold for\\s*'?|'?\\s*,?\\s*in\\s+[^()]*\\([^)]*\\)\\s*\\??\\s*$|\\s*(is|are|be)?\\s*(how many|how much|what).*$"
     }
   },
   "eval": {
@@ -192,7 +220,11 @@
     "num_ctx": 8192,
     "num_predict": 4096,
     "temperature": 0.0,
-    "models": [],
+    "models": [
+      "qwen3:8b",
+      "qwen3:14b",
+      "gemma2:9b"
+    ],
     "book": "both",
     "lang_mix": {
       "en": 1.0,
@@ -204,7 +236,15 @@
     "on_missing_capability": "skip",
     "capability_timeout": 30,
     "keep_alive": "30m",
-    "_comment_keep_alive": "How long the server keeps a model loaded after each request. The default 5m evicts a large judge between items and its reload can exceed the server's load timeout, which returns 500. 30m outlives any single item; -1 pins models for the session."
+    "_comment_keep_alive": "How long the server keeps a model loaded after each request. The default 5m evicts a large judge between items and its reload can exceed the server's load timeout, which returns 500. 30m outlives any single item; -1 pins models for the session.",
+    "_comment_models": "Three models: the English run tests that the method ports, not a ranking. Used by cb.py matrix when --models is not given.",
+    "_comment_headline": "per-track summary metric: the first of these a grader emits wins; a grader emitting none is omitted, never scored 0.0",
+    "headline_metrics": [
+      "correct",
+      "f1",
+      "key_f1",
+      "grounded"
+    ]
   },
   "judges": {
     "_comment": "English panel. exaone3.5 is Korean-specialised and is dropped here; the cap, the same-family exclusion and the three-judge majority are unchanged, so the two variants are scored under the same rule.",
@@ -342,5 +382,156 @@
     "judge.covered.en": "[Reference]\n{gold}\n\n[Answer]\n{pred}\n\nDoes the answer contain everything the reference states? Reply with one word, yes or no.",
     "judge.supported.en": "[Evidence]\n{gold}\n\n[Statement]\n{pred}\n\nIs everything the statement claims supported by the evidence alone? If anything is not in the evidence, no; otherwise yes. Reply with one word.",
     "volatility.adjudicate.ko": "[조문]\n{context}\n\n[질문]\n{question}\n\n[정답]\n{answer}\n\n이 정답은 소관 고시·기준이 개정되면 달라집니까? 수치 한도·기간·비율처럼 개정으로 바뀌는 값이면 volatile, 정의·원리·계산방법처럼 개정돼도 유지되는 내용이면 stable. 한 단어로만 답하시오."
+  },
+  "mining": {
+    "_comment": "Units and qualifiers the threshold miner matches, and the word order. English puts the qualifier before the figure; Korean after it.",
+    "qualifier_leads": true,
+    "units": {
+      "inches": "inches",
+      "inch": "inch",
+      "feet": "feet",
+      "foot": "foot",
+      "ft": "ft",
+      "yards": "yards",
+      "pounds": "pounds",
+      "lbs": "lbs",
+      "tons": "tons",
+      "psi": "psi",
+      "percent": "percent",
+      "%": "%",
+      "degrees": "degrees",
+      "volts": "volts",
+      "amperes": "amperes",
+      "amps": "amps",
+      "gallons": "gallons",
+      "minutes": "minutes",
+      "hours": "hours",
+      "days": "days",
+      "months": "months",
+      "years": "years",
+      "persons": "persons",
+      "times": "times"
+    },
+    "qualifiers": {
+      "at least": "at least",
+      "not less than": "at least",
+      "a minimum of": "at least",
+      "no less than": "at least",
+      "at most": "at most",
+      "not more than": "at most",
+      "no more than": "at most",
+      "a maximum of": "at most",
+      "not to exceed": "at most",
+      "less than": "less than",
+      "more than": "more than",
+      "within": "within",
+      "exceeding": "more than"
+    },
+    "verdict_qualifiers": {
+      "at least": [
+        "ge",
+        "at least"
+      ],
+      "not less than": [
+        "ge",
+        "at least"
+      ],
+      "a minimum of": [
+        "ge",
+        "at least"
+      ],
+      "no less than": [
+        "ge",
+        "at least"
+      ],
+      "at most": [
+        "le",
+        "at most"
+      ],
+      "not more than": [
+        "le",
+        "at most"
+      ],
+      "no more than": [
+        "le",
+        "at most"
+      ],
+      "a maximum of": [
+        "le",
+        "at most"
+      ],
+      "not to exceed": [
+        "le",
+        "at most"
+      ],
+      "within": [
+        "le",
+        "within"
+      ],
+      "less than": [
+        "lt",
+        "less than"
+      ],
+      "more than": [
+        "gt",
+        "greater than"
+      ],
+      "exceeding": [
+        "gt",
+        "greater than"
+      ]
+    },
+    "item_lang": "en"
+  },
+  "enumeration": {
+    "_comment": "eCFR enumerates as (a)(1)(iii) and introduces a list with 'shall include' rather than 다음 각 호; a section heads with '§ 1926.501 Duty to ...'. Without these uc5 mined 0 items from 236 documents.",
+    "enum_primary": "(?:^|\\n)\\s*\\((\\d{1,2})\\)\\s*([^\\n]{2,160})",
+    "enum_secondary": "(?:^|\\n)\\s*\\(([a-z])\\)\\s*([^\\n]{2,160})",
+    "secondary_order": "abcdefghijklmnopqrstuvwxyz",
+    "lead_in": "([^\\n.]{6,100}?(?:shall include|must include|shall consist of|shall be as follows|are as follows|shall meet the following|must meet the following|shall comply with the following|including the following|the following requirements?|shall provide the following))[^\\n]{0,10}$",
+    "heading": "§\\s*(\\d+\\.\\d+[a-z]?)\\s+([^\\n]{2,80})",
+    "clause": "§{1,2}\\s*(\\d+\\.\\d+[a-z]?)(?:\\s*\\(([a-z0-9]+)\\))?",
+    "require_start_at_one": false
+  },
+  "clause_format": {
+    "_comment": "How this corpus cites a clause: § 1926.501(b), not 제N조제M항.",
+    "article": "§ {n}",
+    "paragraph": "({n})",
+    "titled": "{clause} {title}",
+    "from_document": "^(\\d+\\.\\d+[a-z]?)_"
+  },
+  "subject": {
+    "_comment": "English marks the subject before the modal -- 'Step stools shall be at least 8 inches' -- where Korean puts a noun phrase immediately before the figure. Walking back from the number landed on 'shall be' and 41 of 85 uc1 subjects came out as fragments.",
+    "direction": "sentence_subject"
+  },
+  "review_sheet": {
+    "_comment": "Export of the review queue for a domain expert. blind hides the flag reason and the model replies and shuffles the order: a reviewer who can see that an item is there because three models failed it reads it differently from one drawn at random, and the random rows carry the error-rate estimate. seed makes the shuffle reproducible. delimiter is for a locale whose spreadsheet expects ';'.",
+    "columns": [
+      "id",
+      "track",
+      "eval_type",
+      "category",
+      "document",
+      "clause",
+      "question",
+      "key_answer",
+      "context",
+      "verdict",
+      "fixed_answer",
+      "note"
+    ],
+    "delimiter": ",",
+    "blind": true,
+    "seed": 20260814
+  },
+  "subject_quality": {
+    "_comment": "Whether a mined subject reads as a complete noun phrase. subject_in_question pulls the subject back out of the rendered question; malformed is the list of shapes that mean the extractor cut in the wrong place -- a trailing function word, a leading preposition or conjunction, a dangling apposition. Both are language-specific, which is why they are here and not in the tool.",
+    "subject_in_question": "threshold for '([^']+)'",
+    "ignore_case": true,
+    "malformed": [
+      "\\b(of|the|and|or|to|in|on|at|for|with|by|be|is|are|not|no|nor|but|than|from|that|which|shall|must)\\s*$",
+      "^\\s*(and|or|but|when|where|if|in|on|at|for|with|by|of|to)\\b",
+      ",\\s*\\w+$"
+    ]
   }
 }
