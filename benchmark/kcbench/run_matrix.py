@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from kcbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, add_common_args, describe,
-                    log, resolve_config, utc_now, write_json)
+                    log, resolve_config, utc_now, write_json, score_metrics)
 
 LOG = log("matrix")
 
@@ -62,14 +62,15 @@ def score(cfg, model: str, book: str, tag: str, args, runs_dir: Path) -> dict | 
     return json.loads(out.read_text(encoding="utf-8"))
 
 
-def summarise(run: dict | None) -> Dict[str, Any]:
+def summarise(run: dict | None, cfg: Dict[str, Any] | None = None) -> Dict[str, Any]:
     """The few numbers worth putting in a cross-model table."""
     if not run:
         return {"failed": True}
+    prefer = score_metrics(cfg)
     out: Dict[str, Any] = {"headline": run.get("headline", {})}
     for track, body in (run.get("tracks") or {}).items():
         for kind, metrics in (body.get("by_type") or {}).items():
-            key = next((m for m in ("correct", "f1", "key_f1") if m in metrics), None)
+            key = next((m for m in prefer if m in metrics), None)
             if key:
                 out[f"t{track}.{kind}"] = metrics[key]
             if "no_answer" in metrics:
@@ -79,9 +80,10 @@ def summarise(run: dict | None) -> Dict[str, Any]:
     return out
 
 
-def by_category(run: dict | None) -> Dict[str, float]:
+def by_category(run: dict | None, cfg: Dict[str, Any] | None = None) -> Dict[str, float]:
     if not run:
         return {}
+    prefer = score_metrics(cfg)
     acc: Dict[str, list] = {}
     for body in (run.get("tracks") or {}).values():
         for item in body.get("detail") or []:
@@ -89,7 +91,9 @@ def by_category(run: dict | None) -> Dict[str, float]:
             if not cat:
                 continue
             s = item["score"]
-            acc.setdefault(cat, []).append(s.get("correct", s.get("f1", s.get("key_f1", 0.0))))
+            v = next((s[m] for m in prefer if m in s), None)
+            if v is not None:
+                acc.setdefault(cat, []).append(v)
     return {k: round(statistics.fmean(v), 4) for k, v in sorted(acc.items())}
 
 
@@ -198,8 +202,17 @@ def main() -> int:
             if line:
                 models.append(line)
     if not models:
-        LOG.error("no models given - use --models or --models-file")
+        # eval.models has been in config.json all along, described as the
+        # default this command uses when given none -- and nothing read it.
+        # A dataset variant names the models it is scored with; a flag on
+        # every invocation is how a run ends up with a different model set
+        # than the one the variant documents.
+        models += [str(m) for m in (cfg["eval"].get("models") or [])]
+    if not models:
+        LOG.error("no models given - use --models, --models-file, "
+                  "or eval.models in the config")
         return 1
+    LOG.info("models: %s", ", ".join(models))
 
     book = args.book or cfg["eval"].get("book", "both")
     books = ["open", "closed"] if book == "both" else [book]
@@ -212,8 +225,8 @@ def main() -> int:
         results[model], cats[model] = {}, {}
         for book in books:
             run = score(cfg, model, book, tag_for(model, book, args.prefix), args, runs_dir)
-            results[model][book] = summarise(run)
-            cats[model][book] = by_category(run)
+            results[model][book] = summarise(run, cfg)
+            cats[model][book] = by_category(run, cfg)
 
     gaps: Dict[str, Dict[str, float]] = {}
     if len(books) == 2:

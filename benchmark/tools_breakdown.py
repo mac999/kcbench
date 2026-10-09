@@ -25,6 +25,9 @@ import json
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from kcbench.common import SCORE_METRICS   # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent
 # where the generator wrote rag_corpus.jsonl files; --generated-dir overrides
 GEN = ROOT / "train_data_v052/train_data"
@@ -69,7 +72,7 @@ def item_axes(data: Path) -> dict:
 # graded on several axes at once and `grounded` is the strict one -- the answer
 # states what the clause requires and claims nothing the clause does not
 # support -- so it is the headline and the components are reported beside it.
-HEADLINE = ("correct", "f1", "grounded")
+HEADLINE = SCORE_METRICS   # one definition, in common.py
 SENTENCE_PARTS = ("semantic", "figure", "covered", "supported", "grounded")
 
 

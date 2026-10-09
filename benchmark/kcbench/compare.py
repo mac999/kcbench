@@ -15,7 +15,7 @@ import statistics
 from pathlib import Path
 from typing import Any, Dict, List
 
-from kcbench.common import add_common_args, log, resolve_config
+from kcbench.common import add_common_args, log, resolve_config, score_metrics
 
 LOG = log("compare")
 
@@ -86,7 +86,7 @@ def paired_metrics(base: dict, after: dict, cfg: Dict[str, Any] | None = None) -
         for i in shared:
             kinds.setdefault(a_items[i]["eval_type"], []).append(i)
         for kind, ids in sorted(kinds.items()):
-            metric = next((m for m in ("correct", "f1", "key_f1")
+            metric = next((m for m in score_metrics(cfg)
                            if m in a_items[ids[0]]["score"]), None)
             if not metric:
                 continue
@@ -131,8 +131,9 @@ def collect(run: dict) -> Dict[str, float]:
     return flat
 
 
-def by_category(run: dict) -> Dict[str, float]:
+def by_category(run: dict, cfg: Dict[str, Any] | None = None) -> Dict[str, float]:
     """Mean score per corpus category — shows where training actually landed."""
+    prefer = score_metrics(cfg)
     acc: Dict[str, list] = {}
     for body in run.get("tracks", {}).values():
         for item in body.get("detail") or []:
@@ -140,8 +141,9 @@ def by_category(run: dict) -> Dict[str, float]:
             if not cat:
                 continue
             s = item["score"]
-            acc.setdefault(cat, []).append(
-                s.get("correct", s.get("f1", s.get("key_f1", 0.0))))
+            v = next((s[m] for m in prefer if m in s), None)
+            if v is not None:
+                acc.setdefault(cat, []).append(v)
     return {k: round(sum(v) / len(v), 4) for k, v in sorted(acc.items()) if v}
 
 
@@ -223,7 +225,7 @@ def main() -> int:
     if only_after:
         LOG.warning("present only in the 'after' run, not compared: %s", ", ".join(only_after))
 
-    bc, ac = by_category(base), by_category(after)
+    bc, ac = by_category(base, cfg), by_category(after, cfg)
     cats = {k: delta(k, bc[k], ac[k]) for k in sorted(bc) if k in ac}
     paired = paired_metrics(base, after, cfg)
 

@@ -74,6 +74,20 @@ def track_files(cfg) -> Dict[str, str]:
 
 
 
+SCORE_METRICS = ["correct", "f1", "key_f1", "grounded"]
+
+
+def score_metrics(cfg: Dict[str, Any] | None = None) -> List[str]:
+    """Which per-item metric stands for a track's score, best first.
+
+    One list, read by the summary and by the paired comparison. Keeping a
+    private copy in each place is what let the sentence grader's `grounded` be
+    scored as 0.0 in one and dropped from the other.
+    """
+    return list((((cfg or {}).get("eval") or {}).get("headline_metrics")
+                 or SCORE_METRICS))
+
+
 def wilson(k: int, n: int, z: float = 1.96) -> Tuple[float, float]:
     """
     Wilson interval for a proportion.
@@ -102,14 +116,27 @@ def items_digest(rows: Sequence[dict]) -> str:
         h.update(b"\n")
     return h.hexdigest()[:16]
 
-def resolve_tracks(spec: str) -> List[str]:
-    """Split a --tracks value and turn every name into its canonical number."""
+def resolve_tracks(spec: str, cfg: Dict[str, Any] | None = None) -> List[str]:
+    """Split a --tracks value and turn every name into its canonical number.
+
+    With a config, "uc" expands to every use case the registry enables. That
+    expansion used to live in each command, and the copies disagreed -- one
+    read the registry, another matched on the `uc` prefix, a third did not
+    expand at all and silently reviewed two tracks of ten.
+    """
     out: List[str] = []
     for raw in spec.split(","):
         t = raw.strip()
         if t:
             out.append(TRACK_ALIASES.get(t.lower(), t))
-    return out
+    if cfg is not None and "uc" in out:
+        ucs = [k for k in track_files(cfg) if k.startswith("uc")]
+        out = [t for t in out if t != "uc"] + ucs
+    seen, uniq = set(), []
+    for t in out:
+        if t not in seen:
+            seen.add(t); uniq.append(t)
+    return uniq
 
 
 def track_label(track: str) -> str:
@@ -286,7 +313,16 @@ def resolve_config(args: argparse.Namespace | None = None) -> Dict[str, Any]:
         path = Path(args.config)
     else:
         plain = HERE / "config.json"
-        variants = sorted(HERE.glob("config_*.json"))
+        # A file that declares "extends" is a variant of another config, not a
+        # dataset of its own, so it is not offered as a choice here.
+        variants = []
+        for v in sorted(HERE.glob("config_*.json")):
+            try:
+                if "extends" in json.loads(v.read_text(encoding="utf-8")):
+                    continue
+            except (OSError, ValueError):
+                pass
+            variants.append(v)
         if plain.is_file():
             path = plain
         elif len(variants) == 1:
@@ -298,9 +334,30 @@ def resolve_config(args: argparse.Namespace | None = None) -> Dict[str, Any]:
         else:
             path = plain
     if path.is_file():
-        user = json.loads(path.read_text(encoding="utf-8"))
-        cfg = _deep_merge(cfg, {k: v for k, v in user.items() if not k.startswith("_")})
+        # A variant may name a base with "extends" and carry only what it
+        # changes. An experiment that has to hold one setting fixed then shows
+        # that setting and nothing else, instead of a full copy that drifts
+        # from the file it was copied from.
+        chain, seen = [], set()
+        here = path
+        while True:
+            doc = json.loads(here.read_text(encoding="utf-8"))
+            chain.append(doc)
+            parent = doc.get("extends")
+            if not parent:
+                break
+            here = (here.parent / parent).resolve()
+            if here in seen:
+                raise SystemExit(f"config extends itself: {here}")
+            seen.add(here)
+            if not here.is_file():
+                raise SystemExit(f"config extends a file that is missing: {here}")
+        for doc in reversed(chain):
+            cfg = _deep_merge(cfg, {k: v for k, v in doc.items()
+                                    if not k.startswith("_") and k != "extends"})
         cfg["_config_path"] = str(path)
+        if len(chain) > 1:
+            cfg["_config_extends"] = [str(d.get("extends")) for d in chain[:-1]]
     elif args and args.config:
         raise SystemExit(f"config file not found: {path}")
 
@@ -429,6 +486,86 @@ UNIT_EN = {
 
 QUALIFIER_EN = {"이상": "at least", "이하": "at most", "미만": "less than",
                 "초과": "more than", "이내": "within"}
+
+
+def mining_vocab(cfg: Dict[str, Any] | None = None) -> Tuple[Dict[str, str], Dict[str, str]]:
+    """
+    The units and qualifiers the threshold miner looks for, and their English
+    labels.
+
+    A threshold reads "<figure> <unit> <qualifier>" in Korean and
+    "<qualifier> <figure> <unit>" in English, and neither the units nor the
+    qualifier words carry over. Hard-coded here, an English corpus mined zero
+    numeric items from 4,479 chunks -- the miner found nothing to match, which
+    looks like a corpus with no thresholds and was a vocabulary with no
+    English. `config.json` replaces either table under "mining".
+    """
+    m = (cfg or {}).get("mining") or {}
+    units = dict(m.get("units") or UNIT_EN)
+    quals = dict(m.get("qualifiers") or QUALIFIER_EN)
+    return units, quals
+
+
+def item_lang(cfg: Dict[str, Any] | None = None) -> str:
+    """
+    The language an item's keyed fields are written in.
+
+    Every builder writes question_ko / instruction_ko / verified_ko and scores
+    against them, so an English corpus produced items whose keyed question was
+    Korean text wrapped around English units -- "6feet로 확인되었다". The field
+    names stay as they are: they name the slot a grader reads, and renaming
+    them would break every published answer key. What they hold is a setting.
+    """
+    return str(((cfg or {}).get("mining") or {}).get("item_lang", "ko"))
+
+
+def clause_for(cfg, match, document: str | None = None) -> str | None:
+    """The citation an item carries: from the passage, else from the document.
+
+    A Korean standard repeats 제12조 in the body it governs, so mining the body
+    finds the citation. A CFR section states its number in the heading and then
+    refers to its neighbours, so the body alone left 79 of 93 English items
+    with no citation and the rest citing the wrong thing. The fallback pattern
+    reads the number off the document identifier and is a setting, because
+    whether a corpus cites itself in the body is a property of the corpus.
+    """
+    if match:
+        return clause_label(cfg, *match.groups()[:2])
+    pat = ((cfg or {}).get("clause_format") or {}).get("from_document")
+    if pat and document:
+        m = re.search(pat, str(document))
+        if m:
+            return clause_label(cfg, *m.groups()[:2])
+    return None
+
+
+def clause_label(cfg, article: str, para: str | None = None,
+                 title: str | None = None) -> str:
+    """
+    How this corpus cites a clause.
+
+    Korean statute writes 제12조제3항 and heads a clause 제12조(제목); a federal
+    rule writes § 1926.501(b) and heads it § 1926.501 Title. The strings are a
+    citation convention, so they are settings -- without them an English item
+    carried a Korean label wrapped around an English section number.
+    """
+    f = (cfg or {}).get("clause_format") or {}
+    out = str(f.get("article", "제{n}조")).format(n=article)
+    if para:
+        out += str(f.get("paragraph", "제{n}항")).format(n=para)
+    if title:
+        out = str(f.get("titled", "{clause}({title})")).format(clause=out, title=title)
+    return out
+
+
+def verified_note(cfg, ko: str, en: str) -> str:
+    """The provenance note in the item language -- it is read by a person."""
+    return en if item_lang(cfg) == "en" else ko
+
+
+def qualifier_leads(cfg: Dict[str, Any] | None = None) -> bool:
+    """Whether the qualifier precedes the figure, as it does in English."""
+    return bool(((cfg or {}).get("mining") or {}).get("qualifier_leads", False))
 
 
 def utc_now() -> str:

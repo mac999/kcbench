@@ -18,9 +18,9 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from kcbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, TRACKS_HELP,
-                            add_common_args, describe, resolve_tracks,
+                            add_common_args, describe, resolve_tracks, track_files,
                     log, read_jsonl, resolve_config, utc_now, write_json,
-                    write_jsonl)
+                    write_jsonl, score_metrics)
 
 LOG = log("triage")
 
@@ -45,8 +45,9 @@ def load_runs(runs_dir: Path, names: List[str], glob: str | None) -> Dict[str, d
     return out
 
 
-def item_scores(runs: Dict[str, dict]) -> Dict[str, Dict[str, Any]]:
+def item_scores(runs: Dict[str, dict], cfg: Dict[str, Any] | None = None) -> Dict[str, Dict[str, Any]]:
     """Per item: what each model scored and what it replied."""
+    prefer = score_metrics(cfg)
     acc: Dict[str, Dict[str, Any]] = {}
     for tag, run in runs.items():
         for body in (run.get("tracks") or {}).values():
@@ -56,7 +57,10 @@ def item_scores(runs: Dict[str, dict]) -> Dict[str, Dict[str, Any]]:
                                                 "scores": {}, "replies": {},
                                                 "no_answer": {}})
                 s = it["score"]
-                rec["scores"][tag] = s.get("correct", s.get("f1", s.get("key_f1", 0.0)))
+                v = next((s[m] for m in prefer if m in s), None)
+                if v is None:
+                    continue
+                rec["scores"][tag] = v
                 rec["replies"][tag] = it.get("sample_reply", "")
                 rec["no_answer"][tag] = it.get("no_answer", 0.0)
     return acc
@@ -127,7 +131,7 @@ def main() -> int:
     ap.add_argument("--runs", default="", help="comma-separated run tags to read")
     ap.add_argument("--runs-glob", help="glob over the runs directory, e.g. 'p1-*--open'")
     ap.add_argument("--runs-dir", help="where run files live (default <out-dir>/runs)")
-    ap.add_argument("--tracks", default="2,3",
+    ap.add_argument("--tracks", default="2,3,probe,uc",
                     help=f"tracks to triage. {TRACKS_HELP}")
     ap.add_argument("--min-models", type=int,
                     help="ignore items fewer than this many runs cover (default 2)")
@@ -149,16 +153,19 @@ def main() -> int:
     LOG.info("reading %d run(s): %s", len(runs), ", ".join(sorted(runs)))
 
     keyed: Dict[str, dict] = {}
-    files = {"2": "track2_sft.jsonl", "3": "track3_vlm.jsonl"}
-    for t in resolve_tracks(args.tracks):
-        path = cfg["out_dir"] / files[t]
+    files = track_files(cfg)
+    for t in resolve_tracks(args.tracks, cfg):
+        name = files.get(t)
+        if not name:
+            continue
+        path = cfg["out_dir"] / name
         if path.exists():
             keyed.update({r["id"]: r for r in read_jsonl(path)})
 
     tr = cfg.get("triage", {})
     min_models = args.min_models if args.min_models is not None else tr.get("min_models", 2)
     sample_n = args.sample if args.sample is not None else tr.get("sample", 0)
-    items = item_scores(runs)
+    items = item_scores(runs, cfg)
     queue = triage(items, keyed, min_models, tr.get("no_answer_threshold", 0.5))
     flagged = {q["id"] for q in queue}
 
@@ -174,7 +181,8 @@ def main() -> int:
     for reason, n in reasons.most_common():
         LOG.info("  %-16s %4d", reason, n)
     if keyed:
-        LOG.info("flagged share: %.1f%% of the benchmark", len(flagged) / len(keyed) * 100)
+        LOG.info("flagged share: %.1f%% of the %d item(s) read",
+                 len(flagged) / len(keyed) * 100, len(keyed))
 
     out = Path(args.out) if args.out else cfg["out_dir"] / "review_queue.jsonl"
     write_jsonl(out, queue)

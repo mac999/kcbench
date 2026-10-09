@@ -26,7 +26,7 @@ from kcbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, SCHEMA_VERSION,
                             TRACKS_HELP, add_common_args, describe, items_digest,
                             log, normalise, read_jsonl, resolve_tracks,
                             track_label, track_files, TRACK_FILES, wilson,
-                    resolve_config, write_json)
+                            score_metrics, resolve_config, write_json)
 
 LOG = log("eval")
 
@@ -972,20 +972,36 @@ def _aggregate(per_item: List[dict]) -> dict:
     return out
 
 
-def headline(result: dict) -> Dict[str, float]:
-    """One number per track, for the comparison table."""
+def headline(result: dict, cfg: Dict[str, Any] | None = None) -> Dict[str, float]:
+    """One number per track, for the comparison table.
+
+    A track is summarised by the first metric its graders actually emit. A
+    grader that reports none of them is left out rather than written as 0.0 --
+    the sentence grader emits `grounded`, not `correct`, and defaulting it to
+    zero made a track that scored 0.67 read as a total failure.
+    """
+    prefer = score_metrics(cfg)
     h: Dict[str, float] = {}
     t1 = result["tracks"].get("1")
     if t1 and t1.get("perplexity"):
         h["track1_perplexity"] = t1["perplexity"]
     named = {"2": "track2_sft", "3": "track3_vlm"}
+    used: Dict[str, str] = {}
     for track, t in result["tracks"].items():
         if track == "1" or not t or not t.get("by_type"):
             continue
         vals = []
         for kind, m in t["by_type"].items():
-            vals.append(m.get("correct", m.get("f1", m.get("key_f1", 0.0))))
+            for key in prefer:
+                if key in m:
+                    vals.append(m[key])
+                    used[f"{track}.{kind}"] = key
+                    break
+        if not vals:
+            continue
         h[f"{named.get(track, track)}_score"] = round(statistics.fmean(vals), 4)
+    if used:
+        result.setdefault("meta", {})["headline_metrics"] = used
     return h
 
 
@@ -1030,11 +1046,7 @@ def main() -> int:
 
     # --tracks uc1_safety, or "uc" for all; the registry lives in the config
     files = track_files(cfg)
-    usecases = {k: v for k, v in (cfg.get("usecases") or {}).items()
-                if not k.startswith("_") and isinstance(v, dict) and v.get("enabled", True)}
-    wanted = resolve_tracks(args.tracks)
-    if "uc" in wanted:
-        wanted = [t for t in wanted if t != "uc"] + list(usecases)
+    wanted = resolve_tracks(args.tracks, cfg)
     result = {"benchmark": BENCHMARK_NAME, "version": BENCHMARK_VERSION,
               "tag": tag, "model": args.model, "lang": args.lang,
               "repeats": cfg["eval"]["repeats"], "limit": args.limit,
@@ -1108,7 +1120,7 @@ def main() -> int:
                                     for t in skipped}
     result["elapsed_sec"] = round(time.time() - started, 1)
     result["meta"] = run_meta(cfg, args.model)
-    result["headline"] = headline(result)
+    result["headline"] = headline(result, cfg)
     out = write_json(runs_dir / f"{tag}.json", result)
     LOG.info("wrote %s", out)
     for k, v in result["headline"].items():
