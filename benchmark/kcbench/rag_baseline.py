@@ -38,7 +38,7 @@ import requests
 from kcbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, TRACKS_HELP,
                             add_common_args, describe, items_digest, log,
                             read_jsonl, resolve_config, resolve_tracks,
-                            track_label, write_json)
+                            track_label, write_json, score_metrics)
 from kcbench.prompts import render
 from kcbench.evaluate import (_aggregate, answered, generate, grade_label,
                               graders_for, run_meta, track_files)
@@ -119,10 +119,7 @@ def main() -> int:
 
     started = time.time()
     files = track_files(cfg)
-    wanted = resolve_tracks(args.tracks)
-    if "uc" in wanted:
-        wanted = [x for x in wanted if x != "uc"] + [
-            k for k in files if k.startswith("uc")]
+    wanted = resolve_tracks(args.tracks, cfg)
     for t in wanted:
         path = cfg["out_dir"] / files.get(t, f"{t}.jsonl")
         if not path.exists():
@@ -194,10 +191,16 @@ def main() -> int:
 
     result["elapsed_sec"] = round(time.time() - started, 1)
     result["meta"] = run_meta(cfg, args.model)
-    result["headline"] = {f"{track_label(t)}_rag_score":
-                          round(sum(m.get("correct", m.get("f1", 0.0))
-                                    for m in v["by_type"].values()) / max(len(v["by_type"]), 1), 4)
-                          for t, v in result["tracks"].items()}
+    # One number per track, from the first metric its graders emit. A grader
+    # that emits none of them is left out, not written as 0.0.
+    _prefer = score_metrics(cfg)
+    def _track_score(v):
+        vals = [m[k] for m in v["by_type"].values()
+                for k in _prefer if k in m][:len(v["by_type"])]
+        return round(sum(vals) / len(vals), 4) if vals else None
+    result["headline"] = {f"{track_label(t)}_rag_score": s
+                          for t, v in result["tracks"].items()
+                          if (s := _track_score(v)) is not None}
     out = write_json(runs_dir / f"{tag}.json", result)
     LOG.info("wrote %s", out)
     for t, v in result["tracks"].items():

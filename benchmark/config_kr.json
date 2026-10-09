@@ -192,7 +192,14 @@
     "num_ctx": 8192,
     "num_predict": 4096,
     "temperature": 0.0,
-    "models": [],
+    "models": [
+      "qwen3:8b",
+      "qwen3:14b",
+      "glm4:9b",
+      "exaone3.5:7.8b",
+      "gemma2:9b",
+      "llama3.3:70b"
+    ],
     "book": "both",
     "lang_mix": {
       "ko": 0.8,
@@ -204,7 +211,8 @@
     "on_missing_capability": "skip",
     "capability_timeout": 30,
     "keep_alive": "30m",
-    "_comment_keep_alive": "How long the server keeps a model loaded after each request. The default 5m evicts a large judge between items and its reload can exceed the server's load timeout, which returns 500. 30m outlives any single item; -1 pins models for the session."
+    "_comment_keep_alive": "How long the server keeps a model loaded after each request. The default 5m evicts a large judge between items and its reload can exceed the server's load timeout, which returns 500. 30m outlives any single item; -1 pins models for the session.",
+    "_comment_models": "The six models the Korean worked example is scored with. Used by cb.py matrix when --models is not given."
   },
   "judges": {
     "_comment": "The panel that grades a prose answer. candidates is in preference order, filtered against what the server actually has and then capped at preferred_panel -- the size is the decision rule, so entries past the cap are replacements for an unavailable judge, not extra votes. Three is the smallest panel where a majority is not unanimity; at two, one judge's refusal sinks an item. exclude_same_family drops any judge sharing the target model's lineage: measured at +0.27 pass rate for a qwen judge on a qwen answer, larger than most effects this benchmark reports. family_aliases extends the name-to-lineage table. The default order puts the largest installed judge first; drop it for a faster panel.",
