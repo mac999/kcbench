@@ -43,6 +43,14 @@ scored checkpoints.](doc/webview1.png)
 fuzzy-match and training-side 96, and the item below shows the Korean list its
 answer key expects.](doc/webview2.png)
 
+A hosted copy of that console is at the
+[kcbench console demo](https://7kraze5zhvdtss-8888.proxy.runpod.net/?token=ou6v4jxu9fj54lamxtp1):
+read-only, with the bundled runs already loaded, so the item sets and charts can
+be browsed without installing anything. It runs on metered hardware and is
+brought up only while someone needs it — if the link does not answer, it is
+switched off rather than broken. To raise your own copy instead, see
+[The browser view](#the-browser-view).
+
 **Contents**
 
 - [Install](#install) — dependencies, and the inference server
@@ -303,6 +311,9 @@ bash -c "apt-get update -qq; apt-get install -y -qq git python3-pip;
 
 (8888 because that is the port a stock RunPod template already proxies;
 any exposed HTTP port works.)
+
+The [console demo](https://7kraze5zhvdtss-8888.proxy.runpod.net/?token=ou6v4jxu9fj54lamxtp1)
+linked at the top of this page is one such pod, kept off between uses.
 
 The page is arranged the way the benchmark is used, not the way the disk is
 laid out. On the left is the benchmark itself: one card per item set with its
