@@ -169,6 +169,11 @@ train_data_v052/
   metadata/      collector catalogues    -> metadata_dir
 ```
 
+The suffix is the generator release that produced the set. A dataset
+regenerated with a later release goes in its own folder (`train_data_v060/`)
+with its own answer key and settings file, so two generations are never mixed
+in one tree.
+
 Pick the variant with `-c`: `config_kr.json` for this corpus,
 `config_us.json` for the English one (29 CFR 1926, under `train_data_us/`).
 Neither is the default — with both present the tools ask which, because a
