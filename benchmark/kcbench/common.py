@@ -281,9 +281,9 @@ def add_common_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     g.add_argument("-i", "--generated-dir", metavar="DIR",
                    help="AI-ready training data to evaluate (default ../train_data_v052/train_data)")
     g.add_argument("--corpus-dir", metavar="DIR",
-                   help="source corpus of PDFs and IFC models (default ../data)")
+                   help="source corpus of PDFs and IFC models (default ../train_data_v052/data)")
     g.add_argument("--metadata-dir", metavar="DIR",
-                   help="collector catalogues (default ../metadata)")
+                   help="collector catalogues (default ../train_data_v052/metadata)")
     g.add_argument("--pipeline-dir", metavar="DIR",
                    help="gen_aec_syn_data checkout, used for its chunker")
     g.add_argument("-o", "--out-dir", metavar="DIR",
