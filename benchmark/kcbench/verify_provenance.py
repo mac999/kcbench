@@ -153,10 +153,17 @@ def main() -> int:
             # Holding them to the held-out checks reports the design as a
             # failure and buries any real contamination in the noise.
             trained_side = item.get("split") == "train"
+            # Document routing sends some documents to retrieval only, so
+            # their chunks reach rag_corpus.jsonl and never the training
+            # kinds. A train-side item mined from one of those is not
+            # contaminated and cannot be in the split, so in_train does not
+            # apply to it.
+            retrieval_only = str(prov.get("dataset_file", "")).endswith("rag_corpus.jsonl")
             checks = {"source_exists": exists, "source_matches": matches,
                       "in_holdout": None if trained_side else in_holdout,
                       "absent_from_train": None if trained_side else absent,
-                      "in_train": absent is False if trained_side else None}
+                      "in_train": None if not trained_side or retrieval_only
+                                  else absent is False}
             for name, ok in checks.items():
                 if ok is False:
                     failures[name] += 1
