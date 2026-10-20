@@ -134,10 +134,12 @@ Everything runs through one entry point, `cb.py`. Each command takes its own
 flags, shown by `python cb.py <command> -h`. Commands that take `--tracks` take
 the names listed under [What each track contains](#track-reference--item-counts-and-answer-types).
 
-Two answer keys ship with the repository. `ground_truth_v052/` is the current
-one and the default `out_dir`, built against the corpus regenerated with
-generator v0.5.2 and scored in
+Three answer keys ship with the repository. `ground_truth_v052/` is the one
+the published scores were measured on and the default `out_dir`, built against
+the corpus regenerated with generator v0.5.2 and scored in
 [worked example-2](#worked-example-2-korean-construction-corpus-advanced).
+`ground_truth_v053/` is the newest build, from the v0.5.3 corpus, and is not
+scored yet; pass it with `-c config_kr_v053.json`.
 `ground_truth/` is the first build, kept so worked example-1 stays
 reproducible; point any command back at it from `benchmark/`:
 
@@ -170,9 +172,9 @@ train_data_v052/
 ```
 
 The suffix is the generator release that produced the set. A dataset
-regenerated with a later release goes in its own folder (`train_data_v060/`)
-with its own answer key and settings file, so two generations are never mixed
-in one tree.
+regenerated with a later release goes in its own folder -- the v0.5.3
+regeneration is `train_data_v053/`, keyed by `ground_truth_v053/` and built
+with `config_kr_v053.json` -- so two generations are never mixed in one tree.
 
 Pick the variant with `-c`: `config_kr.json` for this corpus,
 `config_us.json` for the English one (29 CFR 1926, under `train_data_us/`).
@@ -385,9 +387,12 @@ training/
   dapt.py                stage 1, domain-adaptive pre-training
   sft.py                 stage 2, supervised fine-tuning
   merge.py               fold the adapter into the base weights
-ground_truth_v052/       the current answer key, and the default out_dir. Item
-                         sets and holdout are tracked; train/, runs/ and export/
-                         are what the modules build into it, kept local
+ground_truth_v052/       the answer key the published scores were measured on,
+                         and the default out_dir. Item sets and holdout are
+                         tracked; train/, runs/ and export/ are what the modules
+                         build into it, kept local
+ground_truth_v053/       the same, built from the v0.5.3 corpus with
+                         -c config_kr_v053.json, not scored yet
 ground_truth/            the first answer key, kept so worked example-1 stays
                          reproducible (-o ../ground_truth)
 ground_truth_us/         the English answer key for worked example-3, built from
@@ -395,6 +400,8 @@ ground_truth_us/         the English answer key for worked example-3, built from
 train_data_v052/         the input side, downloaded from the Drive link in
                          Use: data/ (source documents), train_data/ (synthetic
                          training set), metadata/ -- the input-path defaults
+train_data_v053/         the v0.5.3 regeneration of train_data/, sharing the
+                         same corpus and catalogues
 train_data_us/           the English input side, same three subdirectories,
                          collected by scripts/collect_ecfr.py
 download_dataset.bat/.sh fetch the Drive dataset into train_data_v052/, resumable
@@ -420,6 +427,7 @@ this README come from the runs listed in the worked examples.
 
 | Rev | Date | What changed |
 |---|---|---|
+| v4.1 | 2026-10-20 | Third answer key: the corpus regenerated with generator v0.5.3 and built as `ground_truth_v053/` with `config_kr_v053.json`. The generator change is on the training side -- per-document task offset, citable references named in the prompt, STaR verified against the source chunk -- and took STaR acceptance from 38.4% to 91.5%, so the training split grows from 16,866 to 25,227 rows while the question counts stay within a few percent. Chunking changed with it (`chunk_overlap` 200 to 100), so the item sets are new and the v052 scores are not comparable item for item; v052 is kept beside it. Two mining modules were restored after the v3.9 settings move left `enum_patterns` unimported, and `in_train` no longer demands a training row for an item mined from a retrieval-only document. |
 | v4.0 | 2026-10-09 | Second dataset: 29 CFR 1926 collected, built and scored with `config_us.json`. Settings files split per dataset with no implicit default; a variant may `extends` a base. Language-dependent mining rules (units, qualifiers, enumeration, clause citation, subject direction, chunk boundary) moved into settings, Korean behaviour as the default. Per-track summary metric configurable via `eval.headline_metrics`, with one list shared by the summary and the paired comparison (`common.score_metrics`); `tools_rehead.py` repairs a finished run's summary without rescoring. `triage` now reads every track the config registers rather than two. |
 | v3.9 | 2026-09-28 | Corpus regenerated with generator v0.5.2 (document routing, DPO/STaR/RLVR formats) and everything re-scored — worked example-2. Verdict scoring decomposed into `correct` / `abstained` / `off_vocab`; uc6 shown non-discriminating and repaired as `uc6_verdict_v2` (+0.26 for an 8B, +0.09 for a 70B, both above the constant-answer baseline). Retrieval reports coverage beside recall. Image tracks guarded against text-only models. Judge panel capped at its preferred size. Corpus-specific rules (volatility, uc7 mining, judge pool) moved into `config.json`. |
 | v3.8 | 2026-09-26 | Grader registry; nameset match mode derived from the answer key (+0.20 uc1, +0.15 sft on the full sets — the largest measurement correction to date). Volatility classifier (`cb.py volatility`). Sentence grader under a 3-judge panel with same-family judges excluded (a qwen judge passed qwen answers +0.27 more often). uc7 requirement track mined from threshold items. |
