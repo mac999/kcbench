@@ -28,9 +28,9 @@ from pathlib import Path
 from typing import Dict, List
 
 from kcbench.build_tracks import (Rejects, _base, _instr, _nameset_candidate,
-                          _numeric_candidates, _provenance, CLAUSE_RE, josa,
+                          _numeric_candidates, _provenance, enum_patterns, josa,
                           load_reviews, reviewed_out)
-from kcbench.common import (item_lang, verified_note, mining_vocab, QUALIFIER_EN, UNIT_EN, add_common_args, describe,
+from kcbench.common import (clause_for, item_lang, verified_note, mining_vocab, QUALIFIER_EN, UNIT_EN, add_common_args, describe,
                     generated_documents, item_id, log, resolve_config, utc_now,
                     write_json, write_jsonl, nameset_match_mode)
 
