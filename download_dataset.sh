@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
-# Download the training dataset from the shared Drive into train_data_v052/,
-# the folder the config defaults already point at.
+# Download the training dataset from the shared Drive.
 #
-#     ./download_dataset.sh              fetch (or resume) the whole dataset
+#     ./download_dataset.sh              v052 into train_data_v052/ (the
+#                                        default config_kr.json)
+#     ./download_dataset.sh v053         also the v0.5.3 regeneration into
+#                                        train_data_v053/train_data, for
+#                                        -c config_kr_v053.json
+#
+# Both releases share one corpus and catalogue, so data/ and metadata/ always
+# go to train_data_v052/, where config_kr_v053.json inherits them from.
 #
 # Safe to re-run: finished files are skipped, partial ones resumed. The
 # interpreter is picked the way run_cli.sh picks it (KCBENCH_PY, then a venv
@@ -11,8 +17,21 @@
 # data/ is corpus_dir, train_data/ is generated_dir, metadata/ the catalogues.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FOLDER_URL="https://drive.google.com/drive/folders/1Cz7S-QhXRwQgsajDDyjBAC8vK30jQQTN"
+# Subfolders of the shared Drive folder 1Cz7S-QhXRwQgsajDDyjBAC8vK30jQQTN,
+# fetched one by one so the release not asked for is not downloaded with it
+DRIVE="https://drive.google.com/drive/folders"
+DATA_ID="1byKtnR64tYzP8p0AviZQRwFvFwairrjH"
+META_ID="1hSZqIjddwi8PmW_Q0KebmD0bb1ctK5qD"
+V052_ID="1JqkTvGBbVFHsaK4juMqiJ_9GyUv6C_ft"
+V053_ID="1kZAL3ZstGPA5y-SDeFvbnB9CzcnMv2rX"
 DEST="$HERE/train_data_v052"
+
+RELEASE="${1:-v052}"
+case "$RELEASE" in
+    v052) GEN_ID="$V052_ID"; GEN_DEST="$DEST/train_data" ;;
+    v053) GEN_ID="$V053_ID"; GEN_DEST="$HERE/train_data_v053/train_data" ;;
+    *) echo "usage: ./download_dataset.sh [v052|v053]" >&2; exit 1 ;;
+esac
 
 if [ -z "${KCBENCH_PY:-}" ]; then
     for candidate in \
@@ -43,16 +62,25 @@ if ! "$KCBENCH_PY" -c "import gdown" >/dev/null 2>&1; then
         echo "download_dataset.sh: pip install gdown failed" >&2; exit 1; }
 fi
 
-mkdir -p "$DEST"
-echo "downloading into $DEST (re-runs resume where they stopped)"
-"$KCBENCH_PY" -m gdown --folder "$FOLDER_URL" -O "$DEST" --continue || exit 1
+echo "downloading $RELEASE (re-runs resume where they stopped)"
+for pair in "$DATA_ID $DEST/data" "$META_ID $DEST/metadata" "$GEN_ID $GEN_DEST"; do
+    set -- $pair
+    mkdir -p "$2"
+    # no trailing slash on -O: gdown then writes the folder's contents there
+    "$KCBENCH_PY" -m gdown --folder "$DRIVE/$1" -O "$2" --continue || exit 1
+done
 
 echo
-for d in data train_data metadata; do
-    if [ -d "$DEST/$d" ]; then
-        echo "  $d/  $(find "$DEST/$d" -type f | wc -l) file(s)"
+for d in "$DEST/data" "$DEST/metadata" "$GEN_DEST"; do
+    n="$(find "$d" -type f 2>/dev/null | wc -l)"
+    if [ "$n" -gt 0 ]; then
+        echo "  ${d#$HERE/}/  $n file(s)"
     else
-        echo "  $d/  MISSING - the Drive layout may have changed" >&2
+        echo "  ${d#$HERE/}/  EMPTY - the Drive layout may have changed" >&2
     fi
 done
-echo "done. ./run_cli.sh works with no path arguments now."
+if [ "$RELEASE" = v053 ]; then
+    echo "done. pass -c config_kr_v053.json to cb.py to use the v053 answer key."
+else
+    echo "done. ./run_cli.sh works with no path arguments now."
+fi
