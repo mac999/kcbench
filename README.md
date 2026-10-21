@@ -156,11 +156,15 @@ The dataset behind them is on
 [Google Drive](https://drive.google.com/drive/folders/1Cz7S-QhXRwQgsajDDyjBAC8vK30jQQTN?usp=sharing).
 In the shared folder, `data/` holds the source documents (the raw corpus),
 `train_data/` the synthetic AI-ready training set generated from it,
-`metadata/` the collector catalogues, and `scripts/`, `certs/` and `summary.md`
-how it was collected. One command fetches it all into place —
+`metadata/` the collector catalogues, `train_data_v053/` the v0.5.3
+regeneration of `train_data/`, and `scripts/`, `certs/` and `summary.md` how it
+was collected. One command fetches the three data folders into place —
 `./download_dataset.sh` (or `download_dataset.bat` on Windows) installs gdown
-into the same interpreter the launchers use, downloads the folder, resumes if
-interrupted, and is safe to re-run. Downloading by hand works too: put the
+into the same interpreter the launchers use, downloads them, resumes if
+interrupted, and is safe to re-run. `./download_dataset.sh v053` fetches
+`train_data_v053/` instead of `train_data/`, into `train_data_v053/train_data`,
+beside the shared `data/` and `metadata/`; score it with
+`-c config_kr_v053.json`. Downloading by hand works too: put the
 three data folders into the repository as `train_data_v052/`, keeping their
 names:
 
@@ -404,7 +408,8 @@ train_data_v053/         the v0.5.3 regeneration of train_data/, sharing the
                          same corpus and catalogues
 train_data_us/           the English input side, same three subdirectories,
                          collected by scripts/collect_ecfr.py
-download_dataset.bat/.sh fetch the Drive dataset into train_data_v052/, resumable
+download_dataset.bat/.sh fetch the Drive dataset into train_data_v052/, resumable;
+                         with v053, train_data_v053/train_data in place of its train_data/
 run_cli.bat / .sh        run any cb.py command from the root under KCBENCH_PY
 run_webview.bat / .sh    start the browser view the same way
 ```
