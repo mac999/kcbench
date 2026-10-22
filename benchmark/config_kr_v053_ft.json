@@ -1,0 +1,7 @@
+{
+  "_comment": "Fine-tuning comparison on the v053 key: Qwen3-8B trained on the STaR-verified rows of v052 and of v053, scored against the untrained base. Inherits config_kr_v053.json and pins the judge panel to the three small judges config_kr_ft.json uses, so the sentence tracks are graded the same way for every arm and llama3.3:70b, installed here, does not join the panel for some runs and not others.",
+  "extends": "config_kr_v053.json",
+  "judges": {
+    "candidates": ["exaone3.5:7.8b", "glm4:9b", "gemma2:9b"]
+  }
+}
