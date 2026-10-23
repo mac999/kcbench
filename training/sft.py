@@ -117,6 +117,7 @@ def main() -> int:
     ap.add_argument("--log-every", type=int, default=20)
     ap.add_argument("--save-every", type=int, default=500)
     ap.add_argument("--limit", type=int)
+    ap.add_argument("--seed", type=int, default=20260814)
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--resume-from", type=Path, metavar="DIR",
                     help="adapter checkpoint (out/.../step-N) to continue from. "
@@ -129,7 +130,7 @@ def main() -> int:
     if args.smoke:
         args.limit, args.epochs, args.save_every = 200, 1.0, 0
 
-    torch.manual_seed(20260814)
+    torch.manual_seed(args.seed)
     print(f"model  {args.model}")
     print(f"base   {args.base or 'none, training the bare base'}")
     print(f"data   {args.data}")
