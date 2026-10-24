@@ -74,6 +74,7 @@ switched off rather than broken. To raise your own copy instead, see
 The longest sections live in their own files so this one stays readable:
 [doc/worked-example.md](doc/worked-example.md) (the full campaign),
 [doc/worked-example-2.md](doc/worked-example-2.md),
+[doc/worked-example-3.md](doc/worked-example-3.md),
 [doc/retrieval-and-validity.md](doc/retrieval-and-validity.md),
 [doc/metrics.md](doc/metrics.md).
 
@@ -994,7 +995,9 @@ A second dataset built with the same code and one settings file,
 [benchmark/config_us.json](benchmark/config_us.json): OSHA's construction
 standards, 236 sections collected from the eCFR API by
 [scripts/collect_ecfr.py](scripts/collect_ecfr.py). The BIM assets are reused
-from the Korean corpus, so the image track is off here.
+from the Korean corpus, so the image track is off here. The full write-up — results,
+the defects this run exposed and the comparison against the Korean campaigns —
+is in [doc/worked-example-3.md](doc/worked-example-3.md).
 
 ```
 python scripts/collect_ecfr.py                       # 236 sections -> train_data_us/
