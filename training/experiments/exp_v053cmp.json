@@ -1,0 +1,40 @@
+{
+  "_comment": "The v053 data comparison: three data conditions on Qwen3-8B under one LoRA recipe, scored on the v053 key, plus the refusal-cap repair arm and the seed repeats. An arm with a 'model' field is scored as-is; an arm with 'data' is trained first. Derived datasets are rebuilt bit-exactly by build_subsets.py from the 'datasets' section. Run with run_experiment.sh experiments/exp_v053cmp.json.",
+  "benchmark_config": "config_kr_v053_ft.json",
+  "model_tag": "qwen3-v053cmp",
+  "run_tag_prefix": "v053cmp",
+  "modelfile_template": "Modelfile.qwen3-sft4",
+  "tracks": "probe,sft,uc1_safety,uc2_rebar_spec,uc4_faithfulness,uc5_incident,uc6_verdict,uc7_requirement,uc6_verdict_v2,uc7_requirement_v2",
+  "recipe": { "max_len": 3072, "batch": 2, "accum": 16, "save_every": 100 },
+  "datasets": {
+    "../ground_truth_v053/train/train_star_n2202.jsonl": {
+      "source": "../ground_truth_v053/train/train_star.jsonl",
+      "method": "shuffle_head", "n": 2202, "seed": 20260814,
+      "_why": "the v053 STaR rows subsampled to the v052 count, so quality is compared at equal size"
+    },
+    "../ground_truth_v053/train/train_star_cap5.jsonl": {
+      "source": "../ground_truth_v053/train/train_star.jsonl",
+      "method": "cap_task_type", "task_type": "refusal", "ratio": 0.05, "seed": 20260814,
+      "_why": "refusal rows were 18.5% of train_star and taught the model to refuse with the source in context; this caps them near 5%, source order kept"
+    }
+  },
+  "arms": [
+    { "name": "base",       "model": "qwen3:8b" },
+    { "name": "v052",       "data": "../ground_truth_v053/train_from_v052/train_star.jsonl", "seed": 20260814 },
+    { "name": "n2202",      "data": "../ground_truth_v053/train/train_star_n2202.jsonl",    "seed": 20260814 },
+    { "name": "v053",       "data": "../ground_truth_v053/train/train_star.jsonl",          "seed": 20260814 },
+    { "name": "v053cap",    "data": "../ground_truth_v053/train/train_star_cap5.jsonl",     "seed": 20260814 },
+    { "name": "v052-s2",    "data": "../ground_truth_v053/train_from_v052/train_star.jsonl", "seed": 7 },
+    { "name": "v052-s3",    "data": "../ground_truth_v053/train_from_v052/train_star.jsonl", "seed": 42 },
+    { "name": "n2202-s2",   "data": "../ground_truth_v053/train/train_star_n2202.jsonl",    "seed": 7 },
+    { "name": "n2202-s3",   "data": "../ground_truth_v053/train/train_star_n2202.jsonl",    "seed": 42 },
+    { "name": "v053cap-s2", "data": "../ground_truth_v053/train/train_star_cap5.jsonl",     "seed": 7 },
+    { "name": "v053cap-s3", "data": "../ground_truth_v053/train/train_star_cap5.jsonl",     "seed": 42 }
+  ],
+  "compares": [
+    ["base", "v052"], ["base", "n2202"], ["base", "v053"], ["base", "v053cap"],
+    ["v052", "v053"], ["v052", "n2202"], ["v053", "v053cap"],
+    ["base", "v052-s2"], ["base", "v052-s3"], ["base", "n2202-s2"], ["base", "n2202-s3"],
+    ["base", "v053cap-s2"], ["base", "v053cap-s3"]
+  ]
+}
