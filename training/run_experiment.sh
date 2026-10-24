@@ -25,7 +25,8 @@ print("\t".join(["cfg", e["benchmark_config"], e["model_tag"], e["run_tag_prefix
 r = e["recipe"]
 print("\t".join(["recipe", str(r["max_len"]), str(r["batch"]), str(r["accum"]), str(r["save_every"])]))
 for a in e["arms"]:
-    print("\t".join(["arm", a["name"], a.get("model", "-"), a.get("data", "-"), str(a.get("seed", "-"))]))
+    print("\t".join(["arm", a["name"], a.get("model", "-"), a.get("data", "-"), str(a.get("seed", "-")),
+                     str(a.get("epochs", r.get("epochs", 2)))]))
 for b, a in e.get("compares", []):
     print("\t".join(["cmp", b, a]))
 PYEOF
@@ -49,8 +50,8 @@ for parent,d in reversed(chain):
 if [ "$PLAN" = "--plan" ]; then
   echo "config    $CFG  (answer key $GT)"
   echo "recipe    max-len $MAXLEN batch $BATCH accum $ACCUM save-every $SAVE"
-  while IFS=$'\t' read -r _ name model data seed; do
-    if [ "$model" != "-" ]; then st="score only ($model)"; else st="train $data seed=$seed"; fi
+  while IFS=$'\t' read -r _ name model data seed epochs; do
+    if [ "$model" != "-" ]; then st="score only ($model)"; else st="train $data seed=$seed epochs=$epochs"; fi
     done=""
     [ "$model" = "-" ] && [ -f "$HERE/out/$TAG-$name/run.json" ] && done=" [trained]"
     [ -f "$GT/runs/$TAG-$name-open.json" ] && done="$done [open]"
@@ -68,16 +69,16 @@ unload(){
   done
 }
 
-train(){ # arm data seed
-  local arm="$1" data="$HERE/$2" seed="$3" out="$HERE/out/$TAG-$1"
+train(){ # arm data seed epochs
+  local arm="$1" data="$HERE/$2" seed="$3" epochs="$4" out="$HERE/out/$TAG-$1"
   [ -f "$out/run.json" ] && { say "train $arm: already done"; return 0; }
   unload
   local resume=()
   local last; last="$(ls -d "$out"/step-* 2>/dev/null | sort -V | tail -1)"
   [ -n "$last" ] && resume=(--resume-from "$last")
-  say "train $arm on $(wc -l < "$data") rows seed=$seed ${resume[*]}"
+  say "train $arm on $(wc -l < "$data") rows seed=$seed epochs=$epochs ${resume[*]}"
   "$PY" "$HERE/sft.py" -d "$data" -o "$out" --max-len "$MAXLEN" --batch "$BATCH" \
-      --accum "$ACCUM" --seed "$seed" --save-every "$SAVE" "${resume[@]}" \
+      --accum "$ACCUM" --seed "$seed" --epochs "$epochs" --save-every "$SAVE" "${resume[@]}" \
       >> "$HERE/sft_$TAG-$arm.log" 2>&1
   [ -f "$out/run.json" ] || { say "train $arm failed, see sft_$TAG-$arm.log"; return 1; }
   say "train $arm done"
@@ -113,11 +114,11 @@ score(){ # model tag-suffix
 }
 
 say "start $EXP"
-while IFS=$'\t' read -r _ name model data seed; do
+while IFS=$'\t' read -r _ name model data seed epochs; do
   if [ "$model" != "-" ]; then
     score "$model" "$name"
   else
-    train "$name" "$data" "$seed" && register "$name" && score "$MODEL_TAG:$name" "$name"
+    train "$name" "$data" "$seed" "$epochs" && register "$name" && score "$MODEL_TAG:$name" "$name"
   fi
 done < <(grep -P '^arm\t' <<< "$PLANOUT")
 
