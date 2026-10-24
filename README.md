@@ -65,7 +65,7 @@ switched off rather than broken. To raise your own copy instead, see
 - [Reading the worked examples](#reading-the-worked-examples) — what the synthetic provenance limits, and what the next phase tests
 - [Worked example-1](#worked-example-1-korean-construction-corpus-basic) — DAPT and SFT on Korean construction regulation: what each stage moved, and why closed-book recall did not
 - [Worked example-2](#worked-example-2-korean-construction-corpus-advanced) — document routing, preference and verifier tracks, and what a second generator release changed
-- [English instantiation](#english-instantiation-us-federal-safety-regulation-29-cfr-1926) — the second dataset, its settings file and its known defects
+- [Worked example-3](#worked-example-3-english-instantiation-29-cfr-1926) — the English dataset built from 29 CFR 1926, its settings file and its known defects
 - [Retrieval ablation and item validity](#retrieval-ablation-and-item-validity) — where the detail lives
 - [System design implications](#system-design-implications) — what the findings imply for the system that motivated them
 - [Adapting it to another domain](#adapting-it-to-another-domain) — what to change when the corpus is not construction
@@ -988,7 +988,7 @@ marginally, `train` leads `retrieve` 0.740 to 0.688, but within answer type
 `retrieve` is higher in three of five, because `train` holds more of the easiest
 type and `retrieve` more of the hardest.
 
-## English instantiation: US federal safety regulation (29 CFR 1926)
+## Worked example-3: English instantiation (29 CFR 1926)
 
 A second dataset built with the same code and one settings file,
 [benchmark/config_us.json](benchmark/config_us.json): OSHA's construction
@@ -1132,8 +1132,8 @@ classes and construction site photos, and the IFC reader itself.
 The text tracks assume more about **language** than about subject matter: unit
 and qualifier vocabulary, enumeration patterns, clause citation, sentence word
 order and what counts as informative text are all settings whose defaults are
-Korean. The
-[English instantiation](#english-instantiation-us-federal-safety-regulation-29-cfr-1926)
+Korean. The English instantiation,
+[worked example-3](#worked-example-3-english-instantiation-29-cfr-1926),
 lists the ones a second language needed.
 
 Prompts default to Korean because the reference corpus is Korean regulation and
