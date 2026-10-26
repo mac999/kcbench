@@ -66,6 +66,7 @@ switched off rather than broken. To raise your own copy instead, see
 - [Worked example-1](#worked-example-1-korean-construction-corpus-basic) — DAPT and SFT on Korean construction regulation: what each stage moved, and why closed-book recall did not
 - [Worked example-2](#worked-example-2-korean-construction-corpus-advanced) — document routing, preference and verifier tracks, and what a second generator release changed
 - [Worked example-3](#worked-example-3-english-instantiation-29-cfr-1926) — the English dataset built from 29 CFR 1926, its settings file and its known defects
+- [Worked example-4](#worked-example-4-does-a-larger-verified-training-set-train-a-better-model) — the v0.5.3 training data fine-tuned and compared against v0.5.2: where more data helped, and the task type that made it collapse
 - [Retrieval ablation and item validity](#retrieval-ablation-and-item-validity) — where the detail lives
 - [System design implications](#system-design-implications) — what the findings imply for the system that motivated them
 - [Adapting it to another domain](#adapting-it-to-another-domain) — what to change when the corpus is not construction
@@ -75,6 +76,7 @@ The longest sections live in their own files so this one stays readable:
 [doc/worked-example.md](doc/worked-example.md) (the full campaign),
 [doc/worked-example-2.md](doc/worked-example-2.md),
 [doc/worked-example-3.md](doc/worked-example-3.md),
+[doc/worked-example-4.md](doc/worked-example-4.md),
 [doc/retrieval-and-validity.md](doc/retrieval-and-validity.md),
 [doc/metrics.md](doc/metrics.md).
 
@@ -433,6 +435,7 @@ this README come from the runs listed in the worked examples.
 
 | Rev | Date | What changed |
 |---|---|---|
+| v4.2 | 2026-10-27 | Fine-tuning utility of the v0.5.3 data measured — worked example-4. Six data conditions and seed repeats under one LoRA recipe, declared in `training/experiments/exp_v053cmp.json` and run by `training/run_experiment.sh` (finished steps skipped, derived subsets rebuilt bit-exactly). Equal-size arms tie; the full set lifts recall tracks and collapses judgement tracks through its 18.4% refusal-row share; the collapse is seed-stochastic and survives both a 5% cap and single-epoch training. `sft.py` takes the shuffle seed and epoch count as arguments. |
 | v4.1 | 2026-10-20 | Third answer key: the corpus regenerated with generator v0.5.3 and built as `ground_truth_v053/` with `config_kr_v053.json`. The generator change is on the training side -- per-document task offset, citable references named in the prompt, STaR verified against the source chunk -- and took STaR acceptance from 38.4% to 91.5%, so the training split grows from 16,866 to 25,227 rows while the question counts stay within a few percent. Chunking changed with it (`chunk_overlap` 200 to 100), so the item sets are new and the v052 scores are not comparable item for item; v052 is kept beside it. Two mining modules were restored after the v3.9 settings move left `enum_patterns` unimported, and `in_train` no longer demands a training row for an item mined from a retrieval-only document. |
 | v4.0 | 2026-10-09 | Second dataset: 29 CFR 1926 collected, built and scored with `config_us.json`. Settings files split per dataset with no implicit default; a variant may `extends` a base. Language-dependent mining rules (units, qualifiers, enumeration, clause citation, subject direction, chunk boundary) moved into settings, Korean behaviour as the default. Per-track summary metric configurable via `eval.headline_metrics`, with one list shared by the summary and the paired comparison (`common.score_metrics`); `tools_rehead.py` repairs a finished run's summary without rescoring. `triage` now reads every track the config registers rather than two. |
 | v3.9 | 2026-09-28 | Corpus regenerated with generator v0.5.2 (document routing, DPO/STaR/RLVR formats) and everything re-scored — worked example-2. Verdict scoring decomposed into `correct` / `abstained` / `off_vocab`; uc6 shown non-discriminating and repaired as `uc6_verdict_v2` (+0.26 for an 8B, +0.09 for a 70B, both above the constant-answer baseline). Retrieval reports coverage beside recall. Image tracks guarded against text-only models. Judge panel capped at its preferred size. Corpus-specific rules (volatility, uc7 mining, judge pool) moved into `config.json`. |
@@ -687,7 +690,7 @@ set out in [doc/metrics.md](doc/metrics.md).
 
 ## Reading the worked examples
 
-Both campaigns below ran on synthetic training data and synthetic answer keys,
+The campaigns below all ran on synthetic training data and synthetic answer keys,
 and that provenance is their main limit: every key was mined by rules or a
 model, and the largest score movements measured so far came from repairing
 keys and graders — +0.15 to +0.26 on the affected tracks without touching a
@@ -1062,6 +1065,40 @@ pipeline is a settings exercise.
 - uc2 has 21 items and uc5 has 26. Wilson intervals there are wide.
 - Every answer key was mined by rule or model; none has been reviewed by a
   domain expert.
+
+## Worked example-4: does a larger verified training set train a better model?
+
+Generator v0.5.3 grew the verified training split from 2,202 rows to 12,725.
+This example fine-tunes Qwen3-8B on six data conditions under one LoRA recipe
+and scores every arm open and closed book on the v053 key: the v0.5.2 rows,
+the v0.5.3 rows subsampled to the same count, the full v0.5.3 set, and three
+remedy or control arms, with seed repeats of the small arms. The full account
+— per-arm tables, the paired tests, and the diagnosis — is in
+[doc/worked-example-4.md](doc/worked-example-4.md); the experiment is declared
+arm by arm in
+[training/experiments/exp_v053cmp.json](training/experiments/exp_v053cmp.json)
+and reruns with `training/run_experiment.sh`.
+
+Open book, headline per track (first seed):
+
+| Track | base | v052 | n2202 | v053 | v053cap | v053e1 |
+|---|---:|---:|---:|---:|---:|---:|
+| probe | 0.733 | 0.790 | 0.793 | 0.808 | 0.779 | 0.810 |
+| track2 sft | 0.795 | 0.820 | 0.808 | 0.830 | 0.795 | 0.823 |
+| uc4 faithfulness | 0.931 | 0.956 | 0.944 | 0.725 | 0.675 | 0.825 |
+| uc6 verdict v2 | 0.631 | 0.779 | 0.754 | 0.244 | 0.297 | 0.364 |
+
+What it found, briefly. At equal size the new rows are no better than the old
+ones — the tripled STaR acceptance certifies consistency with the source, not
+training value. The full set helps recall-style tracks and collapses the
+judgement tracks: 18.4% of its rows are the generator's refusal task type
+(0.7% in v052), and the trained model abstains on 60% of uc6_v2 items with
+the source clause in context. Capping that share at 5% does not repair it;
+one epoch instead of two attenuates it without repairing it; and the seed
+repeats show the collapse is stochastic — the same 2,202-row subsample lands
+at 8%, 18% or 84% abstention depending on nothing but the shuffle seed, while
+the v052 arms stay at 2–6% under every seed. The composition of a training
+set, not the per-row quality, is what this phase measured.
 
 ## Retrieval ablation and item validity
 
