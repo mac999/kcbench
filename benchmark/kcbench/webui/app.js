@@ -71,6 +71,7 @@ const I18N = {
     'rv.keys': 'keys: 1 ok · 2 broken · 3 ambiguous · 0 clear · ← → move',
     'rv.judged': 'judged', 'rv.queuedFor': 'queued:',
     'rv.apply': 'When the queue is done, fold it in with: python cb.py review --queue <file> --apply',
+    'rv.readonly': 'Read-only demo: verdicts do not save here. Run the webview locally (without --readonly) to review.',
   },
   ko: {
     'brand.sub': '벤치마크 콘솔',
@@ -133,6 +134,7 @@ const I18N = {
     'rv.keys': '단축키: 1 맞음 · 2 틀림 · 3 애매함 · 0 지움 · ← → 이동',
     'rv.judged': '판정', 'rv.queuedFor': '선별 사유:',
     'rv.apply': '검수가 끝나면 반영: python cb.py review --queue <파일> --apply',
+    'rv.readonly': '읽기 전용 데모: 여기서는 판정이 저장되지 않습니다. 로컬에서 webview를 --readonly 없이 실행하면 판정할 수 있습니다.',
   },
 };
 
@@ -1150,7 +1152,12 @@ function showReviewItem(i) {
     } catch (e) { window.alert(e.message); }
   });
   edit.appendChild(note); edit.appendChild(fixed); edit.appendChild(save);
-  edit.appendChild(el('div', 'hint', t('rv.keys')));
+  if (STATE.readonly) {
+    edit.querySelectorAll('button, textarea, input').forEach((n) => { n.disabled = true; });
+    edit.appendChild(el('div', 'hint', t('rv.readonly')));
+  } else {
+    edit.appendChild(el('div', 'hint', t('rv.keys')));
+  }
   card.appendChild(edit);
   card.appendChild(el('div', 'hint', t('rv.apply')));
 
