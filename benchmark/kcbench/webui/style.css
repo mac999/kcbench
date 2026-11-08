@@ -154,8 +154,9 @@ button.small { padding: 2px 8px; font-size: 12px; }
 .recactions { display: flex; gap: 6px; margin-top: 8px; }
 /* a read-only demo: nothing that runs or writes is shown */
 body.readonly #run, body.readonly #stop, body.readonly #saveConfig,
-body.readonly .recactions, body.readonly .recadd,
-body.readonly .rvedit { display: none; }
+body.readonly .recactions, body.readonly .recadd { display: none; }
+body.readonly .rvedit button, body.readonly .rvedit textarea,
+body.readonly .rvedit input { opacity: 0.55; cursor: not-allowed; }
 .editor { margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
 .editor textarea { width: 100%; font-family: var(--mono); font-size: 12px; line-height: 1.5;
   background: var(--surface-2); color: var(--ink); border: 1px solid var(--rule);
