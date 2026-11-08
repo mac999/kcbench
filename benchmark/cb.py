@@ -45,6 +45,7 @@ COMMANDS = {
                  "draw a hand-labelling sample, or score a classifier against one"),
     # review and packaging
     "triage":   ("kcbench.triage_items", "pick the items a human should look at"),
+    "sheet":    ("kcbench.review_sheet", "render a review queue as a spreadsheet, or fold one back"),
     "review":   ("kcbench.apply_review", "fold review decisions back into the set"),
     "export":   ("kcbench.export_dataset", "package the built benchmark"),
 }
