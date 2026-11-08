@@ -213,6 +213,7 @@ the published `holdout.json`, which is what training reads.
 | `volatility` | classify items by whether a revision changes the answer |
 | `matrix` | score several models and tabulate |
 | `triage` | pick the items a human should review |
+| `sheet` | render a review queue as a spreadsheet, or fold one back |
 | `review` | apply review verdicts, kept across rebuilds |
 | `export` | package the built benchmark, with an lm-eval-harness config |
 | `webview` | browse and run the whole thing in a browser |
@@ -271,6 +272,12 @@ score file. The journal survives, so restarting picks up where it stopped.
 they produced. It is useful when you are reading items rather than scripting a
 run — a mined question next to the passage it came from, a site photo beside the
 item that asks about it, a run file as a scored dashboard instead of raw JSON.
+Its review tab walks a `triage` queue item by item: the question, the keyed
+answer and the source excerpt side by side, the surrounding passage one click
+away, and a verdict saved back into the queue file (keyboard: 1/2/3 to judge,
+arrows to move). The same queue downloads as a spreadsheet for a reviewer
+outside the repository, and `cb.py sheet --merge` folds the filled workbook
+back in.
 
 ```
 python cb.py webview                       # opens http://127.0.0.1:8799
