@@ -356,6 +356,11 @@ def track_summaries(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
                 # ids and eval types but no question, and is not a track.
                 if not any(k.startswith(("question", "instruction")) for k in rec):
                     continue
+                # A review queue carries questions too, but it is a worklist
+                # for the review tab, not an answer key.
+                if "verdict" in rec:
+                    n = 0
+                    break
                 n += 1
                 ids.append({"id": rec.get("id", "")})
                 kinds[rec.get("eval_type", "?")] = kinds.get(rec.get("eval_type", "?"), 0) + 1
