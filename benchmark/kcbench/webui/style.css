@@ -56,6 +56,16 @@ body {
 button, input, select, textarea { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 
+/* scrollbars take their colours from the theme, like everything else */
+* { scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track, *::-webkit-scrollbar-corner { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--rule); border-radius: 5px;
+  border: 2px solid transparent; background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background-color: var(--ink-faint); }
+
 /* ── top bar ───────────────────────────────────────────────────────────── */
 .bar {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
@@ -90,11 +100,12 @@ button.small { padding: 2px 8px; font-size: 12px; }
 
 .status {
   font-family: var(--mono); font-size: 11px; padding: 2px 8px; border-radius: 999px;
-  border: 1px solid var(--rule); color: var(--ink-faint); white-space: nowrap;
+  background: var(--surface-2); color: var(--ink-faint); white-space: nowrap;
 }
-.status.busy { color: var(--warn); border-color: var(--warn); }
-.status.ok   { color: var(--good); border-color: var(--good); }
-.status.fail { color: var(--bad);  border-color: var(--bad); }
+.status::before { content: "\25CF"; margin-right: 5px; font-size: 8px; vertical-align: 1px; }
+.status.busy { color: var(--warn); }
+.status.ok   { color: var(--good); }
+.status.fail { color: var(--bad);  }
 
 /* the command it will run: one line of text, wrapped, never scrolled */
 .cmdline {
