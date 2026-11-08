@@ -58,6 +58,19 @@ const I18N = {
     'e.saved': 'Saved.', 'e.required': 'is required',
     'r.stopped': 'stop requested',
     't.contam': 'train-side', 't.fuzzy': 'fuzzy match', 't.items': 'items',
+    'tab.review': 'Review',
+    'review.hint': 'Expert review: pick a queue and judge each item against its source excerpt. Verdicts save into the queue file, previous version kept as .bak.',
+    'rv.none': 'No review queue here. Write one with triage, or put a jsonl with verdict fields in the out directory.',
+    'rv.sheet': 'Spreadsheet', 'rv.blank': 'unjudged',
+    'rv.ok': 'ok', 'rv.broken': 'broken', 'rv.ambiguous': 'ambiguous',
+    'rv.question': 'Question', 'rv.answer': 'Benchmark answer',
+    'rv.excerpt': 'Source excerpt', 'rv.doc': 'Source document',
+    'rv.expand': 'Read around the excerpt', 'rv.collapse': 'Back to the excerpt',
+    'rv.law': 'Statute portal', 'rv.replies': 'What models answered',
+    'rv.note': 'note', 'rv.fixed': 'fixed answer', 'rv.save': 'Save note',
+    'rv.keys': 'keys: 1 ok · 2 broken · 3 ambiguous · 0 clear · ← → move',
+    'rv.judged': 'judged', 'rv.queuedFor': 'queued:',
+    'rv.apply': 'When the queue is done, fold it in with: python cb.py review --queue <file> --apply',
   },
   ko: {
     'brand.sub': '벤치마크 콘솔',
@@ -107,6 +120,19 @@ const I18N = {
     'e.saved': '저장했습니다.', 'e.required': ' 값이 필요합니다',
     'r.stopped': '중지 요청됨',
     't.contam': '학습 측', 't.fuzzy': '퍼지 매칭', 't.items': '문항',
+    'tab.review': '검수',
+    'review.hint': '전문가 검수: 큐를 고르고 각 문항을 근거 발췌와 대조해 판정합니다. 판정은 큐 파일에 저장되고 이전 버전은 .bak으로 남습니다.',
+    'rv.none': '검수 큐가 없습니다. triage로 만들거나 verdict 필드가 있는 jsonl을 out 디렉터리에 두십시오.',
+    'rv.sheet': '엑셀', 'rv.blank': '미판정',
+    'rv.ok': '맞음', 'rv.broken': '틀림', 'rv.ambiguous': '애매함',
+    'rv.question': '질문', 'rv.answer': '벤치마크 정답',
+    'rv.excerpt': '근거 원문(발췌)', 'rv.doc': '출처 문서',
+    'rv.expand': '발췌 앞뒤 원문 보기', 'rv.collapse': '발췌만 보기',
+    'rv.law': '법령정보센터', 'rv.replies': '모델 답변 보기',
+    'rv.note': '메모', 'rv.fixed': '수정 정답', 'rv.save': '메모 저장',
+    'rv.keys': '단축키: 1 맞음 · 2 틀림 · 3 애매함 · 0 지움 · ← → 이동',
+    'rv.judged': '판정', 'rv.queuedFor': '선별 사유:',
+    'rv.apply': '검수가 끝나면 반영: python cb.py review --queue <파일> --apply',
   },
 };
 
@@ -958,6 +984,201 @@ function initSplitters() {
     });
   });
 }
+// ── review ────────────────────────────────────────────────────────────────
+// Fills verdicts into a queue that `triage` wrote. Reading is the review
+// endpoints; the one write is /api/record on the queue file, the same path
+// every record edit takes.
+const REVIEW = { file: null, rows: [], idx: 0 };
+const RV_VERDICTS = ['ok', 'broken', 'ambiguous'];
+
+async function loadReviewQueues() {
+  const box = $('reviewQueues'); box.innerHTML = '';
+  $('reviewItems').innerHTML = '';
+  let data;
+  try { data = await api('/api/review/queues'); }
+  catch (e) { box.appendChild(el('div', 'note', e.message)); return; }
+  if (!data.queues.length) { box.appendChild(el('div', 'note', t('rv.none'))); return; }
+  data.queues.forEach((q) => {
+    const row = el('div', 'rvqueue' + (q.file === REVIEW.file ? ' active' : ''));
+    row.appendChild(el('span', 'nm', q.file));
+    const done = q.total - (q.counts.blank || 0);
+    row.appendChild(el('span', 'ct', `${done}/${q.total}`));
+    row.addEventListener('click', () => openReviewQueue(q.file));
+    box.appendChild(row);
+    if (q.file === REVIEW.file) renderReviewItems();
+  });
+}
+
+async function openReviewQueue(file) {
+  const rows = [];
+  for (let off = 0; ; off += 200) {
+    const d = await api(`/api/file?root=out&path=${encodeURIComponent(file)}&offset=${off}&limit=200`);
+    rows.push(...d.records);
+    if (rows.length >= d.total) break;
+  }
+  REVIEW.file = file; REVIEW.rows = rows;
+  REVIEW.idx = Math.max(0, rows.findIndex((r) => !(r.verdict || '').trim()));
+  loadReviewQueues();
+  showReviewItem(REVIEW.idx);
+}
+
+function rvGlyph(v) {
+  return v === 'ok' ? '✓' : v === 'broken' ? '✗' : v === 'ambiguous' ? '~' : '·';
+}
+
+function renderReviewItems() {
+  const box = $('reviewItems'); box.innerHTML = '';
+  REVIEW.rows.forEach((r, i) => {
+    const v = (r.verdict || '').trim();
+    const row = el('div', 'rvitem' + (i === REVIEW.idx ? ' active' : ''));
+    row.appendChild(el('span', 'vd ' + (v || 'blank'), rvGlyph(v)));
+    row.appendChild(el('span', 'nm', `${i + 1} · ${r.id || ''}`));
+    row.addEventListener('click', () => showReviewItem(i));
+    box.appendChild(row);
+  });
+  const cur = box.children[REVIEW.idx];
+  if (cur) cur.scrollIntoView({ block: 'nearest' });
+}
+
+// the statute portal takes the document's title; strip the filing noise
+function lawUrl(doc) {
+  let n = String(doc || '').replace(/¸/g, '·').trim();
+  for (let i = 0; i < 4; i += 1) {
+    n = n.replace(/^\d+\.\s*/, '').replace(/^\((전문|양식|개정본문|개정문|개정전문|제정문|행정예고|신구조문대비표)\)\s*_?/, '');
+    if (/^\(.*\)$/.test(n)) n = n.slice(1, -1);
+    n = n.replace(/[\s_]*((일부|전부|제)?개정(고시안|훈령안|고시|훈령|안)?|고시안|훈령안|고시|훈령|예규|공고|전문|\(전문\)|\d{6,8})\s*$/, '').trim();
+  }
+  return 'https://www.law.go.kr/LSW/unSc.do?query=' + encodeURIComponent(n || doc);
+}
+
+async function saveVerdict(rec, patch) {
+  const updated = { ...rec, ...patch };
+  await saveRecord('out', REVIEW.file, { action: 'save', index: REVIEW.idx, record: updated });
+  REVIEW.rows[REVIEW.idx] = updated;
+  return updated;
+}
+
+function showReviewItem(i) {
+  if (!REVIEW.rows.length) return;
+  REVIEW.idx = Math.min(Math.max(i, 0), REVIEW.rows.length - 1);
+  const rec = REVIEW.rows[REVIEW.idx];
+  VIEW.reload = () => showReviewItem(REVIEW.idx);
+  renderReviewItems();
+
+  const card = el('div', 'rvcard');
+  const head = el('div', 'rvhead');
+  head.appendChild(el('span', 'mono', rec.id || ''));
+  (rec.reasons || []).forEach((x) => head.appendChild(el('span', 'pill', x)));
+  if (rec.eval_type) head.appendChild(el('span', 'pill', rec.eval_type));
+  card.appendChild(head);
+
+  card.appendChild(el('h3', null, t('rv.question')));
+  card.appendChild(el('p', 'rvq', rec.question_ko || rec.question_en || ''));
+  card.appendChild(el('h3', null, t('rv.answer')));
+  const ans = rec.answer;
+  card.appendChild(el('pre', 'rvans',
+    (ans && typeof ans === 'object') ? JSON.stringify(ans, null, 1) : String(ans ?? '')));
+
+  const srcHead = el('div', 'rvsrc');
+  srcHead.appendChild(el('h3', null, t('rv.excerpt')));
+  if (rec.document) {
+    const a = el('a', 'rvlaw', `${t('rv.law')} ↗`);
+    a.href = lawUrl(rec.document); a.target = '_blank'; a.rel = 'noopener';
+    a.title = rec.document;
+    srcHead.appendChild(a);
+  }
+  card.appendChild(srcHead);
+  const excerpt = el('pre', 'rvctx', rec.context || '');
+  card.appendChild(excerpt);
+  if (rec.dataset_file != null && rec.row_index != null) {
+    const btn = el('button', 'ghost small', t('rv.expand'));
+    let expanded = false;
+    btn.addEventListener('click', async () => {
+      if (expanded) {
+        excerpt.textContent = rec.context || '';
+        excerpt.classList.remove('expanded');
+        btn.textContent = t('rv.expand'); expanded = false; return;
+      }
+      try {
+        const d = await api(`/api/review/context?path=${encodeURIComponent(rec.dataset_file)}&row=${rec.row_index}&around=1`);
+        excerpt.innerHTML = '';
+        d.rows.forEach((r) => {
+          excerpt.appendChild(el('span', r.is_source ? 'src' : 'nbr', r.text + '\n\n'));
+        });
+        excerpt.classList.add('expanded');
+        btn.textContent = t('rv.collapse'); expanded = true;
+      } catch (e) { window.alert(e.message); }
+    });
+    card.appendChild(btn);
+  }
+
+  if (rec.model_replies && Object.keys(rec.model_replies).length) {
+    const det = el('details', 'rvreplies');
+    det.appendChild(el('summary', null, t('rv.replies')));
+    Object.entries(rec.model_replies).forEach(([m, txt]) => {
+      det.appendChild(el('div', 'hint', m));
+      det.appendChild(el('pre', 'rvans', txt));
+    });
+    card.appendChild(det);
+  }
+
+  // the verdict row: a click is a save
+  const edit = el('div', 'rvedit');
+  const btns = el('div', 'rvverdicts');
+  RV_VERDICTS.forEach((v) => {
+    const b = el('button', 'rvv ' + v + ((rec.verdict || '').trim() === v ? ' on' : ''), t('rv.' + v));
+    b.addEventListener('click', async () => {
+      const cur = (REVIEW.rows[REVIEW.idx].verdict || '').trim();
+      try {
+        await saveVerdict(REVIEW.rows[REVIEW.idx], { verdict: cur === v ? '' : v });
+        if (cur !== v) rvAdvance(); else showReviewItem(REVIEW.idx);
+      } catch (e) { window.alert(e.message); }
+    });
+    btns.appendChild(b);
+  });
+  edit.appendChild(btns);
+
+  const note = el('textarea', 'rvnote');
+  note.placeholder = t('rv.note'); note.rows = 2; note.value = rec.note || '';
+  const fixed = el('input', 'rvfixed');
+  fixed.placeholder = t('rv.fixed'); fixed.value = rec.fixed_answer || '';
+  const save = el('button', 'small', t('rv.save'));
+  save.addEventListener('click', async () => {
+    try {
+      await saveVerdict(REVIEW.rows[REVIEW.idx], { note: note.value.trim(), fixed_answer: fixed.value.trim() });
+    } catch (e) { window.alert(e.message); }
+  });
+  edit.appendChild(note); edit.appendChild(fixed); edit.appendChild(save);
+  edit.appendChild(el('div', 'hint', t('rv.keys')));
+  card.appendChild(edit);
+  card.appendChild(el('div', 'hint', t('rv.apply')));
+
+  const judged = REVIEW.rows.filter((r) => (r.verdict || '').trim()).length;
+  const label = `${REVIEW.file} · ${REVIEW.idx + 1}/${REVIEW.rows.length} · ${t('rv.judged')} ${judged}`;
+  const sheet = el('a', 'ghost small rvsheet', t('rv.sheet') + ' ↓');
+  sheet.href = `/api/review/sheet?path=${encodeURIComponent(REVIEW.file)}`;
+  setViewer(label, [sheet], card);
+}
+
+function rvAdvance() {
+  const next = REVIEW.rows.findIndex((r, j) => j > REVIEW.idx && !(r.verdict || '').trim());
+  showReviewItem(next === -1 ? Math.min(REVIEW.idx + 1, REVIEW.rows.length - 1) : next);
+}
+
+document.addEventListener('keydown', (e) => {
+  if (!$('viewer').querySelector('.rvcard')) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+  if (e.key === 'ArrowRight') { showReviewItem(REVIEW.idx + 1); e.preventDefault(); }
+  else if (e.key === 'ArrowLeft') { showReviewItem(REVIEW.idx - 1); e.preventDefault(); }
+  else if (['1', '2', '3', '0'].includes(e.key) && !STATE.readonly) {
+    const v = e.key === '0' ? '' : RV_VERDICTS[Number(e.key) - 1];
+    saveVerdict(REVIEW.rows[REVIEW.idx], { verdict: v })
+      .then(() => { if (v) rvAdvance(); else showReviewItem(REVIEW.idx); })
+      .catch((err) => window.alert(err.message));
+    e.preventDefault();
+  }
+});
+
 function initTabs() {
   document.querySelectorAll('.tab').forEach((tab) => tab.addEventListener('click', () => {
     const panel = tab.closest('.panel');
@@ -985,6 +1206,7 @@ async function boot() {
   showWorkflow();
   if (STATE.job && STATE.job.running) { logCursor = 0; pollLog(); }
 
+  document.querySelector('[data-tab="review"]').addEventListener('click', loadReviewQueues);
   $('cmd').addEventListener('change', () => { localStorage.setItem('kc.cmd', $('cmd').value); renderFields(); });
   $('extra').addEventListener('input', renderPreview);
   $('run').addEventListener('click', startRun);
