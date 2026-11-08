@@ -119,6 +119,9 @@ def test_tracks_counts_items(client, cfg):
     ])
     # provenance-style rows carry no question and must not be counted
     write_jsonl(cfg["out_dir"] / "provenance.jsonl", [{"id": "a", "eval_type": "numeric"}])
+    # a review queue carries questions too, but is a worklist, not a track
+    write_jsonl(cfg["out_dir"] / "review_queue.jsonl",
+                [{"id": "q", "question_ko": "q", "verdict": ""}])
     rows = client.get("/api/tracks").get_json()["tracks"]
     assert [(r["file"], r["n"]) for r in rows] == [("track2_sft.jsonl", 2)]
 
