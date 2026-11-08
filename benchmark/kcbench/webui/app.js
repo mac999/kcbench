@@ -1090,7 +1090,8 @@ function showReviewItem(i) {
   card.appendChild(srcHead);
   const excerpt = el('pre', 'rvctx', rec.context || '');
   card.appendChild(excerpt);
-  if (rec.dataset_file != null && rec.row_index != null) {
+  const hasChunks = STATE.roots && STATE.roots.generated && STATE.roots.generated.exists;
+  if (hasChunks && rec.dataset_file != null && rec.row_index != null) {
     const btn = el('button', 'ghost small', t('rv.expand'));
     let expanded = false;
     btn.addEventListener('click', async () => {
