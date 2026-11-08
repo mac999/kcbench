@@ -136,6 +136,11 @@ COMMAND_SPECS: Dict[str, Dict[str, Any]] = {
         {"flag": "--markdown", "type": "text", "placeholder": "report.md"}]},
 
     "triage": {"group": "review", "fields": []},
+    "sheet": {"group": "review", "fields": [
+        {"flag": "--queue", "type": "text", "required": True,
+         "placeholder": "review_queue.jsonl"},
+        {"flag": "--xlsx", "type": "text", "placeholder": "review.xlsx"},
+        {"flag": "--merge", "type": "text", "placeholder": "reviewed.xlsx"}]},
     "review": {"group": "review", "fields": []},
     "export": {"group": "review", "fields": []},
 }
@@ -607,6 +612,94 @@ def create_app(cfg: Dict[str, Any], jobs: Jobs, readonly: bool = False):
             return jsonify({"error": str(exc)}), 400
         return jsonify({"runs": run_summaries(cfg, folder),
                         "folder": f"{root}/{rel}" if rel else root})
+
+    # ── review ─────────────────────────────────────────────────────────
+    # The review tab fills verdicts into a queue that `triage` wrote (or any
+    # jsonl whose rows carry a verdict field). All three routes only read;
+    # saving a verdict goes through /api/record like any other record edit,
+    # so the queue file gets the same .bak and atomic write.
+
+    @app.get("/api/review/queues")
+    def review_queues():
+        out_dir = Path(cfg["out_dir"])
+        queues = []
+        if out_dir.is_dir():
+            for path in sorted(out_dir.glob("*.jsonl")):
+                first = None
+                try:
+                    with path.open(encoding="utf-8", errors="replace") as fh:
+                        for line in fh:
+                            if line.strip():
+                                first = json.loads(line)
+                                break
+                except (OSError, json.JSONDecodeError):
+                    continue
+                if not isinstance(first, dict) or "verdict" not in first:
+                    continue
+                counts: Dict[str, int] = {}
+                total = 0
+                for row in (json.loads(ln) for ln in
+                            path.read_text(encoding="utf-8",
+                                           errors="replace").splitlines()
+                            if ln.strip()):
+                    total += 1
+                    v = (row.get("verdict") or "").strip() or "blank"
+                    counts[v] = counts.get(v, 0) + 1
+                queues.append({"file": path.name, "total": total,
+                               "counts": counts})
+        return jsonify({"queues": queues})
+
+    @app.get("/api/review/context")
+    def review_context():
+        """The source chunk an item was mined from, with its neighbours,
+        so the reviewer can read past the end of the stored excerpt."""
+        try:
+            path = safe_path(cfg, "generated", request.args.get("path", ""))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        if not path.is_file() or path.suffix.lower() != ".jsonl":
+            return jsonify({"error": "no such chunk file"}), 404
+        row = max(0, int(request.args.get("row", 0)))
+        around = min(3, max(0, int(request.args.get("around", 1))))
+        rows = []
+        with path.open(encoding="utf-8", errors="replace") as fh:
+            for n, line in enumerate(fh):
+                if row - around <= n <= row + around and line.strip():
+                    try:
+                        text = json.loads(line).get("text", "")
+                    except json.JSONDecodeError:
+                        text = ""
+                    rows.append({"index": n, "text": text,
+                                 "is_source": n == row})
+                if n > row + around:
+                    break
+        if not any(r["is_source"] for r in rows):
+            return jsonify({"error": "no such row"}), 404
+        return jsonify({"file": path.name, "rows": rows})
+
+    @app.get("/api/review/sheet")
+    def review_sheet_():
+        """The queue as the workbook `cb.py sheet` would write, served for
+        download. Generation only reads, so read-only mode allows it."""
+        from kcbench.review_sheet import XLSX_HINT, export_bytes
+        try:
+            path = safe_path(cfg, "out", request.args.get("path", ""))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        if not path.is_file() or path.suffix.lower() != ".jsonl":
+            return jsonify({"error": "no such queue"}), 404
+        rows = [json.loads(ln) for ln in
+                path.read_text(encoding="utf-8", errors="replace").splitlines()
+                if ln.strip()]
+        try:
+            body = export_bytes(rows)
+        except SystemExit:
+            return jsonify({"error": XLSX_HINT}), 501
+        from io import BytesIO
+        return send_file(BytesIO(body), as_attachment=True,
+                         download_name=path.stem + ".xlsx",
+                         mimetype="application/vnd.openxmlformats-officedocument"
+                                  ".spreadsheetml.sheet")
 
     @app.post("/api/run")
     def run_command():
