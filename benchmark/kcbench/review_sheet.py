@@ -129,9 +129,10 @@ def export_bytes(queue: List[Dict[str, Any]]) -> bytes:
     """The same workbook, for a caller that serves it instead of saving it."""
     import io
     import tempfile
-    with tempfile.NamedTemporaryFile(suffix=".xlsx") as tmp:
-        export_xlsx(queue, Path(tmp.name))
-        return Path(tmp.name).read_bytes()
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "queue.xlsx"
+        export_xlsx(queue, out)
+        return out.read_bytes()
 
 
 def merge_xlsx(queue_path: Path, xlsx: Path) -> Dict[str, int]:
