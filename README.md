@@ -97,7 +97,7 @@ pip install -e ./benchmark                   # same core, importable anywhere
 pip install -e "./benchmark[all]"            # plus the browser view, ppl, training
 ```
 
-The extras are `[web]` (flask, the browser view), `[ppl]` (torch and
+The extras are `[web]` (flask and openpyxl, the browser view), `[ppl]` (torch and
 transformers, local perplexity) and `[train]` (those plus peft). Installing
 the package does not move the data: the tool is documented against the
 `ground_truth*/` answer keys in this repository, so run it from the checkout
@@ -306,7 +306,9 @@ clone needs no absolute path anywhere.
 | `-o, --out-dir DIR` | from config | where run files are read from and commands write to |
 
 It needs Flask, which nothing else in the benchmark does; `pip install flask`
-and the module says so if it is missing. It takes the same path flags as every
+and the module says so if it is missing. The review tab's spreadsheet download
+also needs openpyxl (`pip install openpyxl`); without it the rest of the page
+works and only that button reports the missing package. It takes the same path flags as every
 other command (`-i`, `--corpus-dir`, `--metadata-dir`), so a page can be pointed
 at any dataset variant the way a command can.
 
