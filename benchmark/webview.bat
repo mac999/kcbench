@@ -28,5 +28,11 @@ if errorlevel 1 (
     exit /b 1
 )
 
+"%KCBENCH_PY%" -c "import openpyxl" >nul 2>&1
+if errorlevel 1 (
+    echo webview.bat: openpyxl is not installed; the review tab's spreadsheet download
+    echo   will not work until it is: "%KCBENCH_PY%" -m pip install openpyxl
+)
+
 "%KCBENCH_PY%" "%HERE%cb.py" webview %*
 exit /b %errorlevel%

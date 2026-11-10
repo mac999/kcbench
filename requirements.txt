@@ -3,6 +3,6 @@
 # install only what you run (the Install section of README.md walks this).
 requests>=2.31
 
-# flask>=3                # cb.py webview
+# flask>=3; openpyxl      # cb.py webview (openpyxl: the review tab's spreadsheet)
 # torch; transformers     # cb.py ppl
 # torch; transformers; peft   # training/

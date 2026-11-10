@@ -43,4 +43,9 @@ if ! "$KCBENCH_PY" -c "import flask" >/dev/null 2>&1; then
     exit 1
 fi
 
+if ! "$KCBENCH_PY" -c "import openpyxl" >/dev/null 2>&1; then
+    echo "webview.sh: openpyxl is not installed; the review tab's spreadsheet download" >&2
+    echo "  will not work until it is: \"$KCBENCH_PY\" -m pip install openpyxl" >&2
+fi
+
 exec "$KCBENCH_PY" "$HERE/cb.py" webview "$@"
