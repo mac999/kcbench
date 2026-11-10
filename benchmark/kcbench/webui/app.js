@@ -979,7 +979,7 @@ function initSplitters() {
       };
       const up = () => {
         sp.classList.remove('dragging'); sp.removeEventListener('pointermove', move); sp.removeEventListener('pointerup', up);
-        localStorage.setItem('kc.split', JSON.stringify({ left: $('left').offsetWidth, right: $('right').offsetWidth, log: $('logpanel').offsetHeight }));
+        localStorage.setItem('kc.split', JSON.stringify({ left: $('left').offsetWidth, right: $('right').offsetWidth || saved.right, log: $('logpanel').offsetHeight }));
         if (VIEW.reload) VIEW.reload();   // canvases size to their column
       };
       sp.addEventListener('pointermove', move); sp.addEventListener('pointerup', up);
@@ -1139,19 +1139,19 @@ function showReviewItem(i) {
     });
     btns.appendChild(b);
   });
-  edit.appendChild(btns);
 
   const note = el('textarea', 'rvnote');
-  note.placeholder = t('rv.note'); note.rows = 2; note.value = rec.note || '';
+  note.placeholder = t('rv.note'); note.rows = 7; note.value = rec.note || '';
   const fixed = el('input', 'rvfixed');
   fixed.placeholder = t('rv.fixed'); fixed.value = rec.fixed_answer || '';
-  const save = el('button', 'small', t('rv.save'));
+  const save = el('button', 'small rvsave', t('rv.save'));
   save.addEventListener('click', async () => {
     try {
       await saveVerdict(REVIEW.rows[REVIEW.idx], { note: note.value.trim(), fixed_answer: fixed.value.trim() });
     } catch (e) { window.alert(e.message); }
   });
-  edit.appendChild(note); edit.appendChild(fixed); edit.appendChild(save);
+  btns.appendChild(save);
+  edit.appendChild(btns); edit.appendChild(note); edit.appendChild(fixed);
   if (STATE.readonly) {
     edit.querySelectorAll('button, textarea, input').forEach((n) => { n.disabled = true; });
     edit.appendChild(el('div', 'hint', t('rv.readonly')));
@@ -1194,6 +1194,8 @@ function initTabs() {
     panel.querySelectorAll('.tabpane').forEach((x) => x.classList.remove('active'));
     tab.classList.add('active');
     panel.querySelector('#pane-' + tab.dataset.tab).classList.add('active');
+    // the run cards have nothing to say about a review item; give the width back
+    if (panel.id === 'left') document.body.classList.toggle('reviewing', tab.dataset.tab === 'review');
   }));
 }
 
