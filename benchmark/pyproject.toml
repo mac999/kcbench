@@ -21,10 +21,10 @@ requires-python = ">=3.11"
 dependencies = ["requests>=2.31"]
 
 [project.optional-dependencies]
-web = ["flask>=3"]
+web = ["flask>=3", "openpyxl"]
 ppl = ["torch", "transformers"]
 train = ["torch", "transformers", "peft"]
-all = ["flask>=3", "torch", "transformers", "peft"]
+all = ["flask>=3", "openpyxl", "torch", "transformers", "peft"]
 
 [tool.setuptools]
 packages = ["kcbench"]
