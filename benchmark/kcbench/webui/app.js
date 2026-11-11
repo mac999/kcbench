@@ -65,6 +65,7 @@ const I18N = {
     'rv.ok': 'ok', 'rv.broken': 'broken', 'rv.ambiguous': 'ambiguous',
     'rv.question': 'Question', 'rv.answer': 'Benchmark answer',
     'rv.excerpt': 'Source excerpt', 'rv.doc': 'Source document',
+    'rv.clause': 'Clause', 'rv.cat': 'Category', 'rv.file': 'Chunk file',
     'rv.expand': 'Read around the excerpt', 'rv.collapse': 'Back to the excerpt',
     'rv.law': 'Statute portal', 'rv.replies': 'What models answered',
     'rv.note': 'note', 'rv.fixed': 'fixed answer', 'rv.save': 'Save note',
@@ -128,6 +129,7 @@ const I18N = {
     'rv.ok': '맞음', 'rv.broken': '틀림', 'rv.ambiguous': '애매함',
     'rv.question': '질문', 'rv.answer': '벤치마크 정답',
     'rv.excerpt': '근거 원문(발췌)', 'rv.doc': '출처 문서',
+    'rv.clause': '조항', 'rv.cat': '분류', 'rv.file': '청크 파일',
     'rv.expand': '발췌 앞뒤 원문 보기', 'rv.collapse': '발췌만 보기',
     'rv.law': '법령정보센터', 'rv.replies': '모델 답변 보기',
     'rv.note': '메모', 'rv.fixed': '수정 정답', 'rv.save': '메모 저장',
@@ -1073,6 +1075,15 @@ function showReviewItem(i) {
   (rec.reasons || []).forEach((x) => head.appendChild(el('span', 'pill', x)));
   if (rec.eval_type) head.appendChild(el('span', 'pill', rec.eval_type));
   card.appendChild(head);
+
+  // which regulation the item came from; a question alone often does not say
+  const src = el('dl', 'kv rvmeta');
+  [['rv.doc', rec.document], ['rv.clause', rec.clause], ['rv.cat', rec.category],
+   ['rv.file', rec.dataset_file != null && rec.row_index != null
+     ? `${rec.dataset_file} · row ${rec.row_index}` : rec.dataset_file]]
+    .filter(([, v]) => v != null && String(v).trim())
+    .forEach(([k, v]) => { src.appendChild(el('dt', null, t(k))); src.appendChild(el('dd', null, String(v))); });
+  if (src.children.length) card.appendChild(src);
 
   card.appendChild(el('h3', null, t('rv.question')));
   card.appendChild(el('p', 'rvq', rec.question_ko || rec.question_en || ''));
