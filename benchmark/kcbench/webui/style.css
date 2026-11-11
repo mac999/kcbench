@@ -337,6 +337,8 @@ table.grid tr:hover td { background: var(--surface-2); }
 .rvhead { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .rvhead .mono { font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint); }
 .rvq { margin: 0; font-size: 14px; }
+.rvmeta { margin: 10px 0 2px; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--surface); font-size: 12.5px; }
+.rvmeta dt { align-self: center; }
 .rvans {
   margin: 0; padding: 8px 10px; background: var(--surface-2); border-radius: 6px;
   font-family: var(--mono); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere;
