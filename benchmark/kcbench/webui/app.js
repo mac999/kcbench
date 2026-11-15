@@ -68,6 +68,7 @@ const I18N = {
     'rv.clause': 'Clause', 'rv.cat': 'Category', 'rv.file': 'Chunk file',
     'rv.section': 'Section', 'rv.limit': 'Keyed limit', 'rv.srcq': 'Derived from',
     'rv.notfound': 'the keyed value was not found verbatim in the excerpt',
+    'rv.entail': 'complies with the clause', 'rv.contradict': 'violates the clause',
     'rv.expand': 'Read around the excerpt', 'rv.collapse': 'Back to the excerpt',
     'rv.law': 'Statute portal', 'rv.replies': 'What models answered',
     'rv.note': 'note', 'rv.fixed': 'fixed answer', 'rv.save': 'Save note',
@@ -134,6 +135,7 @@ const I18N = {
     'rv.clause': '조항', 'rv.cat': '분류', 'rv.file': '청크 파일',
     'rv.section': '위치(제목)', 'rv.limit': '기준값', 'rv.srcq': '원 문항',
     'rv.notfound': '정답 값이 발췌문에 그대로 나오지 않습니다',
+    'rv.entail': '적합 — 측정값이 규정을 만족', 'rv.contradict': '부적합 — 측정값이 규정을 위반',
     'rv.expand': '발췌 앞뒤 원문 보기', 'rv.collapse': '발췌만 보기',
     'rv.law': '법령정보센터', 'rv.replies': '모델 답변 보기',
     'rv.note': '메모', 'rv.fixed': '수정 정답', 'rv.save': '메모 저장',
@@ -1144,8 +1146,10 @@ function showReviewItem(i) {
   card.appendChild(el('p', 'rvq', rec.question_ko || rec.question_en || ''));
   card.appendChild(el('h3', null, t('rv.answer')));
   const ans = rec.answer;
-  card.appendChild(el('pre', 'rvans',
-    (ans && typeof ans === 'object') ? JSON.stringify(ans, null, 1) : String(ans ?? '')));
+  // a bare "contradict" reads as "this answer is wrong"; say what the key claims
+  const gloss = (ans === 'entail' || ans === 'contradict') ? `${ans}  (${t('rv.' + ans)})` : null;
+  card.appendChild(el('pre', 'rvans', gloss ||
+    ((ans && typeof ans === 'object') ? JSON.stringify(ans, null, 1) : String(ans ?? ''))));
 
   const srcHead = el('div', 'rvsrc');
   srcHead.appendChild(el('h3', null, t('rv.excerpt')));
