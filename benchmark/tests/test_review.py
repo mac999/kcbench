@@ -151,3 +151,17 @@ def test_review_routes_allowed_in_readonly(cfg):
     assert ro.get("/api/review/sheet?path=review_queue.jsonl").status_code == 200
     # and the write path the tab uses stays closed
     assert ro.post("/api/record", json={}).status_code == 403
+
+
+# ── what a queue row carries ─────────────────────────────────────────────
+
+def test_triage_row_carries_limit_and_source_question():
+    from kcbench.triage_items import _row
+    rec = {"scores": {}, "replies": {}}
+    verdict = {"eval_type": "verdict", "answer": "contradict",
+               "threshold": {"limit": 35.0, "unit": "시간", "qualifier": "이상"},
+               "subject": "교육기간은 몇 시간 이상이어야 하는가?"}
+    row = _row(verdict, rec)
+    assert row["threshold"]["limit"] == 35.0
+    assert row["source_question"].startswith("교육기간")
+    assert _row({"eval_type": "numeric", "subject": "x"}, rec)["source_question"] is None
