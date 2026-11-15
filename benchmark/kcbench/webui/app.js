@@ -66,6 +66,8 @@ const I18N = {
     'rv.question': 'Question', 'rv.answer': 'Benchmark answer',
     'rv.excerpt': 'Source excerpt', 'rv.doc': 'Source document',
     'rv.clause': 'Clause', 'rv.cat': 'Category', 'rv.file': 'Chunk file',
+    'rv.section': 'Section', 'rv.limit': 'Keyed limit', 'rv.srcq': 'Derived from',
+    'rv.notfound': 'the keyed value was not found verbatim in the excerpt',
     'rv.expand': 'Read around the excerpt', 'rv.collapse': 'Back to the excerpt',
     'rv.law': 'Statute portal', 'rv.replies': 'What models answered',
     'rv.note': 'note', 'rv.fixed': 'fixed answer', 'rv.save': 'Save note',
@@ -130,6 +132,8 @@ const I18N = {
     'rv.question': '질문', 'rv.answer': '벤치마크 정답',
     'rv.excerpt': '근거 원문(발췌)', 'rv.doc': '출처 문서',
     'rv.clause': '조항', 'rv.cat': '분류', 'rv.file': '청크 파일',
+    'rv.section': '위치(제목)', 'rv.limit': '기준값', 'rv.srcq': '원 문항',
+    'rv.notfound': '정답 값이 발췌문에 그대로 나오지 않습니다',
     'rv.expand': '발췌 앞뒤 원문 보기', 'rv.collapse': '발췌만 보기',
     'rv.law': '법령정보센터', 'rv.replies': '모델 답변 보기',
     'rv.note': '메모', 'rv.fixed': '수정 정답', 'rv.save': '메모 저장',
@@ -1062,6 +1066,50 @@ async function saveVerdict(rec, patch) {
   return updated;
 }
 
+// Where in the excerpt the keyed value sits: the string to look for, tried
+// as written and then with the spaces dropped, since PDF text splits "35 시간".
+function rvNeedles(rec) {
+  const th = rec.threshold;
+  if (th && th.limit != null) {
+    const n = String(th.limit).replace(/\.0$/, '');
+    return [`${n} ${th.unit || ''}`.trim(), `${n}${th.unit || ''}`, n];
+  }
+  const a = rec.answer;
+  if (Array.isArray(a)) return a.map(String);
+  // a judgement or an abstention has nothing to find in the passage
+  if (a == null || ['entail', 'contradict', 'neutral', '자료 없음', 'no data'].includes(a)) return [];
+  const s = String(a);
+  return [s, s.replace(/\s+/g, '')];
+}
+
+function rvLocate(text, needles, every) {
+  const hits = [];
+  for (const n of needles) {
+    if (!n.trim()) continue;
+    const esc = n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s*');
+    const re = new RegExp(/^\d/.test(n) ? `(?<![\\d.])${esc}` : esc, 'g');
+    const found = [...text.matchAll(re)].filter((m) => m[0].length);
+    if (!every && found.length) return [[found[0].index, found[0].index + found[0][0].length]];
+    // a list answer marks every member it can find
+    if (every && found.length) hits.push([found[0].index, found[0].index + found[0][0].length]);
+  }
+  return hits.sort((x, y) => x[0] - y[0])
+    .filter((h, i, all) => i === 0 || h[0] >= all[i - 1][1]);
+}
+
+// The nearest heading above a position: "23. 효율 시험", "제48조(2차방벽)",
+// "[별표 1]". Tables and annexes carry no 제N조, so this is often the only
+// anchor the reader gets.
+function rvSection(text, pos) {
+  const lines = text.slice(0, pos).split('\n').reverse();
+  const head = /^\s*(제\d+조(의\d+)?\s*\([^)]{1,30}\)|\[?별표\s*\d+\]?.{0,40}|\d+(\.\d+){0,3}\.?\s+[^\d\s][^\n]{0,30}$|[가-하]\.\s+[^\n]{0,30}$)/;
+  for (const ln of lines.slice(1)) {
+    const m = ln.match(head);
+    if (m && !/[다음함것]\.?\s*$/.test(ln.trim())) return m[0].trim();
+  }
+  return '';
+}
+
 function showReviewItem(i) {
   if (!REVIEW.rows.length) return;
   REVIEW.idx = Math.min(Math.max(i, 0), REVIEW.rows.length - 1);
@@ -1077,8 +1125,15 @@ function showReviewItem(i) {
   card.appendChild(head);
 
   // which regulation the item came from; a question alone often does not say
+  const ctxText = rec.context || '';
+  const hits = rvLocate(ctxText, rvNeedles(rec), Array.isArray(rec.answer));
+  const th = rec.threshold;
   const src = el('dl', 'kv rvmeta');
-  [['rv.doc', rec.document], ['rv.clause', rec.clause], ['rv.cat', rec.category],
+  [['rv.doc', rec.document], ['rv.clause', rec.clause],
+   ['rv.section', hits.length ? rvSection(ctxText, hits[0][0]) : ''],
+   ['rv.limit', th && th.limit != null ? `${String(th.limit).replace(/\.0$/, '')} ${th.unit || ''} ${th.qualifier || ''}` : ''],
+   ['rv.srcq', rec.source_question],
+   ['rv.cat', rec.category],
    ['rv.file', rec.dataset_file != null && rec.row_index != null
      ? `${rec.dataset_file} · row ${rec.row_index}` : rec.dataset_file]]
     .filter(([, v]) => v != null && String(v).trim())
@@ -1101,15 +1156,27 @@ function showReviewItem(i) {
     srcHead.appendChild(a);
   }
   card.appendChild(srcHead);
-  const excerpt = el('pre', 'rvctx', rec.context || '');
+  const excerpt = el('pre', 'rvctx', '');
+  const paintExcerpt = () => {
+    excerpt.innerHTML = '';
+    let at = 0;
+    hits.forEach(([a, b]) => {
+      excerpt.appendChild(document.createTextNode(ctxText.slice(at, a)));
+      excerpt.appendChild(el('mark', 'rvhit', ctxText.slice(a, b)));
+      at = b;
+    });
+    excerpt.appendChild(document.createTextNode(ctxText.slice(at)));
+  };
+  paintExcerpt();
   card.appendChild(excerpt);
+  if (!hits.length && rvNeedles(rec).length) card.appendChild(el('div', 'hint', t('rv.notfound')));
   const hasChunks = STATE.roots && STATE.roots.generated && STATE.roots.generated.exists;
   if (hasChunks && rec.dataset_file != null && rec.row_index != null) {
     const btn = el('button', 'ghost small', t('rv.expand'));
     let expanded = false;
     btn.addEventListener('click', async () => {
       if (expanded) {
-        excerpt.textContent = rec.context || '';
+        paintExcerpt();
         excerpt.classList.remove('expanded');
         btn.textContent = t('rv.expand'); expanded = false; return;
       }
@@ -1177,6 +1244,8 @@ function showReviewItem(i) {
   const sheet = el('a', 'ghost small rvsheet', t('rv.sheet') + ' ↓');
   sheet.href = `/api/review/sheet?path=${encodeURIComponent(REVIEW.file)}`;
   setViewer(label, [sheet], card);
+  const first = excerpt.querySelector('mark');
+  if (first) excerpt.scrollTop = Math.max(0, first.offsetTop - excerpt.offsetTop - 60);
 }
 
 function rvAdvance() {

@@ -353,6 +353,7 @@ table.grid tr:hover td { background: var(--surface-2); }
 }
 .rvctx.expanded { max-height: 480px; border-left-color: var(--accent); }
 .rvctx .nbr { color: var(--ink-faint); }
+.rvctx mark.rvhit { background: color-mix(in srgb, var(--warn) 35%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; }
 .rvctx .src { color: var(--ink); }
 .rvreplies { margin-top: 10px; }
 .rvreplies summary { cursor: pointer; color: var(--ink-soft); font-size: 12px; }
