@@ -360,6 +360,7 @@ table.grid tr:hover td { background: var(--surface-2); }
 
 .rvedit { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
 .rvverdicts { display: flex; gap: 8px; align-items: center; }
+.rvvlabel { font-weight: 600; margin-right: 4px; }
 .rvverdicts .rvsave { margin-left: auto; width: auto; }
 .rvnote { min-height: 8.5em; }
 body.reviewing #right, body.reviewing .splitter[data-split="right"] { display: none; }

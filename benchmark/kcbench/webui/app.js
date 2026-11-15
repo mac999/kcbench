@@ -68,6 +68,7 @@ const I18N = {
     'rv.clause': 'Clause', 'rv.cat': 'Category', 'rv.file': 'Chunk file',
     'rv.section': 'Section', 'rv.limit': 'Keyed limit', 'rv.srcq': 'Derived from',
     'rv.notfound': 'the keyed value was not found verbatim in the excerpt',
+    'rv.vlabel': 'Is the benchmark answer right?', 'rv.vhint': 'judge the benchmark answer above, not the case in the question',
     'rv.entail': 'complies with the clause', 'rv.contradict': 'violates the clause',
     'rv.expand': 'Read around the excerpt', 'rv.collapse': 'Back to the excerpt',
     'rv.law': 'Statute portal', 'rv.replies': 'What models answered',
@@ -135,6 +136,7 @@ const I18N = {
     'rv.clause': '조항', 'rv.cat': '분류', 'rv.file': '청크 파일',
     'rv.section': '위치(제목)', 'rv.limit': '기준값', 'rv.srcq': '원 문항',
     'rv.notfound': '정답 값이 발췌문에 그대로 나오지 않습니다',
+    'rv.vlabel': '정답 판정', 'rv.vhint': '질문 속 사례가 아니라 위 벤치마크 정답이 맞는지 판정합니다',
     'rv.entail': '적합 — 측정값이 규정을 만족', 'rv.contradict': '부적합 — 측정값이 규정을 위반',
     'rv.expand': '발췌 앞뒤 원문 보기', 'rv.collapse': '발췌만 보기',
     'rv.law': '법령정보센터', 'rv.replies': '모델 답변 보기',
@@ -1210,6 +1212,10 @@ function showReviewItem(i) {
   // the verdict row: a click is a save
   const edit = el('div', 'rvedit');
   const btns = el('div', 'rvverdicts');
+  // the buttons judge the key, not the case; a verdict item made that easy to invert
+  const vl = el('span', 'rvvlabel', t('rv.vlabel'));
+  vl.title = t('rv.vhint');
+  btns.appendChild(vl);
   RV_VERDICTS.forEach((v) => {
     const b = el('button', 'rvv ' + v + ((rec.verdict || '').trim() === v ? ' on' : ''), t('rv.' + v));
     b.addEventListener('click', async () => {
