@@ -116,6 +116,10 @@ def _row(src: dict, rec: dict) -> dict:
         "dataset_file": (src.get("provenance") or {}).get("dataset_file"),
         "row_index": (src.get("provenance") or {}).get("row_index"),
         "context": src.get("context"),
+        # A verdict item keys a judgement, not a value; the reviewer needs the
+        # limit it was judged against and the question it was derived from.
+        "threshold": src.get("threshold"),
+        "source_question": src.get("subject") if src.get("eval_type") == "verdict" else None,
         "model_scores": rec["scores"],
         "model_replies": {k: (v or "")[:200] for k, v in rec["replies"].items()},
         # Left blank for the reviewer. Filling these in is the whole job:
