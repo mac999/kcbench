@@ -1135,7 +1135,10 @@ function showReviewItem(i) {
   const src = el('dl', 'kv rvmeta');
   [['rv.doc', rec.document], ['rv.clause', rec.clause],
    ['rv.section', hits.length ? rvSection(ctxText, hits[0][0]) : ''],
-   ['rv.limit', th && th.limit != null ? `${String(th.limit).replace(/\.0$/, '')} ${th.unit || ''} ${th.qualifier || ''}` : ''],
+   // English keys carry qualifier_en and read "at least 12 months"; Korean ones read "50 ㎡ 미만"
+   ['rv.limit', th && th.limit != null ? (th.qualifier_en
+     ? `${th.qualifier_en} ${String(th.limit).replace(/\.0$/, '')} ${th.unit || ''}`
+     : `${String(th.limit).replace(/\.0$/, '')} ${th.unit || ''} ${th.qualifier || ''}`) : ''],
    ['rv.srcq', rec.source_question],
    ['rv.cat', rec.category],
    ['rv.file', rec.dataset_file != null && rec.row_index != null
