@@ -1,0 +1,7 @@
+python3: Python 3.13.13 (/home/tom/miniforge3/bin/python3)
+training python: Python 3.13.13 (/home/tom/venvs/cu130/bin/python)
+ollama: ollama version is 0.32.1
+llama.cpp (convert_hf_to_gguf.py, llama-quantize): commit 01818e4956858fe225a6875aae88b4cbee0b319e
+pandoc: pandoc 3.10.1
+gpu: NVIDIA GB10, 580.159.03
+os: Linux 6.17.0-1026-nvidia

@@ -1,0 +1,16 @@
+qwen3:8b /usr/share/ollama/.ollama/models/blobs/sha256-a3de86cd1c132c822487ededd47a324c50491393e6565cd14bafa40d0b8e686f
+qwen3-dapt:v1f /usr/share/ollama/.ollama/models/blobs/sha256-b304895e1d463c90d93e623c1e9dee3ef30747f245930492115fc90aec8c2846
+qwen3-v053cmp:v052 /usr/share/ollama/.ollama/models/blobs/sha256-dd492de0b9813f60d90f4263301758c45357907a751b64ca4fa1150129684602
+qwen3-v053cmp:n2202 /usr/share/ollama/.ollama/models/blobs/sha256-4e57fd6e85d9b37a12c1066eae02c28f567774ccca8d934c8901e71cc5361b63
+qwen3-v053cmp:v053 /usr/share/ollama/.ollama/models/blobs/sha256-d8369368fb95223a788c8d4de8d58b363e4898c49938c0728b152f23ea150fba
+qwen3-v053cmp:v053cap /usr/share/ollama/.ollama/models/blobs/sha256-ce54c67645030050b8951fc8be19522103b0717b8601638086e92af4e4e1e8fd
+qwen3-v053cmp:v053e1 /usr/share/ollama/.ollama/models/blobs/sha256-c6c0410697b768131d35a1034b9af1b2a2db4a525a79e33f79d54484b7ff618a
+qwen3-v053cmp:v052-s2 /usr/share/ollama/.ollama/models/blobs/sha256-fac59ab6b43310c2639217a1118c3ac6e224fe20c4650c6e44ab731ec6b08a13
+qwen3-v053cmp:v052-s3 /usr/share/ollama/.ollama/models/blobs/sha256-6fe694ffb394b912d9716d4c525f5fcf22dabd383d184678bfa010df1bce6619
+qwen3-v053cmp:n2202-s2 /usr/share/ollama/.ollama/models/blobs/sha256-522facabe0c197bfa5771ed50f0ac494e4eec7d3c73db911097fb1bbbec7cf49
+qwen3-v053cmp:n2202-s3 /usr/share/ollama/.ollama/models/blobs/sha256-2d297d8db2fe50a85edad9b9ead8502d5dd0e2f0328f8d14b58a2570357fcaa1
+exaone3.5:7.8b /usr/share/ollama/.ollama/models/blobs/sha256-fffbdeec0c334b27ebb42cbdd75a3e869cf9a3efc45abd7b3e6d739343089038
+glm4:9b /usr/share/ollama/.ollama/models/blobs/sha256-b506a070d1152798d435ec4e7687336567ae653b3106f73b7b4ac7be1cbc4449
+gemma2:9b /usr/share/ollama/.ollama/models/blobs/sha256-ff1d1fc78170d787ee1201778e2dd65ea211654ca5fb7d69b5a2e7b123a50373
+qwen3:30b-a3b /usr/share/ollama/.ollama/models/blobs/sha256-58574f2e94b99fb9e4391408b57e5aeaaaec10f6384e9a699fc2cb43a5c8eabf
+bge-m3:latest /usr/share/ollama/.ollama/models/blobs/sha256-daec91ffb5dd0c27411bd71f29932917c49cf529a641d0168496c3a501e3062c

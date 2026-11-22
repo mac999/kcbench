@@ -89,3 +89,8 @@ benchmark/run_uc_rebase.sh
 benchmark/CHANGELOG.md
 benchmark/STANDARDS_REVIEW.md
 !/requirements.txt
+
+# paper reproduction snapshots: the run and check scripts, the frozen settings files,
+# the environment record and the manifest. Regenerated output stays local.
+!/reproduce/
+reproduce/*/out/

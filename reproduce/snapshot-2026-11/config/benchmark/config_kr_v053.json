@@ -1,0 +1,6 @@
+{
+  "_comment": "Benchmark built from the v053 dataset. Inherits config_kr.json and moves only the paths: the corpus and the collector catalogues are the same files v052 was built from, but the generated side and the answer key are the v053 pair. The generator's chunking changed with v053 (chunk_overlap 200 -> 100, chunk sizes 500/700), so the item sets are not the v052 ones and the two keys are kept side by side.",
+  "extends": "config_kr.json",
+  "generated_dir": "../train_data_v053/train_data",
+  "out_dir": "../ground_truth_v053"
+}

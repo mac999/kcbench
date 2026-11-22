@@ -1,0 +1,270 @@
+{
+  "input_dir": "input",
+  "output_dir": "output",
+  "dataset_mode": "both",
+  "llm_backend": "ollama",
+  "llm_parallel": 1,
+  "qa_per_chunk": 3,
+  "sft_negative_ratio": 0.0,
+  "sft_prompt_template": "당신은 AEC(건축·엔지니어링·건설) 분야 전문 데이터 합성기입니다.\n아래 문서 청크를 읽고, 건설 법규 LLM 파인튜닝에 적합한 고품질 질문-답변 쌍을 {n}개 생성하세요.\n\n규칙:\n- 각 질문은 반드시 주어진 청크의 내용만으로 답할 수 있어야 합니다.\n- 각 답변은 특정 조항, 표, 또는 수치를 반드시 인용해야 합니다.\n- 질문과 답변은 반드시 한국어로 작성하세요.\n- 서로 다른 관점의 질문을 생성하세요 (예: 정의, 절차, 기준, 처벌 등).\n- domain_tags는 관련 AEC 도메인 태그 2~4개로 구성하세요 (예: 구조, 안전, 설비, 기계, 전기, 건축, 토목, 소방 등).\n- final_label은 다음 기준으로 정확히 구분하세요:\n  * \"answerable\" — 정의·절차·기준·수치 등을 묻는 일반 질문. 대부분의 질문이 여기에 해당합니다.\n  * \"compliant\" — 특정 행위나 설계가 기준에 적합한지 판단하는 질문이고, 적합한 경우에만.\n  * \"non_compliant\" — 위와 같은 적합성 판단 질문이고, 부적합한 경우에만.\n  * \"unanswerable\" — 주어진 청크만으로는 답할 수 없는 경우.\n  적합성 판단 질문이 아니라면 \"compliant\"를 쓰지 마세요.\n- 유효한 JSON만 응답하세요 — 마크다운 코드 펜스나 추가 텍스트 없이.\n\nJSON 스키마:\n{{\n  \"qa_pairs\": [\n    {{\n      \"instruction\": \"<구체적인 한국어 질문>\",\n      \"input\": {{\n        \"context\": \"<관련 문서 chunk 또는 조항 전문>\",\n        \"metadata\": {{\"project_type\": \"<건축|교량|터널|도로|댐 등>\", \"language\": \"ko\"}}\n      }},\n      \"output\": {{\n        \"answer\": \"<정확하고 근거 있는 한국어 답변>\",\n        \"evidence\": [\n          {{\n            \"doc_id\": \"{doc_id}\",\n            \"section\": \"<조항 또는 절 참조, 예: '제3조 2항'>\"\n          }}\n        ],\n        \"final_label\": \"<compliant|non_compliant|answerable|unanswerable>\"\n      }},\n      \"domain_tags\": [\"<태그1>\", \"<태그2>\"],\n      \"source_doc_ids\": [\"{doc_id}\"]\n    }}\n  ]\n}}\n\n문서 청크 (doc_id={doc_id}, chunk={chunk_index}):\n---\n{text}\n---\n\nJSON 응답:",
+  "sft_negative_prompt_template": "당신은 AEC(건축·엔지니어링·건설) 분야 전문 데이터 합성기입니다.\n아래 문서 청크를 읽고, \"근거 부족으로 답할 수 없는\" 부정(negative) 학습 샘플 {n}개를 생성하세요.\n목적: 모델이 주어진 근거만으로 답할 수 없을 때, 답을 지어내지 않고 정직하게 한계를 밝히도록 학습시키는 것입니다.\n\n규칙:\n- 각 질문은 이 청크와 같은 건설 도메인의 그럴듯한 질문이되, 청크 내용만으로는 답할 수 없어야 합니다 (필요한 수치·조항·정의가 청크에 없음).\n- 답변(answer)은 반드시 \"제공된 근거만으로는 답할 수 없다\"는 취지로 정직하게 밝히세요. 사실을 지어내지 마세요.\n- evidence 배열은 반드시 빈 배열([])로 두세요.\n- final_label은 반드시 \"unanswerable\"로 설정하세요.\n- 질문과 답변은 반드시 한국어로 작성하세요.\n- 유효한 JSON만 응답하세요 — 마크다운 코드 펜스나 추가 텍스트 없이.\n\nJSON 스키마:\n{{\n  \"qa_pairs\": [\n    {{\n      \"instruction\": \"<청크로 답할 수 없는 구체적인 한국어 질문>\",\n      \"input\": {{\n        \"context\": \"<관련 문서 chunk 또는 조항 전문>\",\n        \"metadata\": {{\"project_type\": \"<건축|교량|터널|도로|댐 등>\", \"language\": \"ko\"}}\n      }},\n      \"output\": {{\n        \"answer\": \"<제공된 근거만으로는 답할 수 없다는 정직한 설명>\",\n        \"evidence\": [],\n        \"final_label\": \"unanswerable\"\n      }},\n      \"domain_tags\": [\"<태그1>\", \"<태그2>\"],\n      \"source_doc_ids\": [\"{doc_id}\"]\n    }}\n  ]\n}}\n\n문서 청크 (doc_id={doc_id}, chunk={chunk_index}):\n---\n{text}\n---\n\nJSON 응답:",
+  "ollama_model": "qwen3:30b-a3b",
+  "ollama_base_url": "http://localhost:11434",
+  "ollama_temperature": 0.1,
+  "ollama_num_ctx": 8192,
+  "ollama_num_predict": 4096,
+  "ollama_json_mode": true,
+  "gemini_api_key": "",
+  "gemini_model": "gemini-2.5-flash",
+  "llama_server_url": "http://localhost:8080",
+  "chunk_min_size": 500,
+  "chunk_max_size": 700,
+  "chunk_overlap": 200,
+  "space_gap_ratio": 0.2,
+  "ocr_enabled": true,
+  "ocr_languages": "ko,en",
+  "ocr_dpi": 200,
+  "ocr_use_gpu": true,
+  "ocr_max_pages": 0,
+  "ifc_render_width": 1024,
+  "ifc_render_height": 1024,
+  "ifc_views": [
+    "perspective",
+    "top",
+    "front"
+  ],
+  "ifc_view_angles": {
+    "perspective": [
+      18,
+      -55
+    ],
+    "top": [
+      90,
+      -90
+    ],
+    "front": [
+      0,
+      -90
+    ],
+    "side": [
+      0,
+      0
+    ]
+  },
+  "ifc_max_elements": 1000,
+  "ifc_min_elements_per_group": 5,
+  "comfyui_url": "http://127.0.0.1:8188",
+  "comfyui_timeout": 300,
+  "controlnet_model": "control_v11f1p_sd15_depth.pth",
+  "sd_base_model": "Realistic_Vision_V6.0_NV_B1_fp16.safetensors",
+  "i2i_denoise": 1.0,
+  "i2i_steps": 30,
+  "i2i_cfg": 7.0,
+  "controlnet_strength": 0.6,
+  "controlnet_start_percent": 0.0,
+  "controlnet_end_percent": 0.6,
+  "vlm_control_hint": "depth",
+  "vlm_photo_views": [
+    "perspective"
+  ],
+  "vlm_depth_ground_plane": true,
+  "vlm_ground_roughness": 0.1,
+  "vlm_init_from_render": false,
+  "vlm_image_width": 768,
+  "vlm_image_height": 768,
+  "vlm_control_resolution": 512,
+  "vlm_sampler": "dpmpp_2m",
+  "vlm_scheduler": "karras",
+  "vlm_seed": -1,
+  "vlm_positive_prompt": "photograph of a {trade_type} building nearing completion on a {project_type} site, glazed windows in every opening with visible frames and mullions and reflections, hinged entrance doors set in their frames, precast concrete facade panels, standing on damp brown earth and grey gravel, patches of bare soil and mud with tyre ruts, a few small trees and rough patches of green grass around the plot, site fencing and stacked building materials nearby, low buildings and trees on the horizon, grey overcast sky with low cloud cover, soft diffuse daylight, natural colours, realistic photo, sharp focus, high detail, 35mm lens, architectural documentary photography",
+  "vlm_negative_prompt": "snow, snowy ground, winter, frost, ice, white ground, overexposed, blown highlights, high key, washed out, desert, sand dunes, beach, arid landscape, sandy ground, beige concrete, sand-coloured walls, concrete pavement, paved plaza, asphalt, smooth flat floor, polished slab, tiled floor, clean swept ground, wire mesh, chain link fence, dense grid, lattice, net, cage, repeating pattern, wall of rebar, forest of steel bars, sunset, sunbeam, lens flare, ruins, rubble, demolition, collapsed structure, derelict, abandoned building, war damage, crumbling cracked concrete, 3d render, cgi, rendering, wireframe, blueprint, cad drawing, diagram, illustration, drawing, painting, cartoon, anime, sketch, smooth plastic surface, glossy, chrome, metallic sheen, mirror, people, workers, animals, vehicles, text, watermark, logo, signature, floating objects, surreal, fantasy, distorted geometry, low quality, blurry, jpeg artifacts, oversaturated, neon colours",
+  "vlm_trade_prompts": {
+    "철근콘크리트": "cast-in-place reinforced concrete, rebar cages, tie wire, concrete cold joints",
+    "강구조": "structural steel frame, bolted connections, primer-coated steel beams",
+    "복합구조": "mixed concrete and steel structure, composite deck"
+  },
+  "vlm_output_backend": "ollama",
+  "vlm_ollama_model": "qwen3-vl:30b",
+  "vlm_ollama_base_url": "",
+  "vlm_output_temperature": 0.2,
+  "vlm_output_timeout": 180,
+  "vlm_context_max_elements": 10,
+  "vlm_write_bim_catalog": true,
+  "vlm_tasks": [
+    {
+      "task_type": "site_description",
+      "images": [
+        "site"
+      ],
+      "instruction": "이 건설 현장 사진을 보고 보이는 구조 요소와 공정(시공) 상태를 구체적으로 설명하라.",
+      "labels": [
+        "clear",
+        "partial",
+        "unclear"
+      ],
+      "model": ""
+    },
+    {
+      "task_type": "element_detection",
+      "images": [
+        "site"
+      ],
+      "instruction": "현장 사진에서 보이는 구조 요소(보, 기둥, 슬래브, 벽, 계단 등)를 찾아 종류별로 나열하고 각 식별 근거를 제시하라.",
+      "labels": [
+        "detected",
+        "partial",
+        "none"
+      ],
+      "model": ""
+    },
+    {
+      "task_type": "material_identification",
+      "images": [
+        "site"
+      ],
+      "instruction": "현장 사진에 나타난 주요 구조 재료와 공법을 식별하라 (예: 철근콘크리트, 철골, 복합구조).",
+      "labels": [
+        "철근콘크리트",
+        "철골",
+        "복합구조",
+        "기타"
+      ],
+      "model": ""
+    },
+    {
+      "task_type": "progress_assessment",
+      "images": [
+        "site"
+      ],
+      "instruction": "이 현장의 시공 진행 단계(기초/골조/마감 등)와 대략적인 완료도를 근거와 함께 평가하라.",
+      "labels": [
+        "foundation",
+        "structure",
+        "finishing",
+        "completed"
+      ],
+      "model": ""
+    },
+    {
+      "task_type": "bim_site_comparison",
+      "images": [
+        "bim",
+        "site"
+      ],
+      "instruction": "첫 번째 BIM 렌더링과 두 번째 현장 사진을 비교하여, 설계 대비 현장의 일치/불일치 요소를 근거와 함께 구체적으로 설명하라.",
+      "labels": [
+        "match",
+        "partial_match",
+        "mismatch",
+        "unknown"
+      ],
+      "model": ""
+    },
+    {
+      "task_type": "absence_check",
+      "images": [
+        "site"
+      ],
+      "instruction": "이 사진에서 다음 요소가 보이는지 판단하라: 타워크레인, 엘리베이터, 배관 설비. 보이지 않는 요소는 '보이지 않음'이라고 명확히 답하고, 추측하지 마라.",
+      "labels": [
+        "visible",
+        "not_visible",
+        "uncertain"
+      ],
+      "model": ""
+    },
+    {
+      "task_type": "spatial_relation",
+      "images": [
+        "bim",
+        "site"
+      ],
+      "instruction": "첫 번째 BIM 렌더링을 기준으로 구조 요소들의 상대적 위치 관계를 설명하라 (예: 어느 부재가 앞쪽/위쪽에 있는지). 화면에서 확인 가능한 관계만 기술하라.",
+      "labels": [
+        "clear",
+        "partial",
+        "unclear"
+      ],
+      "model": ""
+    }
+  ],
+  "max_samples_per_doc": 50,
+  "batch_size": 5,
+  "llm_max_retries": 3,
+  "dapt_infer_metadata": true,
+  "dapt_dedupe": true,
+  "sft_tasks": [
+    {
+      "name": "regulation_qa",
+      "retrieval": "open_book",
+      "weight": 2.0,
+      "model": "",
+      "verifiers": [],
+      "template": "You generate Korean AEC training data. Write questions and answers in Korean.\n\nRead the clause below and write {n} question-answer pairs that can be answered from it alone. Each answer must cite a clause, table or figure.\n\nClause (doc_id={doc_id}, chunk={chunk_index}):\n---\n{text}\n---\n\nRespond with valid JSON only, no markdown fence:\n{{\"qa_pairs\": [{{\"instruction\": \"<question in Korean>\", \"input\": {{\"context\": \"<supporting text or empty>\", \"metadata\": {{\"project_type\": \"<건축|교량|터널|도로|댐>\", \"language\": \"ko\"}}}}, \"output\": {{\"answer\": \"<answer in Korean>\", \"evidence\": [{{\"doc_id\": \"{doc_id}\", \"section\": \"<clause reference>\"}}], \"final_label\": \"<compliant|non_compliant|answerable|unanswerable>\"}}, \"domain_tags\": [\"<tag>\", \"<tag>\"], \"source_doc_ids\": [\"{doc_id}\"]}}]}}"
+    },
+    {
+      "name": "procedure",
+      "retrieval": "open_book",
+      "weight": 1.0,
+      "model": "",
+      "verifiers": [],
+      "template": "You generate Korean AEC training data. Write questions and answers in Korean.\n\nFrom the clause below, write {n} question-answer pairs about *procedure*: the order of steps, who performs them, what triggers each step, and what must be submitted or recorded. Answer in ordered steps, not a single sentence. Procedures outlive individual threshold values, so state the process rather than quoting numbers.\n\nClause (doc_id={doc_id}, chunk={chunk_index}):\n---\n{text}\n---\n\nRespond with valid JSON only, no markdown fence:\n{{\"qa_pairs\": [{{\"instruction\": \"<question in Korean>\", \"input\": {{\"context\": \"<supporting text or empty>\", \"metadata\": {{\"project_type\": \"<건축|교량|터널|도로|댐>\", \"language\": \"ko\"}}}}, \"output\": {{\"answer\": \"<answer in Korean>\", \"evidence\": [{{\"doc_id\": \"{doc_id}\", \"section\": \"<clause reference>\"}}], \"final_label\": \"<compliant|non_compliant|answerable|unanswerable>\"}}, \"domain_tags\": [\"<tag>\", \"<tag>\"], \"source_doc_ids\": [\"{doc_id}\"]}}]}}"
+    },
+    {
+      "name": "terminology",
+      "retrieval": "closed_book",
+      "weight": 1.0,
+      "model": "",
+      "verifiers": [],
+      "template": "You generate Korean AEC training data. Write questions and answers in Korean.\n\nUsing construction-domain knowledge, write {n} question-answer pairs that explain the technical terms appearing in document '{doc_id}': what the term means, the field synonyms and abbreviations for it, and how it differs from a term it is often confused with. No clause text is supplied; answer from domain knowledge and set final_label to 'answerable'.\n\nRespond with valid JSON only, no markdown fence:\n{{\"qa_pairs\": [{{\"instruction\": \"<question in Korean>\", \"input\": {{\"context\": \"<supporting text or empty>\", \"metadata\": {{\"project_type\": \"<건축|교량|터널|도로|댐>\", \"language\": \"ko\"}}}}, \"output\": {{\"answer\": \"<answer in Korean>\", \"evidence\": [{{\"doc_id\": \"{doc_id}\", \"section\": \"<clause reference>\"}}], \"final_label\": \"<compliant|non_compliant|answerable|unanswerable>\"}}, \"domain_tags\": [\"<tag>\", \"<tag>\"], \"source_doc_ids\": [\"{doc_id}\"]}}]}}"
+    },
+    {
+      "name": "reasoning",
+      "retrieval": "open_book",
+      "weight": 1.0,
+      "model": "",
+      "verifiers": [],
+      "template": "You generate Korean AEC training data. Write questions and answers in Korean.\n\nFrom the clause below, write {n} question-answer pairs that require *multi-step reasoning*: apply the clause to a concrete situation, compare two conditions, or derive a consequence. Each answer must show the intermediate steps before the conclusion.\n\nClause (doc_id={doc_id}, chunk={chunk_index}):\n---\n{text}\n---\n\nRespond with valid JSON only, no markdown fence:\n{{\"qa_pairs\": [{{\"instruction\": \"<question in Korean>\", \"input\": {{\"context\": \"<supporting text or empty>\", \"metadata\": {{\"project_type\": \"<건축|교량|터널|도로|댐>\", \"language\": \"ko\"}}}}, \"output\": {{\"answer\": \"<answer in Korean>\", \"evidence\": [{{\"doc_id\": \"{doc_id}\", \"section\": \"<clause reference>\"}}], \"final_label\": \"<compliant|non_compliant|answerable|unanswerable>\"}}, \"domain_tags\": [\"<tag>\", \"<tag>\"], \"source_doc_ids\": [\"{doc_id}\"]}}]}}"
+    },
+    {
+      "name": "structure",
+      "retrieval": "open_book",
+      "weight": 0.5,
+      "model": "",
+      "verifiers": [],
+      "template": "You generate Korean AEC training data. Write questions and answers in Korean.\n\nFrom the clause below, write {n} question-answer pairs about *document structure*: which article, paragraph or item states a given rule, what a cross-reference points to, and how the provisions are organised. Answers must name the reference path.\n\nClause (doc_id={doc_id}, chunk={chunk_index}):\n---\n{text}\n---\n\nRespond with valid JSON only, no markdown fence:\n{{\"qa_pairs\": [{{\"instruction\": \"<question in Korean>\", \"input\": {{\"context\": \"<supporting text or empty>\", \"metadata\": {{\"project_type\": \"<건축|교량|터널|도로|댐>\", \"language\": \"ko\"}}}}, \"output\": {{\"answer\": \"<answer in Korean>\", \"evidence\": [{{\"doc_id\": \"{doc_id}\", \"section\": \"<clause reference>\"}}], \"final_label\": \"<compliant|non_compliant|answerable|unanswerable>\"}}, \"domain_tags\": [\"<tag>\", \"<tag>\"], \"source_doc_ids\": [\"{doc_id}\"]}}]}}"
+    },
+    {
+      "name": "refusal",
+      "retrieval": "raft",
+      "weight": 1.0,
+      "model": "",
+      "verifiers": [],
+      "template": "You generate Korean AEC training data. Write questions and answers in Korean.\n\nBelow are several passages. Only some relate to the question you will write. Produce {n} question-answer pairs where the question is plausible for this domain but the passages do NOT contain the answer. Each answer must state honestly that the supplied material does not support an answer. Set evidence to [] and final_label to 'unanswerable'. Never invent facts.\n\nPassages (doc_id={doc_id}, chunk={chunk_index}):\n---\n{text}\n---\n\nRespond with valid JSON only, no markdown fence:\n{{\"qa_pairs\": [{{\"instruction\": \"<question in Korean>\", \"input\": {{\"context\": \"<supporting text or empty>\", \"metadata\": {{\"project_type\": \"<건축|교량|터널|도로|댐>\", \"language\": \"ko\"}}}}, \"output\": {{\"answer\": \"<answer in Korean>\", \"evidence\": [{{\"doc_id\": \"{doc_id}\", \"section\": \"<clause reference>\"}}], \"final_label\": \"<compliant|non_compliant|answerable|unanswerable>\"}}, \"domain_tags\": [\"<tag>\", \"<tag>\"], \"source_doc_ids\": [\"{doc_id}\"]}}]}}"
+    },
+    {
+      "name": "grounded_rag",
+      "retrieval": "raft",
+      "weight": 1.5,
+      "model": "",
+      "verifiers": [],
+      "template": "You generate Korean AEC training data. Write questions and answers in Korean.\n\nBelow are several passages; only some are relevant. Write {n} question-answer pairs answerable from the relevant passages only. Each answer must first say which passage supports it, then give the answer. Ignore the unrelated passages — do not mention their content.\n\nPassages (doc_id={doc_id}, chunk={chunk_index}):\n---\n{text}\n---\n\nRespond with valid JSON only, no markdown fence:\n{{\"qa_pairs\": [{{\"instruction\": \"<question in Korean>\", \"input\": {{\"context\": \"<supporting text or empty>\", \"metadata\": {{\"project_type\": \"<건축|교량|터널|도로|댐>\", \"language\": \"ko\"}}}}, \"output\": {{\"answer\": \"<answer in Korean>\", \"evidence\": [{{\"doc_id\": \"{doc_id}\", \"section\": \"<clause reference>\"}}], \"final_label\": \"<compliant|non_compliant|answerable|unanswerable>\"}}, \"domain_tags\": [\"<tag>\", \"<tag>\"], \"source_doc_ids\": [\"{doc_id}\"]}}]}}"
+    }
+  ],
+  "raft_distractors": 3,
+  "dpo_rejection_kinds": [
+    "unsupported",
+    "fabricated",
+    "overreach"
+  ],
+  "dpo_seed": 20260926,
+  "doc_routing": "train",
+  "routing_threshold": 2.0,
+  "routing_both_margin": 1.0,
+  "rag_min_chars": 120,
+  "star_min_score": 1.0,
+  "star_task_verifiers": {},
+  "dpo_overreach_text": "제시된 조문에 따르면 해당 기준은 일반적으로 적용되며, 관련 규정에서 정한 값을 따르면 됩니다.",
+  "routing_signals": [],
+  "reuse_images": false
+}
