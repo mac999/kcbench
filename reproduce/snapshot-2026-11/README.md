@@ -12,6 +12,7 @@ check.sh       commits, settings files and hashed inputs against MANIFEST.txt
 run.sh         data | keys | score | dapt | train
 config/        frozen copies of the benchmark, generator and training settings
 env/           interpreter and package versions, Ollama model digests
+runs/          per-item scores of the 29 scoring runs behind the tables and figures
 MANIFEST.txt   commits, tool versions, sha256 of 126 inputs and outputs
 ```
 
@@ -96,7 +97,13 @@ data is what every later stage reads.
 ## Local files
 
 Several inputs are gitignored and exist only on the experiment machine or on
-request: the per-item run files under `ground_truth_*/runs/`, the training
+request: the full run files under `ground_truth_*/runs/`, the training
 splits and derived subsets, `training/out/`, the review queue and its finished
 version, the generated data releases, and the manuscript sources. `check.sh`
 reports them as missing rather than failing.
+
+`runs/` carries the same run files with the model replies removed, gzipped,
+named `<key>_<tag>.json.gz`: every per-item score, split and aggregate is
+there, so the tables and the significance tests can be recomputed without the
+machine (`compare.py` reads them after `gunzip`). The replies themselves
+stay local; their files are the ones hashed under `runs/` in `MANIFEST.txt`.
