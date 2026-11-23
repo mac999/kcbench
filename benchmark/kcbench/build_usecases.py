@@ -29,7 +29,7 @@ from typing import Any, Dict, List
 
 from kcbench.build_tracks import (Rejects, _base, _instr,
                           _nameset_candidate, _numeric_candidates, _provenance,
-                          enum_patterns, josa, load_reviews, reviewed_out)
+                          enum_patterns, josa, load_reviews, reviewed_out, clause_match)
 from kcbench.common import (clause_label, clause_for, verified_note, item_lang, mining_vocab, QUALIFIER_EN, UNIT_EN, add_common_args, describe,
                     generated_documents, item_id, log, resolve_config, utc_now,
                     write_json, write_jsonl, nameset_match_mode)
@@ -136,8 +136,8 @@ def build_doc_filtered_qa(cfg, holdout, key: str, uc: dict, rej: Rejects) -> Lis
             if made >= cap or len(rows) >= numeric_want:
                 break
             text = chunk["text"]
-            clause = enum_patterns(cfg)["clause"].search(text)
             for f in _numeric_candidates(text, rej, cfg):
+                clause = clause_match(cfg, text, f["span"][0])
                 subject, value, unit, qual = f["subject"], f["value"], f["unit"], f["qualifier"]
                 if (subject, value, unit, qual) in seen:
                     continue
@@ -430,7 +430,10 @@ def build_missing_measures(cfg, holdout, key: str, uc: dict, rej: Rejects) -> Li
             if len(rows) >= want:
                 break
             prev_tail = d["chunk_rows"][n - 1]["text"][-400:] if n else ""
-            found = _nameset_candidate(chunk["text"], rej, cfg, prev_tail)
+            over = {k: uc[k] for k in ("nameset_max_item_len", "nameset_skip_terms",
+                                       "nameset_lead_in_window", "nameset_heading_for_secondary")
+                    if k in uc}
+            found = _nameset_candidate(chunk["text"], rej, cfg, prev_tail, over or None)
             if not found:
                 continue
             lead, kind, items, span, prefix = found

@@ -79,6 +79,8 @@ ENUM_DEFAULTS = {
     "secondary_order": HANGUL_ORDER,
     "lead_in": LEAD_IN_RE.pattern,
     "heading": HEADING_RE.pattern,
+    # KCS/KDS-style numbered headings ("8.2.2 교육훈련계획"); off unless set
+    "heading_alt": "",
     "clause": CLAUSE_RE.pattern,
     # Korean statute restarts its 각 호 numbering in every clause, so a list
     # that does not open at 1 is a fragment. A federal rule numbers straight
@@ -96,6 +98,9 @@ def _enum_set(frozen: tuple):
         v = over.get(k, default)
         if k in ("secondary_order", "require_start_at_one"):
             out[k] = v
+            continue
+        if k == "heading_alt" and not v:
+            out[k] = None
             continue
         try:
             out[k] = re.compile(v, re.M)
@@ -302,7 +307,7 @@ def subject_before(text: str) -> str:
     return phrase
 
 
-def subject_is_clean(phrase: str) -> str:
+def subject_is_clean(phrase: str, strict: bool = False) -> str:
     """
     Why a subject phrase is unusable, or "" if it is fine.
 
@@ -324,6 +329,8 @@ def subject_is_clean(phrase: str) -> str:
     # noun the reader can look up in the passage.
     if phrase.split()[-1].endswith(("게", "히", "서", "써", "라", "랑", "듯")):
         return "subject ends in an adverbial, not a noun"
+    if strict and re.search(r"(?:지만|하나|으나|이며|면서|제외|포함)$", phrase):
+        return "subject ends in a conjunction carried over from the previous clause"
     # A verb ending carried over from the previous clause — "졸업한 후", "취득한
     if re.search(r"(?:한|된|하는|되는|받은|취득한|졸업한)\s*(?:후|뒤|때|경우)?$", phrase):
         return "subject is a verb phrase carried over from the previous clause"
@@ -425,25 +432,165 @@ def build_track1(cfg, holdout) -> Path:
 
 # track 2
 
+# What the expert review of the v0.5.3 keys found behind the defective
+# threshold items, and the shape each one has in the text. A figure in a
+# grading band ("2년 미만 0.5점, 4년 미만 1점") or a distance table is not a
+# requirement; a figure that opens a condition ("70% 미만이면 수정을 요구할 수
+# 있다") states when a rule applies, not what it demands; "할 수 있다" permits;
+# "초과하지 않는" turns the qualifier round. Each check is a setting under
+# track2_sft so the v0.5.3 build still reproduces with them off.
+DEONTIC_RE = re.compile(
+    r"(?:이어야|되어야|하여야|해야|할\s*것|않아야|않도록|아니\s*된다|아니된다|않는다|"
+    r"넘지\s*않|초과하지\s*않|으로\s*한다|로\s*한다|되도록|확보|유지|설치|두어야|갖추어야|"
+    r"이상이어야|이하이어야|않을\s*것|되게|하도록|따른다|한다|일\s*것|을\s*것|를\s*것|"
+    r"안\s*된다|안된다|되어서는\s*안|금지)")
+CONDITION_RE = re.compile(r"^\s*(?:이면|인\s*경우|일\s*때|이라면|의\s*경우|이고|이거나|인\s*때|인\s*(?!것)[가-힣])")
+PERMISSIVE_RE = re.compile(r"(?:할\s*수\s*있|수\s*있다|수\s*있습니다|권장|바람직|할\s*수도)")
+BAND_RE = re.compile(r"(?:평점|배점|등급|점수|평가표|평가기준표|가중치|점\b)")
+# notice boilerplate; words like 서식 or 신청서 also occur inside requirement
+# sentences ("별지 제6호서식에 따라 보고해야 한다") and are not form markers
+FORM_RE = re.compile(r"(?:행정예고|보내실\s*곳|접수번호|접수일자|처리기간|전자우편|팩스)")
+# a requirement expressed as a list entry carries its verb in the lead-in:
+# "다음 각 호의 성능을 확보하여야 하며 ... 1. 비차열 1시간 이상"
+LEAD_DEONTIC_RE = re.compile(r"(?:다음|아래)[^\n]{0,40}(?:각\s*호|각\s*목|사항|기준|성능|요건|같다|같이)")
+VERB_END_RE = re.compile(r"(?:하는|되는|있는|없는|않는|따르는|관한|대한|위한|의한|인|한|된|할|될)$")
+FORM_CHUNK_RE = re.compile(r"\[\s*별지\s*제?\s*\d+\s*호[^\]]{0,20}서식\s*\]|■\s*[^\n]{0,40}(?:서식|대장)")
+NEGATED_RE = re.compile(r"^\s*(?:하지\s*않|않는|않아야|않도록|이\s*되어서는\s*아니|되어서는\s*아니|이\s*아닌)")
+FLIP = {"초과": "이하", "미만": "이상", "이상": "미만", "이하": "초과", "이내": "초과"}
+
+
+# A sentence boundary in this text layer: a sentence ending, or a list marker
+# or bullet opening a new line. A bare line break is not one -- the PDF layer
+# breaks lines mid-sentence ("초과하지\n아니하도록") and cutting there loses the
+# predicate that says what the figure requires.
+_SENT_BOUNDARY = re.compile(
+    r"(?<=다)\.|(?<=것)\.|(?<=함)\.|(?<=음)\.|(?<=요)\.|[;；]|"
+    r"\n\s*(?=\(\d{1,2}\)|\d{1,2}\.\s|\d+(?:\.\d+)+\s|[가-하]\.\s|[①-⑮]|[-•·▪◦]\s|제\s*\d+\s*조)")
+
+
+def _sentence_at(text: str, start: int, end: int) -> tuple[str, int]:
+    """The sentence holding [start, end), within 300 characters either way."""
+    lo, hi = max(0, start - 300), min(len(text), end + 300)
+    a = lo
+    for m in _SENT_BOUNDARY.finditer(text, lo, start):
+        a = m.end()
+    m = _SENT_BOUNDARY.search(text, end, hi)
+    b = m.end() if m else hi
+    return text[a:b], a
+
+
+def _threshold_admissible(text: str, f: dict, t2: dict, dense: bool = False) -> str:
+    """Why this figure is not a stated requirement, or "" if it may be."""
+    start, end = f["span"]
+    sent, a = _sentence_at(text, start, end)
+    after = text[end:end + 12]
+    tail = sent[sent.find(f["value"]):] if f["value"] in sent else sent
+    deontic = bool(DEONTIC_RE.search(tail))
+    if t2.get("reject_conditions") and CONDITION_RE.match(after):
+        return "figure opens a condition, not a limit"
+    if t2.get("reject_forms") and (FORM_CHUNK_RE.search(text) or (FORM_RE.search(sent) and not deontic)):
+        return "passage is a form or a notice, not a rule"
+    if t2.get("reject_grading_bands"):
+        if BAND_RE.search(sent):
+            return "figure sits in a grading band or table row"
+        # a flattened table is a run of short cells: many line breaks and no
+        # sentence end anywhere near the figure
+        if sent.count("\n") >= 6 and not deontic:
+            return "figure sits in a table laid out as cells"
+        # three figures with one unit and qualifier close together are a table
+        # when no verb says what they require; "130mm 이상 150mm 이하여야 한다"
+        # next to two more such sentences is three requirements
+        if dense and not deontic:
+            return "figure sits in a run of like figures with no requirement stated"
+    if t2.get("require_requirement_sentence"):
+        if PERMISSIVE_RE.search(tail) and not deontic:
+            return "sentence permits or recommends, it does not require"
+        if not deontic:
+            # a list entry without a verb inherits the lead-in's
+            lead = text[max(0, a - 250):a]
+            if not (LEAD_DEONTIC_RE.search(lead) and DEONTIC_RE.search(lead)):
+                return "sentence states no requirement after the figure"
+    return ""
+
+
+def _band_members(text: str, rx, leads, window: int = 150) -> set:
+    """
+    Positions of figures that sit in a run of three or more with one unit and
+    qualifier within `window` characters: a flattened table or a grading band
+    ("2년 미만 0.5 / 4년 미만 1.0 / 6년 미만 1.5"). Three such figures spread
+    over a long clause are three requirements and are left alone.
+    """
+    hits = []
+    for m in rx.finditer(text):
+        g = m.groups()
+        _, unit, qual = (g[1], g[2], g[0]) if leads else g
+        hits.append((m.start(), unit, qual))
+    out = set()
+    for pos, unit, qual in hits:
+        near = sum(1 for p, u, q in hits if (u, q) == (unit, qual) and abs(p - pos) <= window)
+        if near >= 3:
+            out.add(pos)
+    return out
+
+
+def _topic_subject(text: str, start: int) -> str:
+    """
+    For "개구부의 길이는 개구부 폭의 2배 이하": the thing bounded is the topic
+    (길이), not the noun the ratio is taken of (폭). Walk back to the last
+    topic-marked phrase in the sentence.
+    """
+    sent, a = _sentence_at(text, start, start)
+    before = sent[:start - a]
+    # the last topic-marked noun phrase; "담당하는", "아니하는" carry the same
+    # particle letter as an adnominal ending and are skipped
+    for m in reversed(list(re.finditer(r"([가-힣A-Za-z0-9·()\-\s]{2,40}?)(?:은|는)\s", before))):
+        phrase = m.group(1).strip()
+        phrase = re.sub(r"^(?:\(?\d{1,2}[.)]|[①-⑮]|[가-하]\.|\d+(?:\.\d+)+)\s*", "", phrase)
+        phrase = phrase.split(",")[-1].strip()
+        if not phrase or VERB_END_RE.search(phrase):
+            continue
+        head = subject_before(phrase + " ")
+        if head and not subject_is_clean(head, True):
+            return head
+    return ""
+
+
 def _numeric_candidates(text: str, rej: Rejects, cfg) -> List[dict]:
     """Every stipulated threshold in one passage that survives admission."""
     t2 = cfg["track2_sft"]
     units, quals = mining_vocab(cfg)
     rx, leads = _fact_re(tuple(units), tuple(quals), qualifier_leads(cfg))
     found = []
-    for m in FACT_RE.finditer(text) if False else rx.finditer(text):
+    bands = _band_members(text, rx, leads) if t2.get("reject_grading_bands") else set()
+    for m in rx.finditer(text):
         g = m.groups()
         value, unit, qual = (g[1], g[2], g[0]) if leads else g
         # A four-digit year with 년 is a date, not a duration.
         if unit == "년" and re.fullmatch(r"(19|20)\d\d", value):
             rej("number is a calendar year, not a duration", m.group(0))
             continue
+        if t2.get("flip_negated_qualifier") and NEGATED_RE.match(text[m.end():m.end() + 14]):
+            if qual in FLIP:
+                qual = FLIP[qual]
         rules = subject_rules(cfg)
         subj = (subject_sentence(text[:m.start()], rules)
                 if rules["direction"] == "sentence_subject"
                 else subject_before(text[:m.start()]))
-        found.append({"value": value, "unit": unit, "qualifier": qual,
-                      "span": (m.start(), m.end()), "subject": subj})
+        # "X의 2배", "X의 90%": the bounded quantity is the sentence topic
+        if t2.get("ratio_subject_from_topic") and unit in ("배", "%") \
+                and re.search(r"의\s*$", text[:m.start()][-12:]):
+            topic = _topic_subject(text, m.start())
+            if not topic:
+                rej("ratio taken of another quantity and no topic names the bounded one", m.group(0))
+                continue
+            subj = topic
+        f = {"value": value, "unit": unit, "qualifier": qual,
+             "span": (m.start(), m.end()), "subject": subj}
+        why = _threshold_admissible(text, f, t2, m.start() in bands)
+        if why:
+            rej(why, text[max(0, m.start() - 30):m.end() + 20].replace("\n", " "))
+            continue
+        found.append(f)
 
     # Subject quality first. A phrase that is not a usable subject cannot
     usable = []
@@ -455,7 +602,7 @@ def _numeric_candidates(text: str, rej: Rejects, cfg) -> List[dict]:
         if not (t2["min_subject_len"] <= len(subject) <= t2["max_subject_len"]):
             rej("subject too short or too long", subject)
             continue
-        why = subject_is_clean(subject)
+        why = subject_is_clean(subject, bool(t2.get("reject_conjunction_subjects")))
         if why:
             rej(why, subject)
             continue
@@ -479,6 +626,27 @@ def _numeric_candidates(text: str, rej: Rejects, cfg) -> List[dict]:
             continue
         out.append(f)
     return out
+
+
+def clause_match(cfg, text: str, pos: int | None = None):
+    """
+    The clause an item at `pos` belongs to.
+
+    The first 제N조 in a chunk is the wrong one whenever the chunk opens in the
+    tail of one article and the figure sits in the next, or the reverse: three
+    of the 25 reviewed uc7 v2 items cited the heading that followed their
+    sentence. Under clause_position "before_figure" the last heading that
+    starts before the figure wins, and a heading marked 삭제 is skipped.
+    """
+    pat = enum_patterns(cfg)["clause"]
+    if pos is None or (cfg.get("track2_sft") or {}).get("clause_position", "first") == "first":
+        return pat.search(text)
+    last = None
+    for m in pat.finditer(text, 0, pos):
+        if re.match(r"\s*<?삭제", text[m.end():m.end() + 6]):
+            continue
+        last = m
+    return last
 
 
 def build_track2(cfg, holdout, rej: Rejects) -> Path:
@@ -505,8 +673,8 @@ def build_track2(cfg, holdout, rej: Rejects) -> Path:
             if made >= per_doc_cap or len(rows) >= want:
                 break
             text = chunk["text"]
-            clause = enum_patterns(cfg)["clause"].search(text)
             for f in _numeric_candidates(text, rej, cfg):
+                clause = clause_match(cfg, text, f["span"][0])
                 subject, value, unit, qual = f["subject"], f["value"], f["unit"], f["qualifier"]
                 key = (subject, value, unit, qual)
                 if key in seen:
@@ -621,17 +789,20 @@ def build_track2(cfg, holdout, rej: Rejects) -> Path:
     return out
 
 
-def _clean_item(raw: str) -> str:
+def _clean_item(raw: str, cut_headings: bool = False) -> str:
     """One enumerated entry, trimmed to what a person would read out."""
     s = re.sub(r"\s+", " ", raw).strip()
     # A trailing fragment of the next sentence is common where the extractor
     # lost a line break; cut at the first sentence end rather than keeping it.
     s = re.split(r"(?<=다)\.\s|\.\s+(?=[가-힣])", s)[0]
+    if cut_headings:
+        s = re.split(r"(?:\s|(?<=[가-힣]))제\s*\d+\s*(?:장|절)\s", s)[0]
     return s.strip(" .,;:··．")
 
 
 def _nameset_candidate(text: str, rej: Rejects, cfg,
-                       prev_tail: str = "") -> tuple[str, List[str], tuple[int, int], str] | None:
+                       prev_tail: str = "",
+                       over: dict | None = None) -> tuple[str, List[str], tuple[int, int], str] | None:
     """
     A numbered list, together with the sentence that introduced it.
 
@@ -644,8 +815,9 @@ def _nameset_candidate(text: str, rej: Rejects, cfg,
     training. When it is found there it is prepended to the context, so the item
     a model sees still contains the sentence its question quotes.
     """
-    t2 = cfg["track2_sft"]
+    t2 = {**cfg["track2_sft"], **(over or {})}
     ep = enum_patterns(cfg)
+    skip_terms = [w for w in (t2.get("nameset_skip_terms") or []) if w]
     for pattern, ordered in ((ep["enum_primary"], "arabic"),
                              (ep["enum_secondary"], "secondary")):
         matches = list(pattern.finditer(text))
@@ -672,13 +844,38 @@ def _nameset_candidate(text: str, rej: Rejects, cfg,
             rej("enumeration markers are not a consecutive run", text[:80])
             continue
 
+        # The run above stops at the first marker out of sequence and keeps the
+        # prefix. When the next marker exists further down -- the text layer
+        # glued "4." onto the previous line, or a sub-list intervened -- that
+        # prefix is a truncated list, and ten of the 25 reviewed uc5 items were
+        # keyed on one. Under nameset_reject_gaps the list is refused instead.
+        if t2.get("nameset_reject_gaps"):
+            nxt = run[-1][0] + 1
+            if ordered == "arabic":
+                probe = re.compile(r"(?<![\d.])" + str(nxt) + r"\.\s")
+            else:
+                order = ep["secondary_order"]
+                probe = (re.compile(r"(?<![가-힣])" + re.escape(order[nxt - 1]) + r"\.\s")
+                         if nxt <= len(order) else None)
+            # search from the start of the last entry: the text layer glues the
+            # next marker onto the previous line ("...할 것4. 송수구에는")
+            if probe and probe.search(text, run[-1][1].start() + 2):
+                rej("list continues after a displaced marker; the captured run is a prefix",
+                    text[run[-1][1].start():run[-1][1].start() + 60])
+                continue
+
         first = run[0][1]
         lead, prefix = "", ""
         if t2.get("nameset_require_lead_in", True):
             own = text[:first.start()].rstrip()
-            m = ep["lead_in"].search(own)
+            window = int(t2.get("nameset_lead_in_window") or 0)
+            # The sentence that announces a list is the one right before it;
+            # a lead-in found further up belongs to an earlier list.
+            near = own[-window:] if window else own
+            m = ep["lead_in"].search(near)
             if not m and prev_tail:
-                m = ep["lead_in"].search((prev_tail + "\n" + own).rstrip())
+                joined = (prev_tail + "\n" + own).rstrip()
+                m = ep["lead_in"].search(joined[-window:] if window else joined)
                 if m:
                     prefix = prev_tail.rstrip() + "\n"
             if m:
@@ -690,15 +887,28 @@ def _nameset_candidate(text: str, rej: Rejects, cfg,
                 lead = re.sub(r"(?:은|는|이|가|의|에)$", "", lead).strip()
                 kind = "sentence"
             else:
-                head = None
+                # A 가나다 list is a sub-list of one 호; the article heading does
+                # not say which, so under nameset_heading_for_secondary=false
+                # only an explicit lead-in admits it.
+                if ordered == "secondary" and not t2.get("nameset_heading_for_secondary", True):
+                    rej("sub-list without its own lead-in", own[-80:] if own else text[:80])
+                    continue
+                head, alt = None, False
                 for h in ep["heading"].finditer(prev_tail + "\n" + own):
                     head = h
+                if ep.get("heading_alt"):
+                    for h in ep["heading_alt"].finditer(prev_tail + "\n" + own):
+                        if head is None or h.start() > head.start():
+                            head, alt = h, True
                 if not head:
                     rej("enumeration has no lead-in sentence saying what it lists",
                         own[-80:] if own else text[:80])
                     continue
-                lead = clause_label(cfg, head.group(1), None,
-                                    re.sub(r"\s+", " ", head.group(2)).strip())
+                if alt:
+                    lead = f"{head.group(1)} " + re.sub(r"\s+", " ", head.group(2)).strip()
+                else:
+                    lead = clause_label(cfg, head.group(1), None,
+                                        re.sub(r"\s+", " ", head.group(2)).strip())
                 kind = "heading"
                 if not own.strip():
                     prefix = prev_tail.rstrip() + "\n"
@@ -714,10 +924,20 @@ def _nameset_candidate(text: str, rej: Rejects, cfg,
             continue
 
         items, bad = [], ""
-        for _, m in run:
-            s = _clean_item(m.group(2))
+        for n, (_, m) in enumerate(run):
+            if t2.get("nameset_join_lines"):
+                # the entry runs to the next marker, however many lines the text
+                # layer broke it into; a heading that follows the list is cut off
+                stop = run[n + 1][1].start() if n + 1 < len(run) else _entry_end(text, m.end())
+                raw = text[m.start(2):stop]
+            else:
+                raw = m.group(2)
+            s = _clean_item(raw, bool(t2.get("nameset_join_lines")))
             if not (4 <= len(s) <= t2["nameset_max_item_len"]):
                 bad = "an entry is too short or too long after cleaning"
+                break
+            if skip_terms and any(w in s for w in skip_terms):
+                bad = "entry carries a term the track excludes"
                 break
             if s.startswith("<") or re.match(r"^(삭제|<삭제)", s):
                 bad = "list contains repealed entries"
@@ -729,8 +949,20 @@ def _nameset_candidate(text: str, rej: Rejects, cfg,
         if len(set(normalise(i) for i in items)) != len(items):
             rej("enumeration has duplicate entries after normalisation", "; ".join(items)[:120])
             continue
+        if skip_terms and any(w in lead for w in skip_terms):
+            rej("lead-in carries a term the track excludes", lead)
+            continue
         return lead, kind, items, (first.start(), run[-1][1].end()), prefix
     return None
+
+
+_ENTRY_STOP = re.compile(r"\n\s*\n|\n\s*제\s*\d+\s*(?:장|절|조)\b|\n\s*\d+(?:\.\d+)+\s|\n\s*[①-⑮]")
+
+
+def _entry_end(text: str, start: int) -> int:
+    """Where the last entry of a list ends: a blank line, a heading or the chunk."""
+    m = _ENTRY_STOP.search(text, start)
+    return m.start() if m else len(text)
 
 
 # track 3

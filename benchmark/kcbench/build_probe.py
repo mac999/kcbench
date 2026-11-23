@@ -29,7 +29,7 @@ from typing import Dict, List
 
 from kcbench.build_tracks import (Rejects, _base, _instr, _nameset_candidate,
                           _numeric_candidates, _provenance, enum_patterns, josa,
-                          load_reviews, reviewed_out)
+                          load_reviews, reviewed_out, clause_match)
 from kcbench.common import (clause_for, item_lang, verified_note, mining_vocab, QUALIFIER_EN, UNIT_EN, add_common_args, describe,
                     generated_documents, item_id, log, resolve_config, utc_now,
                     write_json, write_jsonl, nameset_match_mode)
@@ -69,8 +69,8 @@ def build(cfg, holdout, rej: Rejects) -> Path:
             if made >= cap or len(rows) >= numeric_want:
                 break
             text = chunk["text"]
-            clause = enum_patterns(cfg)["clause"].search(text)
             for f in _numeric_candidates(text, rej, cfg):
+                clause = clause_match(cfg, text, f["span"][0])
                 subject, value, unit, qual = f["subject"], f["value"], f["unit"], f["qualifier"]
                 key = (subject, value, unit, qual)
                 if key in seen:
