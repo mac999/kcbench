@@ -130,8 +130,8 @@ rest travels for provenance.
  "section_path": "제3조", "source_file": "01_design_standards_kds/.../dapt_training_data.jsonl"}
 ```
 
-Bodies average 665 characters, roughly 460 tokens, and are capped at 901. One
-epoch is about 12.3M tokens.
+Bodies average 665 characters, roughly 486 Qwen3 tokens, and are capped at 901.
+One epoch is 13.0M tokens (26,767 rows, Qwen3 tokenizer).
 
 `train_sft.jsonl` — instruction pairs. `input` and `output` are nested objects,
 not strings, so `sft.py` flattens them into a chat template.

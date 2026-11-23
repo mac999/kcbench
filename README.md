@@ -752,6 +752,11 @@ the model.
 | **SFT** | — | blank replies | **43% → 0%** |
 | SFT | — | closed-book factual recall | +0.009, not distinguishable from noise |
 
+These numbers come from the first campaign (key v0.5.1, checkpoints v1–v4,
+September 2026). The key, the serving setup and the graders have changed since,
+so compare them with one another, not with the v0.5.3 results in
+`benchmark/CHANGELOG.md` (v4.1 and later) and `reproduce/snapshot-2026-11/`.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="doc/dapt-perplexity-dark.png">
   <img alt="Perplexity by document category, base versus after DAPT. Every one of the thirteen categories fell, the overall figure from 7.589 to 4.553." src="doc/dapt-perplexity-light.png">

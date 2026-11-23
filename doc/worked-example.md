@@ -49,8 +49,8 @@ still being collected and these figures describe the snapshot the example ran
 on, not the dataset's ceiling. Its weaknesses belong up front, because they
 bound what the results below can be taken to mean.
 
-**Scale is the first of them.** Stage 1 saw **3.7 million tokens**
-of Korean construction regulation — 26,767 chunks from 865 documents — in a
+**Scale is the first of them.** Stage 1 saw **13.0 million tokens**
+of Korean construction regulation — 26,767 chunks from 1,088 documents — in a
 single pass, and stage 2 trained on 15,666 instruction pairs. Continued
 pre-training that successfully adds domain knowledge is normally reported at
 billions of tokens with several passes over each fact; this is roughly three
@@ -59,7 +59,7 @@ trainable parameters or 2.1% of an 8B model. **The campaign's central negative
 result — that four data recipes moved closed-book recall not at all — is
 therefore a statement about this corpus at this scale and this adapter size,
 not about domain fine-tuning in general.** The augmentation turns rearranged
-3.7M tokens; none of them added information the corpus did not already contain.
+13.0M tokens; none of them added information the corpus did not already contain.
 The larger-adapter test that would settle it has not been run: fine-tuning here
 crashed with out-of-memory five times, but always at rank 64 and always while
 the benchmark was scoring on the same unified-memory box, so what those crashes
@@ -72,7 +72,7 @@ of which only the first is about size:
 
 | Fault | Measured | Why it matters |
 |---|---|---|
-| **Scale** | 3.7M tokens, one pass | too few exposures per fact for recall to form |
+| **Scale** | 13.0M tokens, one pass | too few exposures per fact for recall to form |
 | **Format mismatch** | 82% of training answers are prose; 81% of scored items ask for a bare figure | the model was never shown the task it is graded on. **More data does not fix this** |
 | **Distribution mismatch** | equipment and services is 3.2% of training and 17.0% of the evaluation; structures is 25.7% against 13.4% | the categories weighted most heavily at scoring time are the thinnest in training |
 
@@ -295,7 +295,7 @@ campaign had clean loss curves and a 40% perplexity improvement while closed-boo
 knowledge stayed flat.
 
 The table gives each stage's data shape, the tracks that can detect it, and what
-this corpus produced — Qwen3-8B, 3.7M tokens, LoRA rank 64.
+this corpus produced — Qwen3-8B, 13.0M tokens, LoRA rank 64.
 
 | Stage | Training data | Measured by | Result on this corpus |
 |---|---|---|---|
@@ -312,7 +312,7 @@ is next-token prediction, so nothing is labelled.
 
 > `상수도설계기준 제1조(목적) 이 고시는 「수도법」제18조제1항, 「건설기술 진흥법」 제44조제1항에 따라 …`
 
-26,767 chunks, 3.7M tokens. Perplexity fell furthest on the documents least like
+26,767 chunks, 13.0M tokens. Perplexity fell furthest on the documents least like
 ordinary prose — specifications (KCS) 10.24 → 6.02 — which is the signature of
 a model learning clause structure and terminology.
 
@@ -465,8 +465,12 @@ All four checkpoints on the same frozen items, identical decoding
 The fourth turn attacked the abstention loss directly. If refusal trained on
 easy negatives did not transfer, harder ones should help: v4 draws each swapped
 clause from the *same document* as the question, so refusing cannot be decided
-from vocabulary alone. It made things worse. Abstention fell again, 0.750 →
-0.688 (p = 0.035 against v3, p = 0.005 against base), accuracy on supported
+from vocabulary alone. (A later check found that the augmentation grouped rows
+by a field the rows do not carry, so the v4 donors came from the whole pool
+after all; v4 is a second sampling of the v3 design, not a harder one.) It made
+things worse. Abstention fell again, 0.750 → 0.688 (uc4 accuracy 0.869 → 0.813,
+exact McNemar on 160 items, 3 gained / 12 lost, p = 0.035 against v3; p = 0.005
+against base), accuracy on supported
 clauses gave back its v3 gain, and calibration regressed for the first time in
 the campaign (ECE 0.281 → 0.349).
 
