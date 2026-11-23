@@ -143,7 +143,34 @@ def perplexity(cfg, model: str, text: str) -> float | None:
 
 # grading
 
-def grade_numeric(reply: str, item: dict, tol: float) -> bool:
+def _unit_figures(reply: str, unit: str) -> List[tuple]:
+    """Every figure written against the expected unit, with its span."""
+    pat = re.compile(NUM_RE.pattern + r"\s*" + re.escape(unit))
+    out = []
+    for m in pat.finditer(reply):
+        try:
+            out.append((float(NUM_RE.search(m.group(0)).group(0).replace(",", "")),
+                        m.start(), m.end()))
+        except (ValueError, AttributeError):
+            continue
+    return out
+
+
+# The qualifier classes a threshold can carry, and the words that state them
+# in a reply. 이내 and 이하 both bound from above and are not told apart.
+QUALIFIER_CLASS = {
+    "이상": "ge", "at least": "ge", "minimum": "ge", "not less than": "ge",
+    "no less than": "ge", "or more": "ge", "or greater": "ge",
+    "이하": "le", "이내": "le", "at most": "le", "within": "le", "maximum": "le",
+    "not more than": "le", "no more than": "le", "or less": "le", "not exceed": "le",
+    "미만": "lt", "less than": "lt", "under": "lt", "below": "lt", "fewer than": "lt",
+    "초과": "gt", "more than": "gt", "over": "gt", "exceed": "gt", "greater than": "gt",
+    "above": "gt",
+}
+_QUAL_RE = re.compile("|".join(re.escape(w) for w in sorted(QUALIFIER_CLASS, key=len, reverse=True)))
+
+
+def grade_numeric_detail(reply: str, item: dict, tol: float) -> Dict[str, float]:
     """
     The figure the item asks for, compared with relative tolerance.
 
@@ -154,10 +181,16 @@ def grade_numeric(reply: str, item: dict, tol: float) -> bool:
     55% of answers that stated the requirement correctly were marked wrong
     that way — the grader was scoring layout, not knowledge.
 
-    So the unit locates the figure. Every numeric item carries one. A number
-    written against the expected unit is the answer; if the reply never uses
-    the unit, the first number stands as before, which keeps a bare "70"
-    correct.
+    So the unit locates the figure. Every numeric item carries one. The first
+    figure written against the expected unit is the answer; if the reply never
+    uses the unit, the first number stands, which keeps a bare "70" correct.
+
+    Until v4.2 any unit-bearing figure in the reply could match, so a reply
+    that listed several candidate values was right if one of them was. That
+    lenient reading is kept as `correct_any` and `hedged` says when the two
+    differ. `qualifier_match` reports whether the direction of the limit
+    (이상/이하/미만/초과) stated next to the figure is the keyed one; it is
+    emitted only for items that carry a qualifier.
     """
     want = item["answer_value"]
 
@@ -165,24 +198,51 @@ def grade_numeric(reply: str, item: dict, tol: float) -> bool:
         return abs(x - want) <= abs(want) * tol + 1e-9
 
     unit = str(item.get("answer_unit") or "").strip()
-    if unit:
-        pat = re.compile(NUM_RE.pattern + r"\s*" + re.escape(unit))
-        cands = []
-        for m in pat.finditer(reply):
+    figs = _unit_figures(reply, unit) if unit else []
+    out: Dict[str, float] = {}
+    if figs:
+        first, start, end = figs[0]
+        out["correct"] = float(close(first))
+        out["correct_any"] = float(any(close(f) for f, _, _ in figs))
+        out["hedged"] = float(len({round(f, 6) for f, _, _ in figs}) > 1)
+        window = reply[max(0, start - 20):end + 12].lower()
+    else:
+        m = NUM_RE.search(reply)
+        ok = False
+        if m:
             try:
-                cands.append(float(NUM_RE.search(m.group(0)).group(0).replace(",", "")))
-            except (ValueError, AttributeError):
-                continue
-        if cands:
-            return any(close(c) for c in cands)
+                ok = close(float(m.group(0).replace(",", "")))
+            except ValueError:
+                ok = False
+        out["correct"] = float(ok)
+        out["correct_any"] = out["correct"]
+        out["hedged"] = 0.0
+        window = reply[max(0, m.start() - 20):m.end() + 12].lower() if m else ""
 
-    m = NUM_RE.search(reply)
+    keyed = QUALIFIER_CLASS.get(str(item.get("qualifier") or "").strip()) \
+        or QUALIFIER_CLASS.get(str(item.get("qualifier_en") or "").strip().lower())
+    if keyed:
+        stated = {QUALIFIER_CLASS[w] for w in _QUAL_RE.findall(window)}
+        out["qualifier_match"] = float(keyed in stated)
+    return out
+
+
+def grade_numeric(reply: str, item: dict, tol: float) -> bool:
+    return bool(grade_numeric_detail(reply, item, tol)["correct"])
+
+
+def judge_said_yes(out: str) -> bool:
+    """
+    Read a judge's verdict. The prompt asks for one word, yes or no, but a
+    Korean judge sometimes answers 예/아니오 and an explaining one puts the
+    word a few tokens in. The first verdict word decides; a reply with
+    neither is a no, as before.
+    """
+    head = re.sub(r"<think>.*?</think>", "", out, flags=re.S).strip().lower()[:40]
+    m = re.search(r"\b(yes|no)\b|예|네|아니", head)
     if not m:
         return False
-    try:
-        return close(float(m.group(0).replace(",", "")))
-    except ValueError:
-        return False
+    return m.group(0) in ("yes", "예", "네")
 
 
 THINK_RE = re.compile(r"<think>.*?</think>", re.S)
@@ -243,14 +303,40 @@ def grade_nameset(reply: str, item: dict) -> Dict[str, float]:
     got_raw = IFC_RE.findall(reply) if is_ifc else _lines(reply)
     if item.get("match_mode") == "fuzzy":
         return _nameset_fuzzy(got_raw, want_raw)
-    want = {w if is_ifc else normalise(w) for w in want_raw}
-    got = {g if is_ifc else normalise(g) for g in got_raw if g.strip()}
+    want = {w if is_ifc else _canon(w) for w in want_raw}
+    got = {g if is_ifc else _canon(g) for g in got_raw if g.strip()}
     if not got:
         return {"precision": 0.0, "recall": 0.0, "f1": 0.0}
-    hit = len(want & got)
+    matched: set = set()
+    for g in got:
+        w = _same_entry(g, want - matched)
+        if w is not None:
+            matched.add(w)
+    hit = len(matched)
     p = hit / len(got)
     r = hit / len(want) if want else 0.0
     return {"precision": p, "recall": r, "f1": 0.0 if p + r == 0 else 2 * p * r / (p + r)}
+
+
+# Particles a model appends when it copies a list entry into a sentence
+# ("가설구조물을", "안전난간은"). Only a whole trailing particle is dropped,
+# and only when what remains is a keyed entry, so a noun ending in the same
+# syllable is not cut.
+_PARTICLES = ("으로", "에서", "은", "는", "이", "가", "을", "를", "의", "에", "와", "과", "로", "도")
+
+
+def _canon(text: str) -> str:
+    """normalise() plus spacing removed: 가설 구조물 and 가설구조물 are one entry."""
+    return re.sub(r"\s+", "", normalise(text))
+
+
+def _same_entry(got: str, want: set):
+    if got in want:
+        return got
+    for p in _PARTICLES:
+        if got.endswith(p) and got[:-len(p)] in want:
+            return got[:-len(p)]
+    return None
 
 
 _WORD_RE = re.compile(r"[가-힣A-Za-z0-9]+")
@@ -474,7 +560,7 @@ def grade_mapping(reply: str, item: dict, tol: float) -> Dict[str, float]:
 # rather than the field reduce_reply() pulled out. Adding a type is adding a
 # row here — the scoring loop does not grow a branch for it.
 def _grade_numeric(reply, item, tol):
-    return {"correct": float(grade_numeric(reply, item, tol))}
+    return grade_numeric_detail(reply, item, tol)
 
 
 def _grade_nameset(reply, item, tol):
@@ -571,7 +657,7 @@ def make_sentence_grader(cfg, panel: List[str], embed_model: str):
                                     j, item.get("id"), attempt, exc)
                         time.sleep(5 * attempt)
                 if out is not None:
-                    calls.append("yes" in out.lower()[:40])
+                    calls.append(judge_said_yes(out))
             votes[kind] = vote(calls)
 
         cov, sup = votes["covered"], votes["supported"]

@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from kcbench.common import add_common_args, log, resolve_config
+from kcbench.evaluate import judge_said_yes
 
 LOG = log("sample")
 
@@ -156,7 +157,7 @@ def competence(cfg, model: str, n: int = 8) -> Dict[str, Any]:
 
     def ask(kind, gold, pred):
         out = generate(cfg, model, render(cfg, f"judge.{kind}.ko", gold=gold, pred=pred)) or ""
-        return "yes" in out.lower()[:40]
+        return judge_said_yes(out)
 
     cases = []
     for r in picked:
