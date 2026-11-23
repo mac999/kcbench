@@ -23,7 +23,8 @@ e = json.load(open(sys.argv[1]))
 print("\t".join(["cfg", e["benchmark_config"], e["model_tag"], e["run_tag_prefix"],
                  e["tracks"], e["modelfile_template"]]))
 r = e["recipe"]
-print("\t".join(["recipe", str(r["max_len"]), str(r["batch"]), str(r["accum"]), str(r["save_every"])]))
+print("\t".join(["recipe", str(r["max_len"]), str(r["batch"]), str(r["accum"]), str(r["save_every"]),
+                 r.get("context_label", "[조문]")]))
 for a in e["arms"]:
     print("\t".join(["arm", a["name"], a.get("model", "-"), a.get("data", "-"), str(a.get("seed", "-")),
                      str(a.get("epochs", r.get("epochs", 2)))]))
@@ -33,7 +34,7 @@ PYEOF
 }
 PLANOUT="$(plan)" || exit 1
 read -r CFG MODEL_TAG TAG TRACKS MODELFILE <<< "$(grep -P '^cfg\t' <<< "$PLANOUT" | cut -f2- | tr '\t' ' ')"
-read -r _ MAXLEN BATCH ACCUM SAVE <<< "$(grep -P '^recipe\t' <<< "$PLANOUT" | tr '\t' ' ')"
+read -r _ MAXLEN BATCH ACCUM SAVE LABEL <<< "$(grep -P '^recipe\t' <<< "$PLANOUT" | tr '\t' ' ')"
 GT="$(cd "$BM" && "$PY" -c "
 import json,sys
 from pathlib import Path
@@ -78,7 +79,8 @@ train(){ # arm data seed epochs
   [ -n "$last" ] && resume=(--resume-from "$last")
   say "train $arm on $(wc -l < "$data") rows seed=$seed epochs=$epochs ${resume[*]}"
   "$PY" "$HERE/sft.py" -d "$data" -o "$out" --max-len "$MAXLEN" --batch "$BATCH" \
-      --accum "$ACCUM" --seed "$seed" --epochs "$epochs" --save-every "$SAVE" "${resume[@]}" \
+      --accum "$ACCUM" --seed "$seed" --epochs "$epochs" --save-every "$SAVE" \
+      --context-label "$LABEL" "${resume[@]}" \
       >> "$HERE/sft_$TAG-$arm.log" 2>&1
   [ -f "$out/run.json" ] || { say "train $arm failed, see sft_$TAG-$arm.log"; return 1; }
   say "train $arm done"

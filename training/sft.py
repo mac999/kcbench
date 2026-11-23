@@ -52,7 +52,8 @@ def as_text(value) -> str:
 
 
 class Pairs(Dataset):
-    def __init__(self, path: Path, tok, max_len: int, limit: int | None = None):
+    def __init__(self, path: Path, tok, max_len: int, limit: int | None = None,
+                 context_label: str = "[조문]"):
         self.samples = []
         with path.open(encoding="utf-8") as fh:
             for line in fh:
@@ -64,7 +65,7 @@ class Pairs(Dataset):
                 if not instruction or not answer:
                     continue
                 context = as_text(r.get("input")).strip()
-                user = f"{instruction}\n\n[조문]\n{context}" if context else instruction
+                user = f"{instruction}\n\n{context_label}\n{context}" if context else instruction
                 self.samples.append((user, answer))
                 if limit and len(self.samples) >= limit:
                     break
@@ -118,6 +119,9 @@ def main() -> int:
     ap.add_argument("--save-every", type=int, default=500)
     ap.add_argument("--limit", type=int)
     ap.add_argument("--seed", type=int, default=20260814)
+    ap.add_argument("--context-label", default="[조문]",
+                    help="line that introduces the passage in the user turn; an English "
+                         "build trains with [Clause]")
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--resume-from", type=Path, metavar="DIR",
                     help="adapter checkpoint (out/.../step-N) to continue from. "
@@ -167,7 +171,7 @@ def main() -> int:
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"trainable {trainable/1e6:.1f}M")
 
-    data = Pairs(args.data, tok, args.max_len, args.limit)
+    data = Pairs(args.data, tok, args.max_len, args.limit, args.context_label)
     loader = DataLoader(data, batch_size=args.batch, shuffle=True, drop_last=True,
                         collate_fn=lambda b: collate(b, tok.pad_token_id))
     steps_per_epoch = max(1, len(loader) // args.accum)

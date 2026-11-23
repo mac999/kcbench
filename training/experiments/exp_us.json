@@ -1,0 +1,23 @@
+{
+  "_comment": "The English (29 CFR 1926) training-utility arm: the US STaR rows of the v0.5.3-style build on Qwen3-8B under the Korean recipe, scored on the US key with the English judge panel. 791 rows give about 50 optimiser steps at two epochs, so a six-epoch arm matches the step count of the Korean 2,202-row arms. The base is rescored so that all three runs share one grader version. Run with run_experiment.sh experiments/exp_us.json.",
+  "benchmark_config": "config_us.json",
+  "model_tag": "qwen3-us",
+  "run_tag_prefix": "us",
+  "modelfile_template": "Modelfile.qwen3-sft4",
+  "tracks": "probe,sft,uc1_safety,uc2_rebar_spec,uc4_faithfulness,uc5_incident,uc6_verdict,uc7_requirement,uc6_verdict_v2",
+  "recipe": {
+    "max_len": 3072,
+    "batch": 2,
+    "accum": 16,
+    "save_every": 100,
+    "epochs": 2,
+    "context_label": "[Clause]"
+  },
+  "datasets": {},
+  "arms": [
+    {"name": "base", "model": "qwen3:8b"},
+    {"name": "star", "data": "../ground_truth_us/train/train_star.jsonl", "seed": 20260814},
+    {"name": "star-e6", "data": "../ground_truth_us/train/train_star.jsonl", "seed": 20260814, "epochs": 6}
+  ],
+  "compares": [["base", "star"], ["base", "star-e6"]]
+}
