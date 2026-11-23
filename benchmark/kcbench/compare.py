@@ -8,14 +8,18 @@ Compare two runs — the whole point of this benchmark.
 from __future__ import annotations
 
 import argparse
+import collections
 import json
 import math
 import random
+import re
 import statistics
+import unicodedata
 from pathlib import Path
 from typing import Any, Dict, List
 
-from kcbench.common import add_common_args, log, resolve_config, score_metrics
+from kcbench.common import (add_common_args, log, resolve_config, score_metrics,
+                            read_jsonl, track_files)
 
 LOG = log("compare")
 
@@ -73,13 +77,16 @@ def paired_bootstrap(pairs: List[tuple], rounds: int = BOOTSTRAP_ROUNDS,
             "significant": lo > 0 or hi < 0, "test": "paired-bootstrap"}
 
 
-def paired_metrics(base: dict, after: dict, cfg: Dict[str, Any] | None = None) -> Dict[str, Any]:
+def paired_metrics(base: dict, after: dict, cfg: Dict[str, Any] | None = None,
+                   only: set | None = None) -> Dict[str, Any]:
     """Per-eval-type significance, matching items by id across the two runs."""
     out: Dict[str, Any] = {}
     for track, body in (after.get("tracks") or {}).items():
         b_items = {i["id"]: i for i in ((base.get("tracks") or {}).get(track) or {}).get("detail") or []}
         a_items = {i["id"]: i for i in (body.get("detail") or [])}
         shared = sorted(set(b_items) & set(a_items))
+        if only is not None:
+            shared = [i for i in shared if i in only]
         if not shared:
             continue
         kinds: Dict[str, List[str]] = {}
@@ -131,6 +138,92 @@ def collect(run: dict) -> Dict[str, float]:
     return flat
 
 
+def key_lookup(cfg: Dict[str, Any], run: dict) -> Dict[str, dict]:
+    """Every item of the key the run was scored against, by id."""
+    bdir = Path(run.get("benchmark_dir") or cfg["out_dir"])
+    out: Dict[str, dict] = {}
+    for fname in track_files(cfg).values():
+        p = bdir / fname
+        if p.exists():
+            for it in read_jsonl(p):
+                out[it["id"]] = it
+    return out
+
+
+def is_clean_heldout(item: dict) -> bool:
+    """A held-out item that does not repeat a trained one word for word."""
+    return item.get("split") != "train" and \
+        not str(item.get("contamination") or "").startswith("duplicate_of:")
+
+
+def _constant_answer(item: dict) -> str:
+    if item.get("eval_type") == "numeric":
+        a = f"{item.get('answer_value')} {item.get('answer_unit') or ''}"
+    else:
+        a = item.get("answer_verdict") or item.get("answer") or item.get("answer_ko") or ""
+    if isinstance(a, list):
+        a = "|".join(sorted(str(x) for x in a))
+    return re.sub(r"\s+", "", unicodedata.normalize("NFKC", str(a))).casefold()
+
+
+def heldout_clean(run: dict, keyed: Dict[str, dict],
+                  cfg: Dict[str, Any] | None = None) -> Dict[str, Dict[str, Any]]:
+    """
+    The headline over held-out items only, with the constant-answer baseline.
+
+    A use-case track mixes train-side and held-out items on purpose, and the
+    track mean then reads recall and grounding as one number. This restricts
+    every metric to items the model could not have trained on and puts next to
+    it what always giving the most frequent keyed answer would score, so a
+    0.88 on a 17-item track whose key is 'mismatch' 15 times is read as such.
+    Judge-graded metrics have no constant answer and report none.
+    """
+    prefer = score_metrics(cfg)
+    out: Dict[str, Dict[str, Any]] = {}
+    for track, body in (run.get("tracks") or {}).items():
+        kinds: Dict[str, list] = {}
+        for p in body.get("detail") or []:
+            k = keyed.get(p["id"])
+            if k is not None and is_clean_heldout(k):
+                kinds.setdefault(p["eval_type"], []).append((p, k))
+        for kind, pairs in sorted(kinds.items()):
+            metric = next((m for m in prefer if m in pairs[0][0]["score"]), None)
+            if not metric:
+                continue
+            vals = [p["score"][metric] for p, _ in pairs if metric in p["score"]]
+            if not vals:
+                continue
+            row: Dict[str, Any] = {"n": len(vals), "score": round(statistics.fmean(vals), 4)}
+            if metric in ("correct", "f1"):
+                top, n_top = collections.Counter(_constant_answer(k) for _, k in pairs).most_common(1)[0]
+                row["constant_baseline"] = round(n_top / len(pairs), 4)
+                row["constant_answer"] = top[:40]
+            out[f"t{track}.{kind}.{metric}"] = row
+    return out
+
+
+def render_heldout(bh: Dict[str, Dict[str, Any]], ah: Dict[str, Dict[str, Any]]) -> List[str]:
+    keys = [k for k in bh if k in ah]
+    if not keys:
+        return []
+    out = ["", "## Held-out items only / 홀드아웃 문항만", "",
+           "| Metric | n | Base | After | Delta | Constant answer |", "|---|---:|---:|---:|---:|---:|"]
+    for k in keys:
+        b, a = bh[k], ah[k]
+        base = a.get("constant_baseline")
+        out.append(f"| {k} | {a['n']} | {b['score']} | {a['score']} | {a['score'] - b['score']:+.4f} | "
+                   f"{'' if base is None else base} |")
+    out += ["", "Items from documents in the training split and held-out items that repeat a "
+                "trained item word for word are left out here. 'Constant answer' is what always "
+                "giving the most frequent keyed answer of the subset would score; a result near "
+                "it measures the key's class balance, not the model.",
+            "",
+            "학습 분할 문서의 문항과, 학습된 문항과 질문·정답이 같은 홀드아웃 문항을 뺀 값입니다. "
+            "'Constant answer'는 가장 흔한 정답만 내는 모델의 점수로, 이 값에 가까운 결과는 "
+            "모델이 아니라 키의 클래스 비율을 측정한 것입니다."]
+    return out
+
+
 def by_category(run: dict, cfg: Dict[str, Any] | None = None) -> Dict[str, float]:
     """Mean score per corpus category — shows where training actually landed."""
     prefer = score_metrics(cfg)
@@ -172,7 +265,8 @@ def render_paired(paired: Dict[str, Any], alpha: float = ALPHA) -> List[str]:
 
 
 def render(base: dict, after: dict, rows: Dict[str, Dict[str, Any]],
-           cats: Dict[str, Dict[str, Any]], paired: Dict[str, Any] | None = None) -> str:
+           cats: Dict[str, Dict[str, Any]], paired: Dict[str, Any] | None = None,
+           heldout: tuple | None = None, paired_heldout: Dict[str, Any] | None = None) -> str:
     out = [f"# Benchmark comparison — {base['tag']} → {after['tag']}", "",
            f"- base  / 기준 모델: `{base['model']}`",
            f"- after / 학습 모델: `{after['model']}`",
@@ -185,6 +279,12 @@ def render(base: dict, after: dict, rows: Dict[str, Dict[str, Any]],
         mark = "better" if d["improved"] else ("same" if d["delta"] == 0 else "worse")
         out.append(f"| {k} | {d['base']} | {d['after']} | {d['delta']:+} | {d['pct']:+.1f}% | {mark} |")
     out += render_paired(paired or {})
+    if heldout:
+        out += render_heldout(*heldout)
+        ph = render_paired(paired_heldout or {})
+        if ph:
+            ph[1] = "## Is the change real, on held-out items only? / 유의성 (홀드아웃 문항만)"
+            out += ph
     if cats:
         out += ["", "## By category / 분야별", "",
                 "| Category | Base | After | Delta |", "|---|---:|---:|---:|"]
@@ -229,6 +329,14 @@ def main() -> int:
     cats = {k: delta(k, bc[k], ac[k]) for k in sorted(bc) if k in ac}
     paired = paired_metrics(base, after, cfg)
 
+    keyed = key_lookup(cfg, after)
+    heldout = (heldout_clean(base, keyed, cfg), heldout_clean(after, keyed, cfg)) if keyed else None
+    clean_ids = {i for i, k in keyed.items() if is_clean_heldout(k)}
+    paired_heldout = paired_metrics(base, after, cfg, clean_ids) if keyed else {}
+    if not keyed:
+        LOG.warning("no key found at %s - the held-out table is skipped",
+                    after.get("benchmark_dir") or cfg["out_dir"])
+
     for k, d in rows.items():
         LOG.info("%-30s %8.4f → %8.4f  %+8.4f  (%+.1f%%) %s",
                  k, d["base"], d["after"], d["delta"], d["pct"],
@@ -236,10 +344,18 @@ def main() -> int:
 
     for k, st in paired.items():
         LOG.info("%-30s %s", k, st)
+    if heldout:
+        for k, a in heldout[1].items():
+            b = heldout[0].get(k)
+            LOG.info("held-out %-26s %8.4f → %8.4f  n=%d  constant %s", k,
+                     b["score"] if b else float("nan"), a["score"], a["n"],
+                     a.get("constant_baseline", "-"))
 
-    report = render(base, after, rows, cats, paired)
+    report = render(base, after, rows, cats, paired, heldout, paired_heldout)
     payload = {"base": base["tag"], "after": after["tag"],
-               "headline": rows, "by_category": cats, "significance": paired}
+               "headline": rows, "by_category": cats, "significance": paired,
+               "heldout": {"base": heldout[0], "after": heldout[1]} if heldout else None,
+               "significance_heldout": paired_heldout}
     (runs_dir / f"compare_{base['tag']}_vs_{after['tag']}.json").write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if args.markdown:
