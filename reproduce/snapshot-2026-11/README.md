@@ -86,6 +86,12 @@ data is what every later stage reads.
   published scores to its digest.
 - The LLM generation and the expert review are not re-runnable; their outputs
   are inputs here and are hashed in `MANIFEST.txt`.
+- On 2026-11-23 the key files gained a `contamination: duplicate_of:<id>`
+  field on held-out items whose question and answer repeat a trained-on item
+  (track 2: 33, uc1: 19, uc4: 6 in v0.5.3). Scoring does not read the field,
+  so every number in the manuscript is unchanged; the hashes of the three
+  files were refreshed and `mark_duplicates.py` rewrites the field on a
+  rebuild.
 
 ## Local files
 
