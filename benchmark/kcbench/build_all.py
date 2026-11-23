@@ -124,10 +124,16 @@ def main() -> int:
                 continue
             if uc.get("builder") != "verdict_from_thresholds" or not uc.get("enabled", True):
                 continue
-            if _run("kcbench.build_verdict", [*shared, "--usecase", key]) != 0:
+            flags = ["--holdout-only"] if uc.get("holdout_only") else []
+            if _run("kcbench.build_verdict", [*shared, "--usecase", key, *flags]) != 0:
                 return 1
-        if _run("kcbench.build_requirement", shared) != 0:
-            return 1
+        for key, uc in (cfg.get("usecases") or {}).items():
+            if key.startswith("_") or not isinstance(uc, dict):
+                continue
+            if uc.get("builder") != "requirement_from_thresholds" or not uc.get("enabled", True):
+                continue
+            if _run("kcbench.build_requirement", [*shared, "--usecase", key]) != 0:
+                return 1
 
     if args.skip_split:
         LOG.info("stage 5/7: training split - skipped")

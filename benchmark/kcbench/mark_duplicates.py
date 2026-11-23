@@ -40,6 +40,10 @@ def _key(item: dict) -> Tuple[str, str] | None:
     q, a = str(q), str(a)
     if not q.strip() or not a.strip():
         return None
+    # A verdict question states a measured figure and a label; two different
+    # clauses can share both. The passage is part of what the item asks.
+    if item.get("eval_type") == "verdict":
+        q = q + "\u241f" + str(item.get("context") or "")
     # NFKC plus whitespace removal: the same clause arrives from different
     # PDFs with different spacing around particles and full-width digits
     return (_WS.sub("", unicodedata.normalize("NFKC", q)).casefold(),

@@ -15,12 +15,14 @@ evidence -- so one label schema serves both the training data and this track.
 from __future__ import annotations
 
 import argparse
+import collections
 import hashlib
 import json
 import random
 from pathlib import Path
 
 from kcbench.build_requirement import subject_of
+from kcbench.build_tracks import Rejects, load_reviews, reviewed_out
 from kcbench.common import item_lang, verified_note, add_common_args, log, read_jsonl, resolve_config, write_jsonl
 
 LOG = log("verdict")
@@ -33,6 +35,7 @@ LOG = log("verdict")
 # title, which the model is never shown, made that column unmeasurable on 798
 # of 810 items.
 DEFAULTS = {
+    "drop_conflicting": False,
     "name_subject": True,
     "verdicts_offered": ["entail", "contradict"],
     "offer_null": False,               # append |null to the schema's verdict field
@@ -229,6 +232,8 @@ def main(argv: list[str] | None = None) -> int:
     out_name = args.out or ((cfg.get("usecases") or {}).get(args.usecase) or {}).get(
         "track_file", f"{args.usecase}.jsonl")
 
+    reviews = load_reviews(cfg)
+    rej = Rejects()
     items, skipped = [], 0
     for name in args.sources:
         path = out_dir / name
@@ -247,11 +252,26 @@ def main(argv: list[str] | None = None) -> int:
                 if item is None:
                     skipped += 1
                     continue
+                if reviewed_out(reviews, item["id"], rej):
+                    continue
                 items.append(item)
                 made += 1
         LOG.info("%s: %d source row(s) -> %d item(s)", name, len(rows), made)
 
     rng.shuffle(items)
+    if st.get("drop_conflicting"):
+        # Two thresholds mined from one passage with the same subject give the
+        # same question twice, and the measured figure built for one can sit on
+        # the other side of the other's limit: the review found four such
+        # groups in v0.5.3 keyed entail and contradict at once. Neither can be
+        # right for a reader, so both go.
+        groups = collections.defaultdict(set)
+        for it in items:
+            groups[(it["context"], it["question_ko"])].add(it["answer_verdict"])
+        bad = {k for k, v in groups.items() if len(v) > 1}
+        before = len(items)
+        items = [it for it in items if (it["context"], it["question_ko"]) not in bad]
+        LOG.info("dropped %d item(s) in %d group(s) keyed both ways", before - len(items), len(bad))
     write_jsonl(out_dir / out_name, items)
     entail = sum(1 for i in items if i["answer_verdict"] == ENTAIL)
     LOG.info("%d item(s) -> %s (entail %d / contradict %d), %d source row(s) unusable",
