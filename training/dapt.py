@@ -109,12 +109,12 @@ def main() -> int:
     print(f"data   {args.data}")
     print(f"out    {args.out}")
 
-    tok = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
+    tok = AutoTokenizer.from_pretrained(args.model)
     if tok.pad_token_id is None:
         tok.pad_token = tok.eos_token
 
     model = AutoModelForCausalLM.from_pretrained(
-        args.model, dtype=torch.bfloat16, device_map="cuda", trust_remote_code=True)
+        args.model, dtype=torch.bfloat16, device_map="cuda")
     model.config.use_cache = False
     if args.checkpointing:
         model.gradient_checkpointing_enable()

@@ -40,14 +40,14 @@ def main() -> int:
 
     dtype = getattr(torch, args.dtype)
     model = AutoModelForCausalLM.from_pretrained(
-        base, dtype=dtype, device_map="cpu", trust_remote_code=True)
+        base, dtype=dtype, device_map="cpu")
     model = PeftModel.from_pretrained(model, args.adapter)
     model = model.merge_and_unload()
 
     args.out.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(args.out, safe_serialization=True)
     tok_src = args.adapter if (args.adapter / "tokenizer_config.json").exists() else base
-    AutoTokenizer.from_pretrained(tok_src, trust_remote_code=True).save_pretrained(args.out)
+    AutoTokenizer.from_pretrained(tok_src).save_pretrained(args.out)
     print(f"merged -> {args.out}")
     return 0
 
