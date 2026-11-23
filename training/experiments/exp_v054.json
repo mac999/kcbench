@@ -1,0 +1,17 @@
+{
+  "_comment": "The v053cmp arms rescored on the v0.5.4 key: the same registered Ollama models, no training. The base and the two 2,202-row arms (v052 data, v053 data) plus the full v053 arm, open and closed book, so every number of the manuscript's Section 5 can be read on the repaired key. Run with run_experiment.sh experiments/exp_v054.json.",
+  "benchmark_config": "config_kr_v054_ft.json",
+  "model_tag": "qwen3-v053cmp",
+  "run_tag_prefix": "v054",
+  "modelfile_template": "Modelfile.qwen3-sft4",
+  "tracks": "probe,sft,uc1_safety,uc2_rebar_spec,uc4_faithfulness,uc5_incident,uc6_verdict,uc7_requirement,uc6_verdict_v2,uc7_requirement_v2",
+  "recipe": {"max_len": 3072, "batch": 2, "accum": 16, "save_every": 100, "epochs": 2},
+  "datasets": {},
+  "arms": [
+    {"name": "base", "model": "qwen3:8b"},
+    {"name": "v052", "model": "qwen3-v053cmp:v052"},
+    {"name": "n2202", "model": "qwen3-v053cmp:n2202"},
+    {"name": "v053", "model": "qwen3-v053cmp:v053"}
+  ],
+  "compares": [["base", "v052"], ["base", "n2202"], ["base", "v053"], ["v052", "n2202"]]
+}

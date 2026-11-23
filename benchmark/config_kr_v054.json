@@ -1,0 +1,52 @@
+{
+  "extends": "config_kr_v053.json",
+  "_variant": "v0.5.4: the v0.5.3 corpus, holdout and training split with the mining rules repaired after the 2026-11 expert review. Every repair is a setting that config_kr_v053.json leaves off, so the earlier key still rebuilds unchanged.",
+  "out_dir": "../ground_truth_v054",
+  "track2_sft": {
+    "_comment_v054": "Admission rules for a threshold sentence, each named after the defect class the review found: figures in grading bands and tables, figures that open a condition, permissive or recommending sentences, negated qualifiers, ratios keyed on the wrong noun, and clause labels taken from the first heading in the chunk rather than the one above the figure. For lists: a captured run that a later marker shows to be a prefix is refused, entries are read up to the next marker, the lead-in has to sit within 200 characters of the list, and a 가나다 sub-list needs its own lead-in.",
+    "require_requirement_sentence": true,
+    "reject_conditions": true,
+    "reject_grading_bands": true,
+    "reject_forms": true,
+    "flip_negated_qualifier": true,
+    "ratio_subject_from_topic": true,
+    "reject_conjunction_subjects": true,
+    "clause_position": "before_figure",
+    "nameset_reject_gaps": true,
+    "nameset_join_lines": true,
+    "nameset_lead_in_window": 200,
+    "nameset_heading_for_secondary": false,
+    "nameset_skip_terms": [
+      "의견서",
+      "행정예고",
+      "보내실 곳",
+      "연락처",
+      "재검토기한"
+    ]
+  },
+  "enumeration": {
+    "heading_alt": "(?:^|\\n)\\s*(\\d+(?:\\.\\d+)+)\\s+([^\\n\\d]{2,40})(?=\\n)"
+  },
+  "usecases": {
+    "uc5_incident": {
+      "_comment_v054": "Measures are clause-length, so an entry may run to 160 characters once it is read up to the next marker; definitions and qualification lists are not measures.",
+      "nameset_max_item_len": 160,
+      "nameset_skip_terms": [
+        "의견서",
+        "행정예고",
+        "보내실 곳",
+        "연락처",
+        "재검토기한",
+        "말한다",
+        "이란",
+        "해당하는 사람",
+        "자격"
+      ]
+    },
+    "uc6_verdict_v2": {
+      "drop_conflicting": true,
+      "holdout_only": true,
+      "_comment_v054": "holdout_only was declared for the first verdict track but never passed to the builder; v0.5.3 came out all held-out only because every numeric uc1 item happened to be. Both verdict tracks now take held-out thresholds only, as intended."
+    }
+  }
+}

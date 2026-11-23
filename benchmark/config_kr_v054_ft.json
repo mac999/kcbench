@@ -1,0 +1,7 @@
+{
+  "extends": "config_kr_v054.json",
+  "_variant": "v0.5.4 key scored with the fine-tuning judge panel (exaone3.5 / glm4 / gemma2), the same panel as config_kr_v053_ft.json",
+  "judges": {
+    "candidates": ["exaone3.5:7.8b", "glm4:9b", "gemma2:9b"]
+  }
+}
