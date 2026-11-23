@@ -901,6 +901,12 @@ def run_qa(cfg, model: str, rows: List[dict], lang: str, repeats: int,
         extra = {k: item[k] for k in ("split", "context_matches", "label_task",
                                       "usecase", "volatility")
                  if k in item}
+        # Held-out items that repeat a trained-on clause word for word are
+        # marked by the build; the aggregate reports the track with and
+        # without them, so a closed-book score can be read as recall
+        if item.get("split") != "train":
+            c = str(item.get("contamination") or "")
+            extra["contamination"] = "duplicate" if c.startswith("duplicate_of:") else "clean"
         rec = {
             "id": item["id"], "eval_type": item["eval_type"],
             "category": item.get("category"), "prompt_lang": asked, **extra,
@@ -963,7 +969,8 @@ def _aggregate(per_item: List[dict]) -> dict:
         # measurement, and averaging the two kinds together reports neither.
         for field, prefix in (("split", "split"), ("context_matches", "context"),
                               ("label_task", "task"), ("prompt_lang", "lang"),
-                              ("volatility", "volatility")):
+                              ("volatility", "volatility"),
+                              ("contamination", "contamination")):
             vals = sorted({str(p[field]) for p in group if field in p})
             if len(vals) > 1:
                 out[kind][f"by_{prefix}"] = {

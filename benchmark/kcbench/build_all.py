@@ -140,6 +140,8 @@ def main() -> int:
         LOG.info("stage 6/7: provenance - skipped")
     else:
         LOG.info("stage 6/7: provenance and contamination")
+        if _run("kcbench.mark_duplicates", shared + ["--write"]) != 0:
+            return 1
         rc = _run("kcbench.verify_provenance", shared + ["--tracks", args.tracks]
                   + (["--strict"] if args.strict else []))
         if rc != 0:
