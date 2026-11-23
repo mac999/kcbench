@@ -19,7 +19,7 @@ MANIFEST.txt   commits, tool versions, sha256 of 126 inputs and outputs
 
 | | |
 |---|---|
-| kcbench commit | `18d0829` (2026-11-16) |
+| kcbench commit | `117cfcb` (2026-11-16) |
 | gen_aec_syn_data commit | `64580bf` (2026-10-20) |
 | generator | qwen3:30b-a3b through Ollama, temperature 0.5, JSON mode, 8,192 context (`config/generator/`) |
 | data releases | v0.5.2 (`train_data_v052/`, 2026-09-27), v0.5.3 (`train_data_v053/`, 2026-10-18), 29 CFR 1926 (`train_data_us/`, 2026-10-06) |
