@@ -74,6 +74,19 @@ ITEM_RE = re.compile(r"^\s*(?:(\d{1,2})[.)]|([가나다라마바사아자차])[.
 LEAD_RE = re.compile(r"(다음\s*각\s*호|다음과\s*같다|다음\s*사항|아래와\s*같다|다음\s*기준|다음\s*조건|다음\s*서류|다음\s*항목|다음\s*내용|다음\s*각\s*목)")
 
 
+def _doc_of(r: dict):
+    """
+    The document a training row came from.
+
+    Generator rows carry `source_doc_ids` (a list) and the split adds
+    `source_doc` (the document folder); none has a top-level `doc_id`. Grouping
+    on `doc_id` put every row in one group, so the "same document" hard
+    negatives were drawn from the global pool after all.
+    """
+    return (r.get("doc_id") or r.get("source_doc")
+            or (r.get("source_doc_ids") or [None])[0])
+
+
 def load(path: Path):
     with path.open(encoding="utf-8") as fh:
         for line in fh:
@@ -124,7 +137,7 @@ def abstain_pairs(rows, ratio: float, rng: random.Random, hard: bool = False):
             and len((r["input"].get("context") or "")) > 60]
     by_doc = {}
     for r in pool:
-        by_doc.setdefault(r.get("doc_id"), []).append(r)
+        by_doc.setdefault(_doc_of(r), []).append(r)
     out = []
     for r in pool:
         if rng.random() > ratio:
@@ -133,14 +146,14 @@ def abstain_pairs(rows, ratio: float, rng: random.Random, hard: bool = False):
         ans = (o.get("answer", "") if isinstance(o, dict) else str(o)).strip()
         # hard: same document first, falling back to the global pool when a
         # document holds only this one pair
-        siblings = [x for x in by_doc.get(r.get("doc_id"), []) if x is not r]
+        siblings = [x for x in by_doc.get(_doc_of(r), []) if x is not r]
         candidates = (siblings or pool) if hard else pool
         for _ in range(8):
             donor = rng.choice(candidates)
             ctx = donor["input"]["context"]
             if donor is r or (ans and ans in ctx):
                 continue
-            if not hard and donor.get("doc_id") == r.get("doc_id"):
+            if not hard and _doc_of(donor) == _doc_of(r):
                 continue
             v = json.loads(json.dumps(r, ensure_ascii=False))
             v["id"] = f"{r.get('id', 'sft')}_ab"
