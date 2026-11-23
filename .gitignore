@@ -77,6 +77,27 @@ benchmark/config.json.bak
 /ground_truth_v052/runs/*
 !/ground_truth_v052/runs/demo-*.json
 
+# v0.5.4: the v0.5.3 corpus, holdout and split with the mining rules repaired
+# after the 2026-11 expert review (config_kr_v054.json). Published like v0.5.2:
+# the mined item sets, the holdout record and the reviewer verdicts the build
+# honours.
+!/ground_truth_v054
+/ground_truth_v054/*
+!/ground_truth_v054/holdout.json
+!/ground_truth_v054/probe_trained.jsonl
+!/ground_truth_v054/track2_sft.jsonl
+!/ground_truth_v054/track3_vlm.jsonl
+!/ground_truth_v054/uc1_safety_qa.jsonl
+!/ground_truth_v054/uc2_spec_threshold.jsonl
+!/ground_truth_v054/uc3_cross_image.jsonl
+!/ground_truth_v054/uc4_faithfulness.jsonl
+!/ground_truth_v054/uc5_incident.jsonl
+!/ground_truth_v054/uc6_verdict.jsonl
+!/ground_truth_v054/uc6_verdict_v2.jsonl
+!/ground_truth_v054/uc7_requirement.jsonl
+!/ground_truth_v054/uc7_requirement_v2.jsonl
+!/ground_truth_v054/reviews.json
+
 # training: scripts only. Checkpoints, adapters and logs stay local.
 training/out/
 training/*.log
