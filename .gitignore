@@ -77,6 +77,13 @@ benchmark/config.json.bak
 /ground_truth_v052/runs/*
 !/ground_truth_v052/runs/demo-*.json
 
+# the v0.5.3 holdout record: the generator's config_v054.json reads it to keep
+# held-out documents out of the regenerated training data; same content as
+# ground_truth_v054/holdout.json
+!/ground_truth_v053
+/ground_truth_v053/*
+!/ground_truth_v053/holdout.json
+
 # v0.5.4: the v0.5.3 corpus, holdout and split with the mining rules repaired
 # after the 2026-11 expert review (config_kr_v054.json). Published like v0.5.2:
 # the mined item sets, the holdout record and the reviewer verdicts the build

@@ -1,0 +1,12 @@
+{
+  "extends": "config_kr_v054.json",
+  "_variant": "v0.5.4 key with the regenerated v0.5.4 training data: generated_dir points at train_data_v054, the split hashes nested fields, drops 12-gram near-duplicates of held-out text and cuts a 10% validation set. The holdout and the mined items stay those of config_kr_v054.json; write the split with --out-train ../ground_truth_v054/train_gen054 so the v0.5.3 split stays beside it.",
+  "generated_dir": "../train_data_v054/train_data",
+  "split": {
+    "nested_fields": true,
+    "near_duplicate_ngram": 12,
+    "near_duplicate_threshold": 0.5,
+    "near_duplicate_min_chars": 60,
+    "valid_fraction": 0.1
+  }
+}

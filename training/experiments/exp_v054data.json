@@ -1,0 +1,68 @@
+{
+  "_comment": "Arms trained on the regenerated v0.5.4 data (refusal twins, verifier gate, holdout-aware), scored on the v0.5.4 key beside the v053cmp arms. Build the split first: cb.py split -c config_kr_v054_gen.json --out-train ../ground_truth_v054/train_gen054. The equal-size arm and its seed repeats test whether the abstention variance of v0.5.3 (8%/18%/84% across seeds) is gone. Legacy prompt layout, so the arms are comparable with v053cmp. Run with run_experiment.sh experiments/exp_v054data.json.",
+  "benchmark_config": "config_kr_v054_ft.json",
+  "model_tag": "qwen3-v054data",
+  "run_tag_prefix": "v054data",
+  "modelfile_template": "Modelfile.qwen3-sft4",
+  "tracks": "probe,sft,uc1_safety,uc2_rebar_spec,uc4_faithfulness,uc5_incident,uc6_verdict,uc7_requirement,uc6_verdict_v2,uc7_requirement_v2",
+  "recipe": {
+    "max_len": 3072,
+    "batch": 2,
+    "accum": 16,
+    "save_every": 100,
+    "epochs": 2
+  },
+  "datasets": {
+    "../ground_truth_v054/train_gen054/train_star_n2202.jsonl": {
+      "source": "../ground_truth_v054/train_gen054/train_star.jsonl",
+      "method": "shuffle_head",
+      "n": 2202,
+      "seed": 20260814,
+      "_why": "the v0.5.4 STaR rows at the v0.5.2 count, for the equal-size comparison"
+    }
+  },
+  "arms": [
+    {
+      "name": "base",
+      "model": "qwen3:8b"
+    },
+    {
+      "name": "full",
+      "data": "../ground_truth_v054/train_gen054/train_star.jsonl",
+      "seed": 20260814
+    },
+    {
+      "name": "n2202",
+      "data": "../ground_truth_v054/train_gen054/train_star_n2202.jsonl",
+      "seed": 20260814
+    },
+    {
+      "name": "n2202-s2",
+      "data": "../ground_truth_v054/train_gen054/train_star_n2202.jsonl",
+      "seed": 7
+    },
+    {
+      "name": "n2202-s3",
+      "data": "../ground_truth_v054/train_gen054/train_star_n2202.jsonl",
+      "seed": 42
+    }
+  ],
+  "compares": [
+    [
+      "base",
+      "full"
+    ],
+    [
+      "base",
+      "n2202"
+    ],
+    [
+      "n2202",
+      "n2202-s2"
+    ],
+    [
+      "n2202",
+      "n2202-s3"
+    ]
+  ]
+}
