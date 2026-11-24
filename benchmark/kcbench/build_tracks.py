@@ -393,6 +393,13 @@ def held_documents(cfg, holdout) -> list[dict]:
     return sorted(docs, key=lambda d: d["generated_dir"])
 
 
+def _side_fields(cfg) -> dict:
+    """The fixed tracks are mined from held-out documents only; say so on the
+    item when the config asks, so every track carries a split like the use
+    cases do."""
+    return {"split": "holdout"} if (cfg.get("track2_sft") or {}).get("mark_split") else {}
+
+
 def _base(track: str, kind: str, doc: dict) -> dict:
     return {
         "benchmark": BENCHMARK_NAME,
@@ -649,6 +656,25 @@ def clause_match(cfg, text: str, pos: int | None = None):
     return last
 
 
+def drop_conflicting_questions(rows: List[dict], t2: dict, rej: Rejects) -> List[dict]:
+    """
+    One question, two keyed answers, from two chunks of the same document
+    ("기계 하중은 몇 배 이하": 3배 in one clause, 5배 in another). Whichever the
+    model answers, one key marks it wrong. Under drop_conflicting_questions
+    both go; off, the rows are returned as they were.
+    """
+    if not t2.get("drop_conflicting_questions"):
+        return rows
+    answers: Dict[str, set] = {}
+    for r in rows:
+        answers.setdefault(r.get("question_ko") or "", set()).add(json.dumps(r.get("answer"), ensure_ascii=False))
+    bad = {q for q, a in answers.items() if len(a) > 1}
+    kept = [r for r in rows if (r.get("question_ko") or "") not in bad]
+    for q in bad:
+        rej("the same question is keyed with different answers", q)
+    return kept
+
+
 def build_track2(cfg, holdout, rej: Rejects) -> Path:
     """
     Questions whose answer is a string the document itself contains.
@@ -697,6 +723,7 @@ def build_track2(cfg, holdout, rej: Rejects) -> Path:
                 topic = "" if en_order else josa(subject, "은", "는")
                 rows.append({
                     **_base("sft", "numeric", d),
+                    **_side_fields(cfg),
                     "id": item,
                     "lang": item_lang(cfg),
                     "context": text,
@@ -763,6 +790,7 @@ def build_track2(cfg, holdout, rej: Rejects) -> Path:
                 q_en = f"According to the passage, list every item that falls under '{lead}'."
             rows.append({
                 **_base("sft", "nameset", d),
+                **_side_fields(cfg),
                 "id": item,
                 "lang": item_lang(cfg),
                 "context": prefix + chunk["text"],
@@ -782,6 +810,7 @@ def build_track2(cfg, holdout, rej: Rejects) -> Path:
             })
             made += 1
 
+    rows = drop_conflicting_questions(rows, t2, rej)
     out = write_jsonl(cfg["out_dir"] / "track2_sft.jsonl", rows)
     kinds = collections.Counter(r["eval_type"] for r in rows)
     LOG.info("sft: %d item(s) %s over %d document(s)",
@@ -1012,6 +1041,7 @@ def build_track3(cfg, holdout, rej: Rejects) -> Path:
             doc_like = {"stem": model, "category": m["category"]}
             rows.append({
                 **_base("vlm", "nameset", doc_like),
+                **_side_fields(cfg),
                 "id": item_id("t3", model, stem, "nameset"),
                 "lang": item_lang(cfg),
                 "question_ko": "이 건설 현장 사진에 보이는 구조 요소의 종류를 IFC 명칭으로 모두 나열하시오.",
@@ -1035,6 +1065,7 @@ def build_track3(cfg, holdout, rej: Rejects) -> Path:
                 continue
             rows.append({
                 **_base("vlm", "mapping", doc_like),
+                **_side_fields(cfg),
                 "id": item_id("t3", model, stem, "mapping"),
                 "lang": item_lang(cfg),
                 "question_ko": "이 사진의 건물 모델을 구성하는 구조 요소를 IFC 명칭과 종류별 개수로 제시하시오.",

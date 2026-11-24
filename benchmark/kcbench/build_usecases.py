@@ -29,7 +29,8 @@ from typing import Any, Dict, List
 
 from kcbench.build_tracks import (Rejects, _base, _instr,
                           _nameset_candidate, _numeric_candidates, _provenance,
-                          enum_patterns, josa, load_reviews, reviewed_out, clause_match)
+                          enum_patterns, josa, load_reviews, reviewed_out, clause_match,
+                          drop_conflicting_questions)
 from kcbench.common import (clause_label, clause_for, verified_note, item_lang, mining_vocab, QUALIFIER_EN, UNIT_EN, add_common_args, describe,
                     generated_documents, item_id, log, resolve_config, utc_now,
                     write_json, write_jsonl, nameset_match_mode)
@@ -235,7 +236,7 @@ def build_doc_filtered_qa(cfg, holdout, key: str, uc: dict, rej: Rejects) -> Lis
                 "provenance": _provenance(cfg, d, chunk, span),
             })
             made += 1
-    return rows
+    return drop_conflicting_questions(rows, cfg["track2_sft"], rej)
 
 
 # builder: vlm_labels (UC3 site photo vs BIM render)

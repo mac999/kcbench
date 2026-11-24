@@ -77,8 +77,37 @@ def paired_bootstrap(pairs: List[tuple], rounds: int = BOOTSTRAP_ROUNDS,
             "significant": lo > 0 or hi < 0, "test": "paired-bootstrap"}
 
 
+def cluster_bootstrap(pairs: List[tuple], groups: List[str], rounds: int = BOOTSTRAP_ROUNDS,
+                      seed: int = BOOTSTRAP_SEED, alpha: float = ALPHA) -> Dict[str, Any]:
+    """
+    95% interval on the mean per-item change, resampling documents.
+
+    Items mined from one document share its clauses, its extraction damage
+    and its subject matter, so they move together; treating them as
+    independent makes the interval narrower than the evidence. Documents are
+    drawn with replacement and every item of a drawn document comes along.
+    """
+    by_doc: Dict[str, list] = {}
+    for (b, a), g in zip(pairs, groups):
+        by_doc.setdefault(g, []).append(a - b)
+    docs = list(by_doc.values())
+    if len(docs) < 2:
+        return {"n_clusters": len(docs)}
+    rng = random.Random(seed)
+    means = []
+    for _ in range(rounds):
+        picked = rng.choices(docs, k=len(docs))
+        flat = [d for ds in picked for d in ds]
+        means.append(statistics.fmean(flat))
+    means.sort()
+    lo, hi = means[int(alpha / 2 * rounds)], means[int((1 - alpha / 2) * rounds)]
+    return {"n_clusters": len(docs), "ci95_low": round(lo, 4), "ci95_high": round(hi, 4),
+            "significant": lo > 0 or hi < 0, "test": "cluster-bootstrap"}
+
+
 def paired_metrics(base: dict, after: dict, cfg: Dict[str, Any] | None = None,
-                   only: set | None = None) -> Dict[str, Any]:
+                   only: set | None = None,
+                   cluster_of: Dict[str, str] | None = None) -> Dict[str, Any]:
     """Per-eval-type significance, matching items by id across the two runs."""
     out: Dict[str, Any] = {}
     for track, body in (after.get("tracks") or {}).items():
@@ -101,9 +130,15 @@ def paired_metrics(base: dict, after: dict, cfg: Dict[str, Any] | None = None,
                      for i in ids]
             binary = all(v in (0.0, 1.0) for p in pairs for v in p)
             c = (cfg or {}).get("compare", {})
-            out[f"t{track}.{kind}.{metric}"] = mcnemar(pairs) if binary else paired_bootstrap(
+            stat = mcnemar(pairs) if binary else paired_bootstrap(
                 pairs, c.get("bootstrap_rounds", BOOTSTRAP_ROUNDS),
                 c.get("bootstrap_seed", BOOTSTRAP_SEED), c.get("alpha", ALPHA))
+            if cluster_of:
+                groups = [cluster_of.get(i) or a_items[i].get("doc") or i for i in ids]
+                stat["cluster"] = cluster_bootstrap(
+                    pairs, groups, c.get("bootstrap_rounds", BOOTSTRAP_ROUNDS),
+                    c.get("bootstrap_seed", BOOTSTRAP_SEED), c.get("alpha", ALPHA))
+            out[f"t{track}.{kind}.{metric}"] = stat
     return out
 
 
@@ -253,11 +288,18 @@ def render_paired(paired: Dict[str, Any], alpha: float = ALPHA) -> List[str]:
         else:
             sig = s.get("significant")
             ev = f"mean {s['mean_delta']:+.4f}, 95% CI [{s['ci95_low']:+.4f}, {s['ci95_high']:+.4f}]"
+        cl = s.get("cluster") or {}
+        if cl.get("test"):
+            ev += (f"; by document ({cl['n_clusters']}): 95% CI "
+                   f"[{cl['ci95_low']:+.4f}, {cl['ci95_high']:+.4f}]")
+            sig = sig and cl["significant"]
         out.append(f"| {k} | {s.get('n_items', 0)} | {ev} | "
                    f"{'significant' if sig else 'not distinguishable from noise'} |")
     out += ["", "Items are the same in both runs, so the comparison is paired: only the items "
                 "whose verdict changed carry information. An aggregate difference without this "
-                "test can be entirely noise.",
+                "test can be entirely noise. Where a document-cluster interval is given, "
+                "'significant' requires it to exclude zero as well: items from one document "
+                "move together and are not independent evidence.",
             "",
             "두 실행은 동일 문항이므로 대응 비교입니다. 판정이 바뀐 문항만 정보를 가지며, "
             "이 검정 없이 집계 차이만 보면 노이즈를 개선으로 읽게 됩니다."]
@@ -327,12 +369,12 @@ def main() -> int:
 
     bc, ac = by_category(base, cfg), by_category(after, cfg)
     cats = {k: delta(k, bc[k], ac[k]) for k in sorted(bc) if k in ac}
-    paired = paired_metrics(base, after, cfg)
-
     keyed = key_lookup(cfg, after)
+    cluster_of = {i: k.get("doc") for i, k in keyed.items() if k.get("doc")}
+    paired = paired_metrics(base, after, cfg, cluster_of=cluster_of)
     heldout = (heldout_clean(base, keyed, cfg), heldout_clean(after, keyed, cfg)) if keyed else None
     clean_ids = {i for i, k in keyed.items() if is_clean_heldout(k)}
-    paired_heldout = paired_metrics(base, after, cfg, clean_ids) if keyed else {}
+    paired_heldout = paired_metrics(base, after, cfg, clean_ids, cluster_of) if keyed else {}
     if not keyed:
         LOG.warning("no key found at %s - the held-out table is skipped",
                     after.get("benchmark_dir") or cfg["out_dir"])

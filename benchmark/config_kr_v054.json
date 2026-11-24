@@ -22,7 +22,9 @@
       "보내실 곳",
       "연락처",
       "재검토기한"
-    ]
+    ],
+    "mark_split": true,
+    "drop_conflicting_questions": true
   },
   "enumeration": {
     "heading_alt": "(?:^|\\n)\\s*(\\d+(?:\\.\\d+)+)\\s+([^\\n\\d]{2,40})(?=\\n)"

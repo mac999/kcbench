@@ -985,7 +985,7 @@ def run_qa(cfg, model: str, rows: List[dict], lang: str, repeats: int,
         # use-case track by what matters: contaminated vs held-out items,
         # swapped vs control contexts, and which label task was asked.
         extra = {k: item[k] for k in ("split", "context_matches", "label_task",
-                                      "usecase", "volatility")
+                                      "usecase", "volatility", "doc")
                  if k in item}
         # Held-out items that repeat a trained-on clause word for word are
         # marked by the build; the aggregate reports the track with and
