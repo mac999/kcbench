@@ -37,7 +37,7 @@ PROJECT = Path(__file__).resolve().parent.parent
 DEFAULT_DATA = PROJECT / "ground_truth/train/train_sft.jsonl"
 
 
-def as_text(value) -> str:
+def as_text(value, json_fallback: bool = True) -> str:
     """Flatten the nested input/output objects into something a prompt can hold."""
     if value is None:
         return ""
@@ -47,25 +47,54 @@ def as_text(value) -> str:
         for key in ("answer", "context", "text"):
             if isinstance(value.get(key), str) and value[key].strip():
                 return value[key]
-        return json.dumps(value, ensure_ascii=False)
+        # An input whose context is "" used to come back as the JSON of its
+        # metadata, and 45% of the v3 pairs trained on a [조문] block holding
+        # {"metadata": {...}}. Without the fallback an empty context stays empty.
+        return json.dumps(value, ensure_ascii=False) if json_fallback else ""
     return str(value)
+
+
+def as_target(output, mode: str) -> str:
+    """The completion the model learns: the answer text, or the full output object."""
+    if mode == "json" and isinstance(output, dict):
+        return json.dumps({"answer": output.get("answer", ""),
+                           "evidence": output.get("evidence", []),
+                           "final_label": output.get("final_label", "")},
+                          ensure_ascii=False)
+    return as_text(output)
+
+
+# How the user turn is laid out. "legacy" is what every arm before v4.5 was
+# trained on; "eval-ko"/"eval-en" reproduce the benchmark's own qa.open and
+# qa.closed prompts (kcbench/prompts.py) so training and scoring share a format.
+PROMPT_FORMATS = {
+    "legacy": ("{instruction}\n\n{label}\n{context}", "{instruction}"),
+    "eval-ko": ("다음 조문을 읽고 질문에 답하시오.\n\n[조문]\n{context}\n\n[질문]\n{instruction}",
+                "다음 질문에 답하시오.\n\n[질문]\n{instruction}"),
+    "eval-en": ("Read the passage and answer the question.\n\n[Passage]\n{context}\n\n"
+                "[Question]\n{instruction}",
+                "Answer the question.\n\n[Question]\n{instruction}"),
+}
 
 
 class Pairs(Dataset):
     def __init__(self, path: Path, tok, max_len: int, limit: int | None = None,
-                 context_label: str = "[조문]"):
+                 context_label: str = "[조문]", prompt_format: str = "legacy",
+                 json_fallback: bool = True, target: str = "text"):
         self.samples = []
+        with_ctx, without_ctx = PROMPT_FORMATS[prompt_format]
         with path.open(encoding="utf-8") as fh:
             for line in fh:
                 if not line.strip():
                     continue
                 r = json.loads(line)
                 instruction = (r.get("instruction") or "").strip()
-                answer = as_text(r.get("output")).strip()
+                answer = as_target(r.get("output"), target).strip()
                 if not instruction or not answer:
                     continue
-                context = as_text(r.get("input")).strip()
-                user = f"{instruction}\n\n{context_label}\n{context}" if context else instruction
+                context = as_text(r.get("input"), json_fallback).strip()
+                user = (with_ctx if context else without_ctx).format(
+                    instruction=instruction, label=context_label, context=context)
                 self.samples.append((user, answer))
                 if limit and len(self.samples) >= limit:
                     break
@@ -122,6 +151,13 @@ def main() -> int:
     ap.add_argument("--context-label", default="[조문]",
                     help="line that introduces the passage in the user turn; an English "
                          "build trains with [Clause]")
+    ap.add_argument("--prompt-format", choices=sorted(PROMPT_FORMATS), default="legacy",
+                    help="user-turn layout; eval-ko/eval-en match the benchmark prompts")
+    ap.add_argument("--no-json-fallback", action="store_true",
+                    help="an input with no context string trains with an empty context "
+                         "instead of the JSON of its metadata")
+    ap.add_argument("--target", choices=["text", "json"], default="text",
+                    help="learn the answer text, or the {answer, evidence, final_label} object")
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--resume-from", type=Path, metavar="DIR",
                     help="adapter checkpoint (out/.../step-N) to continue from. "
@@ -171,7 +207,8 @@ def main() -> int:
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"trainable {trainable/1e6:.1f}M")
 
-    data = Pairs(args.data, tok, args.max_len, args.limit, args.context_label)
+    data = Pairs(args.data, tok, args.max_len, args.limit, args.context_label,
+                 args.prompt_format, not args.no_json_fallback, args.target)
     loader = DataLoader(data, batch_size=args.batch, shuffle=True, drop_last=True,
                         collate_fn=lambda b: collate(b, tok.pad_token_id))
     steps_per_epoch = max(1, len(loader) // args.accum)
@@ -181,6 +218,15 @@ def main() -> int:
     opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad],
                             lr=args.lr, weight_decay=0.0, betas=(0.9, 0.95))
     sched = get_cosine_schedule_with_warmup(opt, int(total_steps * args.warmup), total_steps)
+    if resumed:
+        # the schedule used to restart at step 0 on a resume, re-warming and
+        # then cooling from the top; put it where the interrupted run was
+        for _ in range(resumed):
+            sched.step()
+        state = args.resume_from / "optimizer.pt"
+        if state.exists():
+            opt.load_state_dict(torch.load(state, map_location="cuda"))
+            print("optimiser state restored")
 
     args.out.mkdir(parents=True, exist_ok=True)
     log_path = args.out / "train_log.jsonl"
@@ -228,6 +274,7 @@ def main() -> int:
 
             if args.save_every and step % args.save_every == 0:
                 model.save_pretrained(args.out / f"step-{step}")
+                torch.save(opt.state_dict(), args.out / f"step-{step}" / "optimizer.pt")
                 print(f"saved {args.out / f'step-{step}'}", flush=True)
 
             if step >= total_steps:
@@ -242,6 +289,8 @@ def main() -> int:
         "data": str(args.data), "epochs": args.epochs, "batch": args.batch,
         "accum": args.accum, "lr": args.lr, "rank": args.rank, "alpha": args.alpha,
         "max_len": args.max_len, "steps": step, "tokens": seen,
+        "prompt_format": args.prompt_format, "json_fallback": not args.no_json_fallback,
+        "target": args.target,
         "elapsed_min": round((time.time() - started) / 60, 1),
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"done, {step} step(s), {seen:,} token(s) -> {args.out}")
