@@ -29,7 +29,8 @@ def main(argv: list[str] | None = None) -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     add_common_args(ap)
     ap.add_argument("--fraction", type=float, metavar="F",
-                    help="target share of chunks to hold out per category (default 0.10)")
+                    help="target share of chunks to hold out per category "
+                         "(default: holdout.chunk_fraction in the config)")
     ap.add_argument("--mirror", metavar="FILE", default=str(PROJECT / "BENCHMARK_HOLDOUT.json"),
                     help="also write here, where run_corpus.py looks for exclusions")
     args = ap.parse_args(argv)
