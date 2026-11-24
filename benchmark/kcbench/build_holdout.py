@@ -13,6 +13,7 @@ import collections
 import hashlib
 import json
 import random
+import re
 from pathlib import Path
 
 from kcbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, PROJECT, add_common_args,
@@ -21,6 +22,24 @@ from kcbench.common import (BENCHMARK_NAME, BENCHMARK_VERSION, PROJECT, add_comm
                     write_json)
 
 LOG = log("holdout")
+
+
+_EDITION_WORDS = re.compile(
+    r"\(?양식\)?|조문별\s*제?개정이유서|제?개정이유서|일부개정(?:고시)?(?:안)?|전부개정(?:고시)?(?:안)?|"
+    r"제정(?:고시)?(?:안)?|개정(?:안)?|고시(?:안)?|전문|이유서|행정규칙|규제영향분석서|신구조문대비표|"
+    r"\[[^\]]*\]|\([^)]*\)|「|」|\d{4}[.\-]\s*\d{1,2}[.\-]\s*\d{1,2}\.?|[\s_·ㆍ,:;.\-]+")
+
+
+def family_key(stem: str) -> str:
+    """What is left of a file name once the edition words are stripped."""
+    k = _EDITION_WORDS.sub("", stem)
+    if len(k) < 4:
+        # "개정본문(도로터널의 화재안전기준 전부개정안)": the name sits inside
+        # the brackets and the stripping left only the wrapper word
+        inner = re.findall(r"[\(（]([^)）]{4,})[\)）]", stem)
+        if inner:
+            k = _EDITION_WORDS.sub("", inner[0]) or k
+    return k or stem
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -50,8 +69,27 @@ def main(argv: list[str] | None = None) -> int:
     total = sum(len(d["chunks"]) for d in docs)
     LOG.info("%d document(s), %d chunk(s)", len(docs), total)
 
+    # Optional: hold out whole regulation families. The corpus files an
+    # amendment notice, its reasons sheet and the full text as separate
+    # documents of one standard; picking one of them leaves the others, with
+    # most of the same clauses, on the training side. family_key() strips the
+    # edition words so they fall into one group, which is then held out or
+    # kept as a unit.
+    if hp.get("group_by_family"):
+        fams: dict[tuple, dict] = {}
+        for d in docs:
+            k = (d["category"], family_key(d["stem"]))
+            f = fams.setdefault(k, {"stem": family_key(d["stem"]), "category": d["category"],
+                                    "chunks": [], "members": []})
+            f["chunks"].extend(d["chunks"])
+            f["members"].append(d)
+        units = list(fams.values())
+        LOG.info("%d document(s) in %d regulation famil(ies)", len(docs), len(units))
+    else:
+        units = docs
+
     by_cat: dict[str, list] = collections.defaultdict(list)
-    for d in docs:
+    for d in units:
         by_cat[d["category"]].append(d)
 
     rng = random.Random(hp["seed"])
@@ -70,6 +108,8 @@ def main(argv: list[str] | None = None) -> int:
             acc += len(d["chunks"])
         held.extend(picked or entries[:1])
 
+    if hp.get("group_by_family"):
+        held = [m for f in held for m in f["members"]]
     held_chunks = sum(len(d["chunks"]) for d in held)
     LOG.info("holding out %d document(s), %d chunk(s) - %.1f%% of the dataset",
              len(held), held_chunks, held_chunks / total * 100)
