@@ -1,0 +1,19 @@
+{
+  "_comment": "Second model family for the training-utility comparison: kanana-1.5-8b-instruct (Llama 3 architecture, Apache-2.0, non-gated) under the Qwen recipe on the two 2,202-row data conditions, scored on the v0.5.4 key. The base is the same checkpoint converted to GGUF and registered as kanana1.5:8b (training/register_kanana.sh). Legacy prompt layout, so the arms are comparable with the Qwen3-8B arms. Run with run_experiment.sh experiments/exp_kanana.json.",
+  "benchmark_config": "config_kr_v054_ft.json",
+  "model_tag": "kanana-v053cmp",
+  "run_tag_prefix": "kanana",
+  "modelfile_template": "Modelfile.kanana-sft",
+  "tracks": "probe,sft,uc1_safety,uc2_rebar_spec,uc4_faithfulness,uc5_incident,uc6_verdict,uc7_requirement,uc6_verdict_v2,uc7_requirement_v2",
+  "recipe": {
+    "max_len": 3072, "batch": 2, "accum": 16, "save_every": 100, "epochs": 2,
+    "base_model": "kakaocorp/kanana-1.5-8b-instruct-2505"
+  },
+  "datasets": {},
+  "arms": [
+    {"name": "base", "model": "kanana1.5:8b"},
+    {"name": "v052", "data": "../ground_truth_v053/train_from_v052/train_star.jsonl", "seed": 20260814},
+    {"name": "n2202", "data": "../ground_truth_v053/train/train_star_n2202.jsonl", "seed": 20260814}
+  ],
+  "compares": [["base", "v052"], ["base", "n2202"], ["v052", "n2202"]]
+}
