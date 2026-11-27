@@ -1,0 +1,21 @@
+{
+  "_comment": "kanana-1.5-8b on the regenerated v0.5.4 data, beside its v052 and v0.5.3 arms. The base and v052 arms reuse the kanana-* runs already scored on the v0.5.4 key, so only the two new arms are trained. Kanana showed the v0.5.3 abstention more strongly than Qwen3-8B, so it is the sharper test of the refusal twins. Run after exp_v054data.json has built the n2202 file.",
+  "benchmark_config": "config_kr_v054_ft.json",
+  "model_tag": "kanana-v054data",
+  "run_tag_prefix": "kanana",
+  "modelfile_template": "Modelfile.kanana-sft",
+  "tracks": "probe,sft,uc1_safety,uc2_rebar_spec,uc4_faithfulness,uc5_incident,uc6_verdict,uc7_requirement,uc6_verdict_v2,uc7_requirement_v2",
+  "recipe": {
+    "max_len": 3072, "batch": 2, "accum": 16, "save_every": 100, "epochs": 2,
+    "base_model": "kakaocorp/kanana-1.5-8b-instruct-2505"
+  },
+  "datasets": {},
+  "arms": [
+    {"name": "base", "model": "kanana1.5:8b"},
+    {"name": "v052", "model": "kanana-v053cmp:v052"},
+    {"name": "n2202", "model": "kanana-v053cmp:n2202"},
+    {"name": "v054n2202", "data": "../ground_truth_v054/train_gen054/train_star_n2202.jsonl", "seed": 20260814},
+    {"name": "v054full", "data": "../ground_truth_v054/train_gen054/train_star.jsonl", "seed": 20260814}
+  ],
+  "compares": [["base", "v054n2202"], ["v052", "v054n2202"], ["n2202", "v054n2202"], ["base", "v054full"]]
+}
